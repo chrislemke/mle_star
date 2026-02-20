@@ -8,7 +8,7 @@ You are operating in BUILD mode. Your job is to implement ONE task from the plan
 
 1. Read `thoughts/shared/specs/` directory to understand requirements
 2. Read `CLAUDE.md` to understand codebase patterns and commands
-3. Read `src/mle_star/cli.py` — this is the entry point for the application.
+3. Read the `main.py` this file should be the entry point for the application.
 
 ---
 
@@ -45,10 +45,11 @@ Before implementing:
 ## Phase 5: Implement
 
 Implement the task:
+- Always use the `developing-python` skill
 - Follow existing code patterns
 - Keep changes minimal and focused
-- Use subagents (python-expert-coder) for parallel work when appropriate
-- WRITE TEST FIRST (Classical TDD): write tests (`pytest`, `hypothesis`) that assert expected outputs and state for known inputs, mock only at boundaries (I/O, network, external services), then implement the minimal code to make them pass
+- Use subagents (also using the `developing-python` skill) for parallel work when appropriate
+- WRITE TEST FIRST (Classical TDD) using the `tdd-test-writer` agent
 - All implemented functions and modules MUST include Google-style Python docstrings
 - Respect KISS (keep it stupid simple) and YAGNI (you ain't gonna need it)
 
