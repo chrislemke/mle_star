@@ -8,8 +8,8 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 42      | 0           | 0    |
-| P2       | 8       | 0           | 0    |
+| P1       | 49      | 0           | 0    |
+| P2       | 4       | 0           | 0    |
 | P3       | 3       | 0           | 0    |
 
 ---
@@ -222,15 +222,19 @@ Implement `setup_working_directory(task)` per REQ-EX-001, `clean_output_director
 **Priority:** P1
 
 ### Description
-Implement `write_script()` per REQ-EX-005 (write solution to temp file with validation) and `execute_script()` per REQ-EX-006 (async subprocess execution with stdout/stderr capture, timeout enforcement per REQ-EX-010). Return `ExecutionRawResult` with exit_code, stdout, stderr, duration.
+Implement `write_script()` per REQ-EX-005/REQ-EX-006 (write solution to temp file with validation including `exit()`/`sys.exit()`/`os._exit()`/`quit()` detection per REQ-EX-044) and `execute_script()` per REQ-EX-007 (async subprocess execution with stdout/stderr capture, timeout enforcement per REQ-EX-009, orphan process cleanup via `os.killpg` per REQ-EX-037, large output truncation per REQ-EX-038). Return `ExecutionRawResult` per REQ-EX-008. Include executor strategy selection: prefer SDK Bash tool when available, fall back to direct subprocess when SDK Bash timeout cap (600s) is exceeded per REQ-EX-047.
 
 ### Acceptance Criteria
 - [ ] `write_script()` writes to temp file and validates content is non-empty Python
+- [ ] `write_script()` detects `exit()`, `sys.exit()`, `os._exit()`, `quit()` calls per REQ-EX-044
+- [ ] Advisory `try/except` detection (warn, not block) per REQ-EX-045
 - [ ] `execute_script()` runs script as subprocess, captures stdout/stderr
-- [ ] Timeout enforcement terminates scripts exceeding limit
-- [ ] `ExecutionRawResult` has exit_code, stdout, stderr, duration_seconds
+- [ ] Timeout enforcement terminates scripts exceeding limit via `os.killpg` (no orphan processes) per REQ-EX-037
+- [ ] Large output (>100MB) truncated with warning appended per REQ-EX-038
+- [ ] Executor strategy: SDK Bash when timeout ≤ 600s, direct subprocess otherwise per REQ-EX-047
+- [ ] `ExecutionRawResult` has exit_code, stdout, stderr, duration_seconds per REQ-EX-008
 - [ ] Tests use a simple script that prints a known value
-- [ ] Tests verify timeout kills long-running scripts
+- [ ] Tests verify timeout kills long-running scripts without orphan processes
 
 ---
 
@@ -255,15 +259,17 @@ Implement `parse_score()` per REQ-EX-011 (regex matching `"Final Validation Perf
 **Priority:** P1
 
 ### Description
-Implement `build_evaluation_result()` per REQ-EX-014, `evaluate_solution()` per REQ-EX-015 (write + execute + parse + construct EvaluationResult), and `evaluate_with_retry()` per REQ-EX-016 (retry with A_debugger on failure). Also implement `is_better_solution()` per REQ-EX-020.
+Implement `build_evaluation_result()` per REQ-EX-014, `evaluate_solution()` per REQ-EX-015 (write + execute + parse + construct EvaluationResult), and `evaluate_with_retry()` per REQ-EX-021 (retry with A_debugger on failure). Also implement `is_better_solution()` per REQ-EX-023. Critical: the harness shall NOT mutate the input `SolutionScript` per REQ-EX-016; the caller must handle score updates.
 
 ### Acceptance Criteria
 - [ ] `evaluate_solution()` returns `EvaluationResult` from a `SolutionScript`
+- [ ] `evaluate_solution()` does NOT mutate the input `SolutionScript` per REQ-EX-016
 - [ ] Sets `score=None` and `is_error=True` when script fails
 - [ ] `evaluate_with_retry()` calls A_debugger callback on error, retries up to `max_debug_attempts`
 - [ ] Falls back to original solution after max retries exceeded
 - [ ] `is_better_solution()` delegates to `is_improvement_or_equal()` from models
 - [ ] Tests verify successful evaluation, error detection, retry flow
+- [ ] Tests verify input SolutionScript is not mutated after evaluation
 
 ---
 
@@ -306,15 +312,17 @@ Implement `verify_submission()` per REQ-EX-021 (check `./final/submission.csv` e
 **Priority:** P1
 
 ### Description
-Implement `debug_solution()` per REQ-SF-001 through REQ-SF-010 and `make_debug_callback()` per REQ-SF-011 in `mle_star/safety.py`. The debugger receives code + traceback, invokes the SDK `debugger` agent, and returns fixed code. Includes retry logic and fallback to original solution.
+Implement `debug_solution()` per REQ-SF-001 through REQ-SF-010 and `make_debug_callback()` per REQ-SF-007 in `mle_star/safety.py`. The debugger receives code + traceback, invokes the SDK `debugger` agent, and returns fixed code. Includes retry logic, fallback to original solution per REQ-SF-008, and auto-append of score print line if missing per REQ-SF-010.
 
 ### Acceptance Criteria
 - [ ] `debug_solution(client, solution, traceback, task)` invokes `debugger` agent via SDK
 - [ ] Extracts fixed code from agent response using `extract_code_block()`
 - [ ] Returns new `SolutionScript` with fixed content
-- [ ] Falls back to original solution if agent returns unparseable output
+- [ ] Auto-appends `print("Final Validation Performance: ...")` line if missing from debugged code per REQ-SF-010
+- [ ] Auto-append respects `if __name__` blocks (injects inside, not after)
+- [ ] Falls back to original solution if agent returns unparseable output per REQ-SF-008/REQ-SF-040
 - [ ] `make_debug_callback()` returns a callable compatible with `evaluate_with_retry()`
-- [ ] Tests verify agent invocation, code extraction, and fallback behavior (mocked SDK)
+- [ ] Tests verify agent invocation, code extraction, score line injection, and fallback behavior (mocked SDK)
 
 ---
 
@@ -323,16 +331,18 @@ Implement `debug_solution()` per REQ-SF-001 through REQ-SF-010 and `make_debug_c
 **Priority:** P1
 
 ### Description
-Implement the two-step leakage pipeline per REQ-SF-012 through REQ-SF-030 in `mle_star/safety.py`: detection via `LeakageDetectionOutput` structured output, correction via code block replacement, and the combined `check_and_fix_leakage()` function.
+Implement the two-step leakage pipeline per REQ-SF-011 through REQ-SF-023 in `mle_star/safety.py`: detection via `LeakageDetectionOutput` structured output, correction via code block replacement, and the combined `check_and_fix_leakage()` function. **Cross-cutting concern (REQ-SF-022):** leakage check must run before EVERY evaluation across all phases (Phase 1 post-merge, Phase 2 inner loop, Phase 3 ensemble). Callers in Tasks 4.5, 6.3, and 7.2 must invoke this function.
 
 ### Acceptance Criteria
-- [ ] Detection invokes `leakage` agent with `variant="detection"` prompt
-- [ ] Parses `LeakageDetectionOutput` structured response
-- [ ] If leakage detected, invokes `leakage` agent with `variant="correction"` prompt
-- [ ] Correction extracts fixed preprocessing code block and replaces in solution
-- [ ] `check_and_fix_leakage()` combines both steps; returns (fixed_solution, was_fixed)
+- [ ] Detection invokes `leakage` agent with `variant="detection"` prompt per REQ-SF-012
+- [ ] Parses `LeakageDetectionOutput` structured response per REQ-SF-014/REQ-SF-015
+- [ ] If leakage detected, invokes `leakage` agent with `variant="correction"` prompt per REQ-SF-017
+- [ ] Correction extracts fixed preprocessing code block and replaces in solution per REQ-SF-019
+- [ ] Graceful handling when replacement fails (whitespace differences): log and skip per REQ-SF-021
+- [ ] `check_and_fix_leakage()` combines both steps; returns (fixed_solution, was_fixed) per REQ-SF-020
 - [ ] No-op when no leakage detected
-- [ ] Tests cover: no leakage, leakage detected and corrected, unparseable response
+- [ ] Graceful degradation on malformed JSON: return original solution per REQ-SF-038
+- [ ] Tests cover: no leakage, leakage detected and corrected, unparseable response, replacement failure
 
 ---
 
@@ -720,7 +730,7 @@ Implement `run_pipeline()` async function per REQ-OR-001 through REQ-OR-004 in `
 **Priority:** P1
 
 ### Description
-Implement SDK client initialization per REQ-OR-005 through REQ-OR-011 in `mle_star/orchestrator.py`. Create `ClaudeSDKClient` with agent registrations, system prompt, permission mode, and cleanup in `try/finally`.
+Implement SDK client initialization per REQ-OR-005 through REQ-OR-011 in `mle_star/orchestrator.py`. Create `ClaudeSDKClient` with agent registrations, system prompt, permission mode, and cleanup in `try/finally`. Include SDK reconnection on transient failure per REQ-OR-052.
 
 ### Acceptance Criteria
 - [ ] Client created with model, permission_mode, agents dict, hooks
@@ -729,7 +739,9 @@ Implement SDK client initialization per REQ-OR-005 through REQ-OR-011 in `mle_st
 - [ ] All 14 agents registered via `build_default_agent_configs()` → `to_agent_definition()`
 - [ ] `client.disconnect()` called in `finally` block per REQ-OR-011
 - [ ] Permission mode configurable per REQ-OR-009
-- [ ] Tests verify client setup and cleanup (mocked SDK)
+- [ ] SDK reconnection with exponential backoff (3 retries) on transient failure per REQ-OR-052
+- [ ] Agent name uniqueness enforced per REQ-OR-057
+- [ ] Tests verify client setup, cleanup, and reconnection behavior (mocked SDK)
 
 ---
 
@@ -756,15 +768,18 @@ Implement sequential phase dispatch per REQ-OR-012 through REQ-OR-017 in `mle_st
 **Priority:** P1
 
 ### Description
-Implement asyncio-based parallel Phase 2 paths per REQ-OR-018 through REQ-OR-023 in `mle_star/orchestrator.py`. Deep copy initial solution, unique session IDs, error isolation via `return_exceptions=True`.
+Implement asyncio-based parallel Phase 2 paths per REQ-OR-018 through REQ-OR-023 in `mle_star/orchestrator.py`. Deep copy initial solution, unique session IDs, per-path working subdirectories per REQ-OR-020, error isolation via `return_exceptions=True`, and cancellation on timeout per REQ-OR-023.
 
 ### Acceptance Criteria
 - [ ] Deep copies Phase 1 solution for each of L paths
-- [ ] Each path gets unique `session_id` ("path-0", "path-1", etc.)
-- [ ] Uses `asyncio.gather(*tasks, return_exceptions=True)`
+- [ ] Each path gets unique `session_id` ("path-0", "path-1", etc.) per REQ-OR-021
+- [ ] Each path gets its own working subdirectory (e.g., `./work/path-0/`) per REQ-OR-020
+- [ ] Uses `asyncio.gather(*tasks, return_exceptions=True)` per REQ-OR-022
 - [ ] Failed paths logged, successful results collected
 - [ ] If all paths fail, falls back to Phase 1 solution per REQ-OR-022
-- [ ] Tests verify concurrent execution, error isolation, and fallback
+- [ ] Cancellation of outstanding paths when timeout reached per REQ-OR-023
+- [ ] Per-path time budget = total Phase 2 budget / L per REQ-OR-026
+- [ ] Tests verify concurrent execution, error isolation, directory isolation, and fallback
 
 ---
 
@@ -809,15 +824,18 @@ Implement all hooks per REQ-OR-031 through REQ-OR-035 in `mle_star/orchestrator.
 **Priority:** P1
 
 ### Description
-Implement `FinalResult` construction per REQ-OR-036 through REQ-OR-039, and error handling per REQ-OR-040 through REQ-OR-043. Include Phase 2 failure fallback, Phase 3 failure fallback, and best-effort result return.
+Implement `FinalResult` construction per REQ-OR-036 through REQ-OR-039, and error handling per REQ-OR-040 through REQ-OR-043. Include Phase 2 failure fallback, Phase 3 failure fallback, best-effort result return, per-phase cost/duration breakdowns per REQ-OR-037/REQ-OR-038, and solution lineage tracing per REQ-OR-039.
 
 ### Acceptance Criteria
 - [ ] `FinalResult` assembled with all phase outputs, duration, cost
+- [ ] Per-phase cost breakdown included per REQ-OR-037
+- [ ] Per-phase duration breakdown included per REQ-OR-038
+- [ ] Solution lineage tracing: provenance chain logged across all phases per REQ-OR-039
 - [ ] Phase 2 failure: substitutes Phase 1 solution per REQ-OR-040
 - [ ] Phase 3 failure: selects best Phase 2 solution per REQ-OR-041
 - [ ] Complete failure: raises `PipelineError` with diagnostics per REQ-OR-042
 - [ ] Best-effort: always returns `FinalResult` with best-known solution per REQ-OR-043
-- [ ] Tests verify all fallback scenarios
+- [ ] Tests verify all fallback scenarios and lineage output
 
 ---
 
@@ -843,9 +861,9 @@ Implement `PipelineState` per REQ-OR-050, env var support per REQ-OR-046, loggin
 <!-- SECTION 10: PROMPT TEMPLATES (Spec 01 REQ-DM-033)             -->
 <!-- ============================================================ -->
 
-## [P2] 10.1 — Populate prompt templates for Phase 1 agents (A_retriever, A_init, A_merger)
+## [P1] 10.1 — Populate prompt templates for Phase 1 agents (A_retriever, A_init, A_merger)
 **Status:** pending
-**Priority:** P2
+**Priority:** P1
 
 ### Description
 Create prompt templates for A_retriever (Figure 9), A_init (Figure 10), and A_merger (Figure 11) in `mle_star/prompts.py` and register them in the `PromptRegistry`. Templates must match paper figures with appropriate `{variable}` placeholders.
@@ -860,9 +878,9 @@ Create prompt templates for A_retriever (Figure 9), A_init (Figure 10), and A_me
 
 ---
 
-## [P2] 10.2 — Populate prompt templates for Phase 2 agents (A_abl, A_summarize, A_extractor, A_planner, A_coder)
+## [P1] 10.2 — Populate prompt templates for Phase 2 agents (A_abl, A_summarize, A_extractor, A_planner, A_coder)
 **Status:** pending
-**Priority:** P2
+**Priority:** P1
 
 ### Description
 Create prompt templates for A_abl (Figure 12), A_summarize (Figure 13), A_extractor (Figure 14), A_planner (Figure 15), and A_coder (Figure 18/19) in `mle_star/prompts.py`.
@@ -877,9 +895,9 @@ Create prompt templates for A_abl (Figure 12), A_summarize (Figure 13), A_extrac
 
 ---
 
-## [P2] 10.3 — Populate prompt templates for Phase 3 and safety agents
+## [P1] 10.3 — Populate prompt templates for Phase 3 and safety agents
 **Status:** pending
-**Priority:** P2
+**Priority:** P1
 
 ### Description
 Create prompt templates for A_ens_planner (Figure 22), A_ensembler (Figure 23), A_debugger (Figure 16), A_leakage detection (Figure 20), A_leakage correction (Figure 21), A_data (Figure 17), A_test (Figure 25), and subsampling templates (Figures 26, 27) in `mle_star/prompts.py`.
@@ -920,9 +938,9 @@ Update `mle_star/cli.py` to accept a task configuration file (YAML or JSON), par
 <!-- SECTION 12: TESTING AND QUALITY                               -->
 <!-- ============================================================ -->
 
-## [P2] 12.1 — Create test infrastructure and fixtures
+## [P1] 12.1 — Create test infrastructure and fixtures
 **Status:** pending
-**Priority:** P2
+**Priority:** P1
 
 ### Description
 Set up `tests/` directory with conftest.py, fixtures for common test data (sample TaskDescription, PipelineConfig, SolutionScript, mock SDK client), and test helpers for mocking agent responses.
@@ -994,6 +1012,22 @@ Run `mutmut` on critical modules (models.py, execution.py, orchestrator.py) and 
 - [ ] `uv run mutmut run --paths-to-mutate=src/mle_star/models.py` kills > 90% mutants
 - [ ] Score comparison functions (`is_improvement`, `is_improvement_or_equal`) have 100% mutant kill rate
 - [ ] `uv run mutmut browse` shows no surviving mutants in critical logic paths
+
+---
+
+## [P2] 9.9 — Implement MCP server registration for score parsing and file listing
+**Status:** pending
+**Priority:** P2
+
+### Description
+Implement MCP server registration per REQ-OR-010 in `mle_star/orchestrator.py`. Register two MCP servers with the SDK client: one for score parsing (exposing `parse_score()` as a tool) and one for file listing (exposing data directory contents). This is a "Should" priority requirement that enhances agent capabilities.
+
+### Acceptance Criteria
+- [ ] Score-parsing MCP server registered with SDK client
+- [ ] File-listing MCP server registered with SDK client
+- [ ] Agents can invoke these tools during execution
+- [ ] Graceful degradation if MCP registration fails (log warning, continue without)
+- [ ] Tests verify MCP server registration (mocked SDK)
 
 ---
 
