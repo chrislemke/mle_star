@@ -1,0 +1,136 @@
+default_language_version:
+  python: python3.13
+
+# Exclude common patterns
+exclude: '^(\.git/|\.venv/|venv/|\.pytest_cache/|__pycache__/|\.mypy_cache/|\.ruff_cache/)'
+
+repos:
+
+  # ============================================================================
+  # File Format & Content Checks
+  # ============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+        args: ["--markdown-linebreak-ext=md"]
+      - id: end-of-file-fixer
+        name: Fix end of files
+      - id: check-yaml
+        name: Check YAML syntax
+      - id: check-json
+        name: Check JSON syntax
+      - id: check-toml
+        name: Check TOML syntax
+      - id: check-xml
+        name: Check XML syntax
+      - id: mixed-line-ending
+        name: Fix mixed line endings
+        args: ["--fix=lf"]
+      - id: check-added-large-files
+        name: Check for large files
+        args: ["--maxkb=1000"]
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+      - id: detect-private-key
+        name: Detect private keys
+
+  # ============================================================================
+  # Python-Specific Checks
+  # ============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-builtin-literals
+        name: Check builtin type constructor use
+      - id: check-case-conflict
+        name: Check for case conflicts
+      - id: check-docstring-first
+        name: Check docstring is first
+      - id: debug-statements
+        name: Check for debugger imports
+      - id: fix-byte-order-marker
+        name: Fix UTF-8 byte order marker
+
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: python-use-type-annotations
+        name: Enforce type annotations
+      - id: python-check-blanket-noqa
+        name: Check blanket noqa
+      - id: python-check-mock-methods
+        name: Check mock methods
+      - id: python-no-log-warn
+        name: Check for log.warn usage
+      - id: text-unicode-replacement-char
+        name: Check for unicode replacement char
+
+  # ============================================================================
+  # Security Scanning (Bandit)
+  # ============================================================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.3
+    hooks:
+      - id: bandit
+        name: Security linting with bandit
+        args: ['-c', 'pyproject.toml']
+        types: [python]
+
+  # ============================================================================
+  # Dependency Vulnerability Audit (pip-audit)
+  # ============================================================================
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.10.0
+    hooks:
+      - id: pip-audit
+        name: Audit dependencies for vulnerabilities
+        additional_dependencies: ['pip>=26.0']
+
+  # ============================================================================
+  # Code Formatting & Linting (Ruff)
+  # ============================================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.0
+    hooks:
+      # Ruff linter - check only, never auto-fix
+      - id: ruff
+        name: Ruff linter (check only)
+        types_or: [python, pyi]
+        args:
+          - --config=pyproject.toml
+
+      # Ruff formatter - formats code on local commits
+      - id: ruff-format
+        name: Ruff formatter (local - auto-format)
+        types_or: [python, pyi]
+        args:
+          - --config=pyproject.toml
+
+  # ============================================================================
+  # Type Checking (mypy)
+  # ============================================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.1
+    hooks:
+      - id: mypy
+        types: [python]
+        args:
+          - --config-file=pyproject.toml
+
+  # ============================================================================
+  # Code Complexity Monitoring (xenon)
+  # ============================================================================
+  - repo: https://github.com/rubik/xenon
+    rev: v0.9.3
+    hooks:
+      - id: xenon
+        name: Check code complexity with xenon
+        args:
+          - --max-average=B
+          - --max-modules=B
+          - --max-absolute=B
+        exclude: ^(tests/)
+        files: ^src/
+        types: [python]
