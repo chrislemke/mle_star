@@ -8,8 +8,8 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 49      | 0           | 0    |
-| P2       | 4       | 0           | 0    |
+| P1       | 50      | 0           | 0    |
+| P2       | 3       | 0           | 0    |
 | P3       | 3       | 0           | 0    |
 
 ---
@@ -132,7 +132,7 @@ Implement `CodeBlock` (REQ-DM-012), `RetrievedModel` (REQ-DM-014), `RetrieverOut
 **Priority:** P1
 
 ### Description
-Implement `EvaluationResult` (REQ-DM-021), `Phase1Result` (REQ-DM-022), `Phase2Result` (REQ-DM-023), `Phase3Result` (REQ-DM-024), `FinalResult` (REQ-DM-025), `RefinementAttempt` (REQ-DM-042), and `EnsembleAttempt` (REQ-DM-043) models.
+Implement `EvaluationResult` (REQ-DM-021), `Phase1Result` (REQ-DM-022), `Phase2Result` (REQ-DM-023), `Phase3Result` (REQ-DM-024), `FinalResult` (REQ-DM-025), `RefinementAttempt` (REQ-DM-042), `EnsembleAttempt` (REQ-DM-043), and `InnerLoopResult` (REQ-P2I-036) models. `InnerLoopResult` is defined in Spec 06 but lives in `models.py` since it's used across module boundaries (phase2_inner → phase2_outer).
 
 ### Acceptance Criteria
 - [ ] `EvaluationResult` has all 7 fields per REQ-DM-021
@@ -140,6 +140,9 @@ Implement `EvaluationResult` (REQ-DM-021), `Phase1Result` (REQ-DM-022), `Phase2R
 - [ ] `RefinementAttempt` has 4 fields per REQ-DM-042
 - [ ] `EnsembleAttempt` has 3 fields per REQ-DM-043
 - [ ] `FinalResult.phase3` is `Phase3Result | None`
+- [ ] `InnerLoopResult` has fields: `best_solution`, `best_score`, `improved: bool`, `attempts: list[RefinementAttempt]` per REQ-P2I-036
+- [ ] `InnerLoopResult.improved` is `True` iff `best_score` is strictly better than input score per REQ-P2I-036
+- [ ] `InnerLoopResult` preserves input solution when no improvement per REQ-P2I-038
 - [ ] Tests verify construction and field access
 
 ---
@@ -278,12 +281,15 @@ Implement `build_evaluation_result()` per REQ-EX-014, `evaluate_solution()` per 
 **Priority:** P1
 
 ### Description
-Implement subsampling instruction generation per REQ-EX-017 (adding subsampling instruction to prompts) and subsampling removal utilities per REQ-EX-018. These are used during Phase 2 refinement and finalization respectively.
+Implement subsampling instruction generation per REQ-EX-017/REQ-EX-018 (adding subsampling instruction to prompts) and subsampling prompt construction functions per REQ-EX-019 (`request_subsample_removal`) and REQ-EX-020 (`request_subsample_extraction`). REQ-EX-017/018 are used during Phase 2 refinement; REQ-EX-019/020 are used by Spec 08 finalization to remove subsampling from the final solution.
 
 ### Acceptance Criteria
-- [ ] Subsampling instruction text references `config.subsample_limit` (default 30000)
-- [ ] Instruction text follows spec wording for agent prompts
+- [ ] `SUBSAMPLE_INSTRUCTION` constant per REQ-EX-017
+- [ ] `get_subsample_instruction(config)` returns instruction with `config.subsample_limit` (default 30000) per REQ-EX-018
+- [ ] `request_subsample_removal(solution)` returns prompt string for subsampling removal per REQ-EX-019
+- [ ] `request_subsample_extraction(solution)` returns prompt string for subsampling extraction per REQ-EX-020
 - [ ] Tests verify instruction contains the limit value
+- [ ] Tests verify prompt construction for removal and extraction functions
 
 ---
 
@@ -292,13 +298,15 @@ Implement subsampling instruction generation per REQ-EX-017 (adding subsampling 
 **Priority:** P1
 
 ### Description
-Implement `verify_submission()` per REQ-EX-021 (check `./final/submission.csv` exists, is non-empty CSV), `get_submission_info()` per REQ-EX-022, `evaluate_batch()` per REQ-EX-023, and `rank_solutions()` per REQ-EX-024.
+Implement `verify_submission()` per REQ-EX-024, `get_submission_info()` per REQ-EX-025, `evaluate_batch()` per REQ-EX-026, and `rank_solutions()` per REQ-EX-027. Also enforce score comparison delegation per REQ-EX-022 and implement `is_better_solution()` convenience function per REQ-EX-023.
 
 ### Acceptance Criteria
-- [ ] `verify_submission()` returns bool; checks file exists, is valid CSV with rows
-- [ ] `get_submission_info()` returns row count and column names
-- [ ] `evaluate_batch()` evaluates multiple solutions, returns list of `EvaluationResult`
-- [ ] `rank_solutions()` sorts solutions by score respecting metric direction
+- [ ] `verify_submission(working_dir)` returns bool; checks `./final/submission.csv` exists and has size > 0 per REQ-EX-024
+- [ ] `get_submission_info(working_dir)` returns dict with `exists`, `size_bytes`, `row_count`, `columns` per REQ-EX-025
+- [ ] `evaluate_batch(solutions, task, config)` evaluates multiple solutions sequentially per REQ-EX-026
+- [ ] `rank_solutions(solutions, results, direction)` sorts by score (best first) per REQ-EX-027
+- [ ] `is_better_solution(new_result, old_score, direction)` delegates to `is_improvement()` per REQ-EX-023
+- [ ] No inline score comparison logic; all delegated to Spec 01 utilities per REQ-EX-022
 - [ ] Tests cover valid/invalid/missing submission files
 
 ---
@@ -497,8 +505,12 @@ Implement `A_summarize` per REQ-P2O-013 through REQ-P2O-020 and `A_extractor` pe
 - [ ] A_extractor receives solution, ablation summaries, and previously refined blocks C
 - [ ] A_extractor returns `ExtractorOutput` with `plans: list[RefinePlan]`
 - [ ] Each `RefinePlan` has `code_block` (exact substring of solution) and `plan` text
-- [ ] `validate_code_block()` verifies extracted code_block exists in solution content
-- [ ] Tests verify structured output parsing and code block validation
+- [ ] `validate_code_block(code_block, solution)` returns `True` iff `code_block` is exact substring of `solution.content` per REQ-P2O-017
+- [ ] On validation failure: attempt whitespace-normalized match (strip trailing whitespace per line) per REQ-P2O-018
+- [ ] On whitespace match: use the matched substring from the solution source as `c_t`
+- [ ] On all validation failures: re-invoke A_extractor up to 2 times with additional instruction per REQ-P2O-018
+- [ ] If all re-invocations fail: try other plans from `ExtractorOutput.plans` list; skip iteration if none pass
+- [ ] Tests verify structured output parsing, code block validation, whitespace fallback, and re-invocation
 
 ---
 
@@ -627,15 +639,19 @@ Implement `run_phase3()` per REQ-P3-031 through REQ-P3-049 in `mle_star/phase3.p
 **Priority:** P1
 
 ### Description
-Implement `remove_subsampling()` per REQ-FN-001 through REQ-FN-015 in `mle_star/finalization.py`. Uses two agent calls (subsampling extraction via Figure 26, subsampling removal via Figure 27) to remove the subsampling code from the final solution so it trains on full data.
+Implement `remove_subsampling()` per REQ-FN-001 through REQ-FN-009 in `mle_star/finalization.py`. Uses two agent calls (subsampling extraction via Figure 26 per REQ-FN-001, subsampling removal via Figure 27 per REQ-FN-004) to remove the subsampling code from the final solution so it trains on full data. Uses prompt construction helpers from Spec 02 (REQ-EX-019, REQ-EX-020).
 
 ### Acceptance Criteria
-- [ ] Invokes `test` agent with `variant="subsampling_extract"` to identify subsampling code block
-- [ ] Invokes `test` agent with `variant="subsampling_remove"` to produce de-subsampled code
-- [ ] Replaces subsampling block in solution via `replace_block()`
+- [ ] Invokes `test` agent with `variant="subsampling_extract"` to identify subsampling code block per REQ-FN-001
+- [ ] Parses extraction response using `extract_code_block()` per REQ-FN-003
+- [ ] Verifies extracted block is non-empty substring of `solution.content` per REQ-FN-003
+- [ ] Invokes `test` agent with `variant="subsampling_remove"` to produce de-subsampled code per REQ-FN-004
+- [ ] Parses removal response using `extract_code_block()` per REQ-FN-006
+- [ ] Replaces subsampling block in solution via `SolutionScript.replace_block()` per REQ-FN-007
 - [ ] Returns modified `SolutionScript` with subsampling removed
-- [ ] No-op if no subsampling detected
-- [ ] Tests verify extraction and removal flow
+- [ ] No-op if no subsampling detected (extraction returns empty or non-substring block) per REQ-FN-008
+- [ ] Graceful degradation: malformed extraction returns original solution per REQ-FN-039
+- [ ] Tests verify extraction, removal, no-subsampling passthrough, and graceful degradation
 
 ---
 
@@ -644,13 +660,16 @@ Implement `remove_subsampling()` per REQ-FN-001 through REQ-FN-015 in `mle_star/
 **Priority:** P1
 
 ### Description
-Implement `generate_test_submission()` per REQ-FN-016 through REQ-FN-025 in `mle_star/finalization.py`. A_test transforms a validation solution into a test submission script that generates `./final/submission.csv`.
+Implement A_test agent definition per REQ-FN-010 and `generate_test_submission()` per REQ-FN-019 in `mle_star/finalization.py`. Covers REQ-FN-010 through REQ-FN-019. A_test transforms a validation solution into a test submission script that generates `./final/submission.csv`.
 
 ### Acceptance Criteria
-- [ ] `generate_test_submission(client, solution, task)` invokes `test` agent
-- [ ] Uses prompt template (Figure 25) with solution code, task description, output path
-- [ ] Extracts test submission script from response
-- [ ] Returns `SolutionScript` with `phase="final"`
+- [ ] A_test agent definition: `agent_type=AgentType.test`, `tools=["Read"]`, no output schema per REQ-FN-010
+- [ ] Prompt template renders Figure 25 with `task_description` and `final_solution` variables per REQ-FN-011
+- [ ] Prompt includes all Figure 25 constraints: `./input/` data, `./final/submission.csv` output, no `exit()`, no error masking per REQ-FN-014–018
+- [ ] `generate_test_submission(client, task, solution)` invokes `test` agent per REQ-FN-019
+- [ ] Extracts test submission script from response using `extract_code_block()` per REQ-FN-013
+- [ ] Returns `SolutionScript` with `phase=SolutionPhase.final` per REQ-FN-013
+- [ ] Graceful degradation: empty code response proceeds to debug retry flow per REQ-FN-040
 - [ ] Tests verify agent invocation and output construction
 
 ---
@@ -660,30 +679,38 @@ Implement `generate_test_submission()` per REQ-FN-016 through REQ-FN-025 in `mle
 **Priority:** P1
 
 ### Description
-Implement test script execution per REQ-FN-026 through REQ-FN-035. Execute the test submission script, verify `./final/submission.csv` exists and is valid, handle errors with A_debugger retry.
+Implement test script execution per REQ-FN-020 through REQ-FN-025. Execute the test submission script using full `config.time_limit_seconds` timeout (training on full data), verify `./final/submission.csv` exists and is valid, handle errors with A_debugger retry, and implement fallback to best validation solution.
 
 ### Acceptance Criteria
-- [ ] Executes test submission script via `execute_script()` (no subsampling, full data)
-- [ ] Verifies `./final/submission.csv` via `verify_submission()`
-- [ ] On error, retries with A_debugger up to `max_debug_attempts`
-- [ ] Returns final `EvaluationResult` from test execution
-- [ ] Tests verify execution and verification flow
+- [ ] Cleans `./final/` directory before execution per REQ-FN-020
+- [ ] Executes test submission script via `evaluate_solution()` with full timeout per REQ-FN-020
+- [ ] Verifies `./final/submission.csv` exists and has size > 0 via `verify_submission()` per REQ-FN-021
+- [ ] Checks submission file content via `get_submission_info()` (parseable, row_count >= 1) per REQ-FN-022
+- [ ] On error or failed verification, retries with A_debugger via `evaluate_with_retry()` per REQ-FN-023
+- [ ] Maximum retry attempts = `config.max_debug_attempts` per REQ-FN-024
+- [ ] Fallback to best validation solution after all retries exhausted per REQ-FN-025
+- [ ] Fallback sets `submission_path` to empty string or `None` per REQ-FN-025
+- [ ] Tests verify execution, verification, retry, and fallback flow
 
 ---
 
-## [P2] 8.4 — Implement data contamination check
+## [P1] 8.4 — Implement data contamination check
 **Status:** pending
-**Priority:** P2
+**Priority:** P1
 
 ### Description
-Implement `check_contamination()` per REQ-FN-036 through REQ-FN-042 in `mle_star/finalization.py`. Optional check using `data` agent with `DataContaminationResult` structured output (Figure 28).
+Implement `check_contamination()` per REQ-FN-026 through REQ-FN-033 in `mle_star/finalization.py`. Contamination check uses a variant of the `test` agent (sharing `AgentType.test`) with `DataContaminationResult` structured output (Figure 28). The check compares the final solution against reference Kaggle discussion texts.
 
 ### Acceptance Criteria
-- [ ] `check_contamination(client, solution, task)` invokes `data` agent
-- [ ] Parses `DataContaminationResult` with `verdict: "Novel" | "Same"`
-- [ ] Returns contamination result; logs warning if `"Same"`
-- [ ] Invocation is optional (configurable)
-- [ ] Tests verify structured output parsing
+- [ ] Agent definition: `agent_type=AgentType.test` (shares with A_test), `output_schema=DataContaminationResult` per REQ-FN-026
+- [ ] Prompt template renders Figure 28 with `reference_discussion` and `final_solution` variables per REQ-FN-027
+- [ ] `check_contamination(solution, reference_discussions)` accepts a list of reference texts per REQ-FN-028
+- [ ] Returns `None` when `reference_discussions` is empty or `None` (skip check) per REQ-FN-030
+- [ ] Checks each reference independently; overall verdict = `"Same"` if **any** reference yields `"Same"` per REQ-FN-031
+- [ ] Parses `DataContaminationResult` with `verdict: "Novel" | "Same"` per REQ-FN-029
+- [ ] Logs per-reference verdicts and overall result at `INFO` level per REQ-FN-032
+- [ ] Graceful degradation: unparseable response returns `None` per REQ-FN-041
+- [ ] Tests verify multi-reference logic, skip condition, and graceful degradation
 
 ---
 
@@ -692,16 +719,21 @@ Implement `check_contamination()` per REQ-FN-036 through REQ-FN-042 in `mle_star
 **Priority:** P1
 
 ### Description
-Implement `run_finalization()` per REQ-FN-043 through REQ-FN-048 in `mle_star/finalization.py`. Orchestrates: subsampling removal → A_test → execute → verify → optional contamination check → construct FinalResult.
+Implement `run_finalization()` per REQ-FN-034 through REQ-FN-048 in `mle_star/finalization.py`. Orchestrates the full finalization pipeline in 8 sequential steps per REQ-FN-035. Constructs `FinalResult` per REQ-FN-036. Module organization per REQ-FN-044; all SDK invocations per REQ-FN-043.
 
 ### Acceptance Criteria
-- [ ] `run_finalization(client, task, config, best_solution)` returns finalized `SolutionScript` and `submission_path`
-- [ ] Calls `remove_subsampling()` first
-- [ ] Calls `generate_test_submission()` to produce test script
-- [ ] Executes and verifies submission
-- [ ] Optionally calls `check_contamination()`
-- [ ] Returns the final solution and path to `./final/submission.csv`
-- [ ] Tests verify orchestration order
+- [ ] Signature matches REQ-FN-034: `async def run_finalization(solution, task, config, phase1_result, phase2_results, phase3_result, reference_discussions=None) -> FinalResult`
+- [ ] Step 1: Calls `remove_subsampling(solution)` per REQ-FN-035
+- [ ] Step 2: Calls `generate_test_submission(task, solution_no_subsample)` per REQ-FN-035
+- [ ] Step 3: Calls `check_and_fix_leakage(test_script)` on the test script per REQ-FN-035
+- [ ] Step 4: Calls `evaluate_with_retry(test_script, ...)` with debug callback per REQ-FN-035
+- [ ] Step 5: Calls `verify_submission()` and `get_submission_info()` per REQ-FN-035
+- [ ] Step 6: Applies fallback to validation solution if execution failed per REQ-FN-025
+- [ ] Step 7: Calls `check_contamination()` if `reference_discussions` provided per REQ-FN-035
+- [ ] Step 8: Constructs `FinalResult` with all phase results, duration, cost per REQ-FN-036
+- [ ] Each step logged at `INFO` level per REQ-FN-042
+- [ ] All finalization functions in single module `finalization.py` per REQ-FN-044
+- [ ] Tests verify orchestration order, leakage integration, and FinalResult construction
 
 ---
 
@@ -779,7 +811,8 @@ Implement asyncio-based parallel Phase 2 paths per REQ-OR-018 through REQ-OR-023
 - [ ] If all paths fail, falls back to Phase 1 solution per REQ-OR-022
 - [ ] Cancellation of outstanding paths when timeout reached per REQ-OR-023
 - [ ] Per-path time budget = total Phase 2 budget / L per REQ-OR-026
-- [ ] Tests verify concurrent execution, error isolation, directory isolation, and fallback
+- [ ] Respects SDK concurrent session limit; serializes excess paths if needed per REQ-OR-056
+- [ ] Tests verify concurrent execution, error isolation, directory isolation, session limit, and fallback
 
 ---
 
