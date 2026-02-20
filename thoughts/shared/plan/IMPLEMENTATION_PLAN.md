@@ -44,6 +44,16 @@ Layer 5: Spec 09 — Orchestrator (depends on all above)
 - REQ-SF-006/008 layering: `debug_solution()` returns the final attempted pair (may still be broken); the **calling code** (evaluate_with_retry / phase orchestration) maintains the reference to the last known working version and performs fallback
 - Score comparison semantics vary by context: `is_improvement_or_equal()` (>=) for best-score tracking within loops; `is_improvement()` (strict >) for `InnerLoopResult.improved` flag and outer loop `s_final` update
 
+**Score mutation pattern:** The execution harness does NOT mutate `SolutionScript` (REQ-EX-016). Phase orchestration code is responsible for updating `solution.score = result.score` after evaluation. `SolutionScript` is non-frozen (REQ-DM-039) specifically to allow this.
+
+**Session ID strategy:** Phase 1: `"phase-1"`, Phase 2 paths: `"path-{i}"` (REQ-OR-021), Phase 3: `"phase-3"`, Finalization: `"finalization"`. Phase 2 paths may fork from Phase 1 session via `fork_session=True`.
+
+**Fallback chain priority:** Phase 3 best > Phase 2 best > Phase 1 best. Specifically: Phase 1 fails → `PipelineError` (REQ-OR-042); Phase 2 path fails → substitute Phase 1 solution (REQ-OR-040); Phase 3 fails → best Phase 2 solution (REQ-OR-041); Finalization fails → `submission_path=""` (REQ-OR-043).
+
+**Time budget redistribution:** After Phase 1 completes, remaining time redistributed proportionally among Phase 2/3/Finalization based on their proportions (65/15/10 → normalized to 72.2/16.7/11.1%). Phase 2 per-path budget = `phase2_budget / L` (REQ-OR-026).
+
+**A_test multi-mode agent:** `AgentType.test` has 4 operational modes sharing the same agent type but with variant-specific prompt templates and config overrides: (1) test submission (default config: `tools=["Read"]`, `output_schema=None`), (2) subsampling extraction (variant `"subsampling_extract"`), (3) subsampling removal (variant `"subsampling_remove"`), (4) contamination check (variant `"contamination_check"`, override: `tools=None`, `output_schema=DataContaminationResult`). See REQ-FN-048.
+
 **Project target:** Python 3.13+ (`requires-python = ">=3.13"` in pyproject.toml). Specs reference 3.10+ as a floor, but the project already targets 3.13+. Use modern syntax (type unions `X | Y`, etc.).
 
 ---
@@ -82,10 +92,10 @@ Create YAML prompt template files containing the prompt text for each of the 14 
 ### Acceptance Criteria
 - [ ] YAML files exist for all 14 agent types: retriever, init, merger, ablation, summarize, extractor, coder, planner, ens_planner, ensembler, debugger, leakage, data, test
 - [ ] Leakage agent has two template variants: `detection` and `correction` (Figures 20, 21)
-- [ ] Test agent has additional variants: `subsampling_extract` and `subsampling_remove` (Figures 26, 27)
+- [ ] Test agent has three additional variants: `subsampling_extract` (Figure 26), `subsampling_remove` (Figure 27), and `contamination_check` (Figure 28)
 - [ ] Each template specifies: `agent_type`, `figure_ref`, `template`, `variables`
 - [ ] All `{variable}` placeholders in templates match the `variables` list
-- [ ] Total of 18 prompt templates across the YAML files
+- [ ] Total of 18 prompt templates across the YAML files (11 base + 2 leakage variants + 1 test base + 3 test variants + 1 data = 18)
 
 ---
 
@@ -242,7 +252,7 @@ Implement `AgentConfig` Pydantic model mapping MLE-STAR agents to SDK configurat
 - [ ] Retriever config has `tools=["WebSearch", "WebFetch"]` and output_schema=RetrieverOutput
 - [ ] A_init, A_merger, A_abl, A_coder, A_ensembler, A_debugger, A_test have `tools=["Bash", "Edit", "Write", "Read"]` (REQ-OR-008)
 - [ ] A_summarize, A_extractor, A_planner, A_ens_planner, A_leakage, A_data have `tools=["Read"]` (REQ-OR-008)
-- [ ] A_extractor has output_schema=ExtractorOutput; A_leakage has output_schema=LeakageDetectionOutput; A_data has output_schema=DataContaminationResult
+- [ ] A_extractor has output_schema=ExtractorOutput; A_leakage has output_schema=LeakageDetectionOutput; A_data has output_schema=None (REQ-SF-025; `DataContaminationResult` is used by contamination check variant of A_test per REQ-FN-026/048)
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
 ---
@@ -800,12 +810,13 @@ Implement two Phase 3 agent functions in `src/mle_star/phase3.py`: `invoke_ens_p
 **Priority:** P1
 
 ### Description
-Implement `run_phase3(client, task, config, solutions)` executing R ensemble rounds per Algorithm 3. Raises ValueError if `len(solutions) < 2` when actually invoked (REQ-P3-003). Round r=0: plan → implement → evaluate. Rounds r=1..R-1: plan (with history) → implement → evaluate. Safety integration: `check_and_fix_leakage()` before every evaluation (REQ-SF-022), `evaluate_with_retry()` with debug callback. Track scores; tie-breaking: LAST occurrence wins (consistent with >= semantics, REQ-P3-025). Exactly R `EnsembleAttempt` records created (REQ-P3-044). All-rounds-failed: fallback to best input solution without raising (REQ-P3-026). Construct `Phase3Result`.
+Implement `run_phase3(client, task, config, solutions)` executing R ensemble rounds per Algorithm 3. If `len(solutions) == 1`, skip ensemble entirely and return a `Phase3Result` with that solution as `best_ensemble` (REQ-P3-018). Raises ValueError if `len(solutions) == 0` (empty input). Round r=0: plan → implement → evaluate. Rounds r=1..R-1: plan (with history) → implement → evaluate. Safety integration: `check_and_fix_leakage()` before every evaluation (REQ-SF-022), `evaluate_with_retry()` with debug callback. Track scores; tie-breaking: LAST occurrence wins (consistent with >= semantics, REQ-P3-025). Exactly R `EnsembleAttempt` records created (REQ-P3-044). All-rounds-failed: fallback to best input solution without raising (REQ-P3-026). Construct `Phase3Result`.
 
 **Spec:** SRS 07 | **Reqs:** REQ-P3-017 to REQ-P3-035 | **Depends on:** Task 35
 
 ### Acceptance Criteria
-- [ ] Raises ValueError if `len(solutions) < 2` (REQ-P3-003)
+- [ ] Handles `len(solutions) == 1` by returning immediately with single solution as `best_ensemble` (REQ-P3-018)
+- [ ] Raises ValueError if `len(solutions) == 0` (empty input)
 - [ ] Executes R rounds with plan → implement → evaluate cycle
 - [ ] History passed to planner grows each round
 - [ ] Best ensemble selected by score comparison; ties won by LAST occurrence (REQ-P3-025)
@@ -882,15 +893,16 @@ Implement A_test agent (Figure 25) and `generate_test_submission(client, task, c
 **Priority:** P1
 
 ### Description
-Implement `check_contamination(solution, reference_discussions, client)` (async) using A_data agent with `DataContaminationResult` structured output (Figure 28). Multiple references: ANY "Same" verdict → overall "Same". Implement `run_finalization(client, task, config, best_solution, reference_discussions=None)` entry point. Pipeline: (1) remove subsampling, (2) generate test submission, (3) leakage check on test script (REQ-SF-022), (4) evaluate with full timeout, (5) verify submission, (6) check contamination (optional, skipped if no references), (7) construct FinalResult.
+Implement `check_contamination(solution, reference_discussions, client)` (async) using a contamination check variant of A_test agent (`AgentType.test`, not A_data) with `DataContaminationResult` structured output (Figure 28, REQ-FN-026). **Contamination check variant uses `tools=None` and `output_schema=DataContaminationResult`**, differing from the default A_test config (`tools=["Read"]`, `output_schema=None`) — override at invocation time per REQ-FN-048. Multiple references: ANY "Same" verdict → overall "Same". Implement `run_finalization(solution, task, config, phase1_result, phase2_results, phase3_result, reference_discussions=None)` entry point per REQ-FN-034. Pipeline: (1) remove subsampling, (2) generate test submission, (3) leakage check on test script (REQ-SF-022), (4) evaluate with full timeout, (5) verify submission, (6) fallback handling if execution failed (REQ-FN-025), (7) check contamination (optional, skipped if no references), (8) construct FinalResult with all phase results (REQ-FN-036).
 
 **Spec:** SRS 08 | **Reqs:** REQ-FN-026 to REQ-FN-036 | **Depends on:** Tasks 38, 39
 
 ### Acceptance Criteria
 - [ ] `check_contamination()` returns `DataContaminationResult` or `None` (when no references)
 - [ ] Multiple references: ANY "Same" → overall "Same" verdict
-- [ ] `run_finalization()` executes full pipeline: remove subsampling → test submission → leakage check → verify → contamination
-- [ ] `FinalResult` correctly assembled with all fields
+- [ ] `run_finalization()` signature matches REQ-FN-034: includes `phase1_result`, `phase2_results`, `phase3_result` parameters
+- [ ] `run_finalization()` executes full pipeline: remove subsampling → test submission → leakage check → execute with retry → verify → fallback → contamination → FinalResult
+- [ ] `FinalResult` correctly assembled with all phase results per REQ-FN-036
 - [ ] Contamination check skipped when no reference discussions provided
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
@@ -1036,7 +1048,7 @@ Implement `FinalResult` construction from all phase outputs: field assembly, per
 - [ ] `FinalResult` assembled with all phase results
 - [ ] Cost summary includes per-phase breakdown (REQ-OR-037)
 - [ ] Duration summary includes per-phase breakdown (REQ-OR-038)
-- [ ] Phase 2 failure: Phase 1 solution substituted for failed path's contribution (REQ-OR-040)
+- [ ] Phase 2 failure: Phase 1 solution substituted for failed path's contribution; `Phase2Result.step_history` includes `failed=True` flag (REQ-OR-040)
 - [ ] Phase 3 failure: best Phase 2 solution used for finalization (REQ-OR-041)
 - [ ] All phases fail (Phase 1 fails): raises PipelineError with diagnostics (REQ-OR-042)
 - [ ] Partial failure produces best-effort FinalResult; finalization failure → submission_path="" (REQ-OR-043)
@@ -1104,6 +1116,47 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 ---
 
 ## Changelog
+
+### 2026-02-20 (v5)
+
+Re-analysis of all 36 spec files against v4 plan. Codebase still empty (skeleton CLI only) — all 48 tasks remain pending.
+
+**Gaps fixed:**
+1. **Task 02 (Prompt templates)**: Added `contamination_check` as explicit 3rd A_test variant (Figure 28, REQ-FN-027). The total of 18 templates was already correct but the breakdown only listed 2 test variants (subsampling_extract, subsampling_remove); now lists all 3 additional variants. Clarified count: 11 base + 2 leakage variants + 1 test base + 3 test variants + 1 data = 18.
+2. **Task 40 (Contamination check)**: Added explicit note that contamination check variant uses `tools=None` and `output_schema=DataContaminationResult`, differing from default A_test config (`tools=["Read"]`, `output_schema=None`), per REQ-FN-048.
+3. **Task 47 (Result assembly)**: Added `failed=True` flag requirement for failed Phase 2 path `step_history` per REQ-OR-040.
+4. **Gap Analysis section**: Added 5 new cross-cutting clarifications:
+   - Score mutation pattern: harness does NOT mutate SolutionScript; phase code updates `solution.score`
+   - Session ID strategy: `"phase-1"`, `"path-{i}"`, `"phase-3"`, `"finalization"`
+   - Fallback chain priority: Phase3 > Phase2 > Phase1, with specific failure behaviors
+   - Time budget redistribution algorithm after Phase 1 completion
+   - A_test multi-mode agent summary (4 operational modes with variant-specific config overrides)
+
+**Verified correct (no change needed):**
+- All 436 requirements still covered across 48 tasks
+- Requirement Coverage table unchanged
+- Task priorities and dependencies unchanged
+- All previously documented cross-cutting constraints remain accurate
+
+---
+
+### 2026-02-20 (v4)
+
+Full re-analysis of all 36 spec files (including 07c, 07d, 08b, 08c, 08d, 09c, 09d) against the v3 plan. Codebase still empty (skeleton CLI only) — all 48 tasks remain pending.
+
+**Bugs fixed:**
+1. **Task 36 (Phase 3 orchestration)**: Corrected `run_phase3` to handle `len(solutions) == 1` gracefully per REQ-P3-018 (returns immediately with single solution as `best_ensemble`), instead of incorrectly raising `ValueError`. Only raises `ValueError` for empty input (`len(solutions) == 0`). REQ-P3-003 applies to `invoke_ens_planner` (requires >= 2), not to `run_phase3` itself.
+2. **Task 40 (Contamination check)**: Corrected agent type from "A_data agent" to "contamination check variant of A_test agent (`AgentType.test`)" per REQ-FN-026 which explicitly states `agent_type = AgentType.test`.
+3. **Task 40 (run_finalization signature)**: Corrected signature to match REQ-FN-034 — includes `phase1_result`, `phase2_results`, `phase3_result` parameters needed for `FinalResult` construction (REQ-FN-036). Added explicit fallback handling step (REQ-FN-025).
+4. **Task 09 (A_data output_schema)**: Corrected from `output_schema=DataContaminationResult` to `output_schema=None` per REQ-SF-025. The `DataContaminationResult` schema is used by the contamination check variant of A_test (REQ-FN-026/048), not by A_data.
+
+**Verified correct (no change needed):**
+- All 436 requirements still covered across 48 tasks
+- Requirement Coverage table unchanged
+- Task priorities and dependencies unchanged
+- All cross-cutting constraints in Gap Analysis section remain accurate
+
+---
 
 ### 2026-02-20 (v3)
 
