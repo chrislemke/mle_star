@@ -122,6 +122,7 @@ def _setup_standard_mocks(
     mock_retrieve = AsyncMock(return_value=models)
     mock_generate = AsyncMock(side_effect=candidates)
     mock_leakage = AsyncMock(side_effect=lambda sol, _task, _client: sol)
+    mock_data_usage = AsyncMock(side_effect=lambda sol, _task, _client: sol)
     mock_debug_cb = MagicMock()
     mock_make_debug = MagicMock(return_value=mock_debug_cb)
     mock_eval = AsyncMock(side_effect=eval_results)
@@ -141,6 +142,7 @@ def _setup_standard_mocks(
         "retrieve_models": mock_retrieve,
         "generate_candidate": mock_generate,
         "check_and_fix_leakage": mock_leakage,
+        "check_data_usage": mock_data_usage,
         "make_debug_callback": mock_make_debug,
         "evaluate_with_retry": mock_eval,
         "rank_solutions": mock_rank,
@@ -1470,13 +1472,15 @@ class TestMergeLoopLeakageCheck:
         mocks["merge_solutions"] = AsyncMock(return_value=merged)
         mocks["check_and_fix_leakage"] = AsyncMock(side_effect=_track_leakage)
         mocks["is_improvement_or_equal"] = MagicMock(return_value=True)
+        mocks["check_data_usage"] = AsyncMock(side_effect=lambda s, _t, _c: s)
 
         with _apply_patches(mocks):
             await run_phase1(task, config, client)
 
         # Leakage should have been called for the merged solution
+        # (at least once during merge loop; post-merge safety also calls it)
         merged_leakage_calls = [c for c in leakage_calls if c.content == "merged_code"]
-        assert len(merged_leakage_calls) == 1
+        assert len(merged_leakage_calls) >= 1
 
 
 # ===========================================================================

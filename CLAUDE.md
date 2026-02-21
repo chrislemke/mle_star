@@ -90,6 +90,7 @@ tests/
   test_safety_leakage.py         # Tests for leakage detection/correction agent (Task 20)
   test_phase1_agents.py          # Tests for Phase 1 agents: retriever, init, merger (Task 27)
   test_phase1_orchestration.py   # Tests for run_phase1 orchestration (Task 28)
+  test_phase1_safety.py          # Tests for Phase 1 post-merge safety checks (Task 29)
   test_phase2_inner_agents.py    # Tests for coder and planner agents (Task 23)
   test_phase2_inner_loop.py      # Tests for run_phase2_inner_loop orchestration (Task 24)
   test_phase2_inner_safety.py    # Tests for inner loop safety integration (Task 25)
@@ -108,7 +109,8 @@ tests/
 - Inner loop passes `list(accumulated_plans)` (copies) to `invoke_planner` to provide a snapshot at invocation time — passing the mutable list directly would let later mutations leak into captured references
 - Safety integration pattern in inner loop: `check_and_fix_leakage(candidate, task, client)` → `make_debug_callback(task, config, client)` → `evaluate_with_retry(candidate, task, config, debug_callback)` — leakage check runs before EVERY evaluation, debug retry handles execution errors
 - Phase 1 agent pattern: `retrieve_models` parses structured JSON via `RetrieverOutput.model_validate_json()`; `generate_candidate` and `merge_solutions` extract code via `extract_code_block()` and return `SolutionScript | None` (None on empty extraction). Empty-check uses `.strip()` for whitespace-only responses
-- Phase 1 orchestration (`run_phase1`): decomposed into `_generate_and_evaluate_candidates` + `_run_merge_loop` to stay under xenon complexity threshold B. `_CandidateResults` class accumulates candidate loop state. Merge loop uses `is_improvement_or_equal` (>= semantics) and breaks on first failure/non-improvement
+- Phase 1 orchestration (`run_phase1`): decomposed into `_generate_and_evaluate_candidates` + `_run_merge_loop` + `_apply_post_merge_safety` to stay under xenon complexity threshold B. `_CandidateResults` class accumulates candidate loop state. Merge loop uses `is_improvement_or_equal` (>= semantics) and breaks on first failure/non-improvement
+- Post-merge safety pattern: `_apply_safety_check()` generic helper uses identity check (`is not`) to detect modification, re-evaluates if modified, and falls back to pre-check version on failure. Applied twice in sequence: `check_data_usage` (exactly once, REQ-P1-030) then `check_and_fix_leakage` (REQ-P1-031). Phase1Result.initial_score always reflects the final post-safety score
 
 ---
 

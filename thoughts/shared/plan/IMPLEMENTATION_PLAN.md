@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 19      | 0           | 25   |
+| P1       | 18      | 0           | 26   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -685,7 +685,7 @@ Implement `run_phase1(client, task, config)` as the Phase 1 entry point implemen
 ---
 
 ## [P1] 29. Phase 1 safety checks and Phase1Result
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -694,12 +694,12 @@ Add post-merge safety checks to `run_phase1`: invoke `check_data_usage()` EXACTL
 **Spec:** SRS 04 | **Reqs:** REQ-P1-030 to REQ-P1-033 | **Depends on:** Task 28
 
 ### Acceptance Criteria
-- [ ] `check_data_usage()` called exactly once on merged solution (REQ-SF-030)
-- [ ] If A_data modifies solution, re-evaluate; fallback to pre-modification if re-eval fails (REQ-P1-030)
-- [ ] `check_and_fix_leakage()` called after data check
-- [ ] `Phase1Result` correctly constructed with all fields
-- [ ] `initial_score` equals `initial_solution.score`
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `check_data_usage()` called exactly once on merged solution (REQ-SF-030)
+- [x] If A_data modifies solution, re-evaluate; fallback to pre-modification if re-eval fails (REQ-P1-030)
+- [x] `check_and_fix_leakage()` called after data check
+- [x] `Phase1Result` correctly constructed with all fields
+- [x] `initial_score` equals `initial_solution.score`
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

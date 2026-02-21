@@ -14,7 +14,7 @@ JSON response from A_retriever.
 Refs:
     SRS 04a — Phase 1 Agents (REQ-P1-001 through REQ-P1-017).
     SRS 04b — Phase 1 Orchestration (REQ-P1-018 through REQ-P1-029).
-    IMPLEMENTATION_PLAN.md Tasks 27, 28.
+    IMPLEMENTATION_PLAN.md Tasks 27, 28, 29.
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from mle_star.models import (
 from mle_star.prompts import PromptRegistry
 from mle_star.safety import (
     check_and_fix_leakage,
+    check_data_usage,
     extract_code_block,
     make_debug_callback,
 )
@@ -392,6 +393,92 @@ async def _run_merge_loop(
     return s_0, h_best
 
 
+async def _apply_safety_check(
+    s_0: SolutionScript,
+    h_best: float,
+    check_fn: Any,
+    task: TaskDescription,
+    config: PipelineConfig,
+    debug_cb: Any,
+    client: Any,
+    label: str,
+) -> tuple[SolutionScript, float]:
+    """Apply a single safety check with optional re-evaluation (REQ-P1-030/031).
+
+    Calls *check_fn* on the current solution.  If the returned solution
+    differs (identity check), re-evaluates it.  If re-evaluation fails
+    (``is_error`` or ``score is None``), falls back to the pre-check version.
+
+    Args:
+        s_0: Current best solution.
+        h_best: Current best score.
+        check_fn: Async safety function ``(solution, task, client) -> solution``.
+        task: Task description for evaluation context.
+        config: Pipeline configuration.
+        debug_cb: Debug callback for evaluate_with_retry.
+        client: SDK client.
+        label: Human-readable label for logging.
+
+    Returns:
+        Updated ``(solution, score)`` tuple.
+    """
+    pre_check = s_0
+    pre_score = h_best
+    checked = await check_fn(s_0, task, client)
+
+    if checked is not pre_check:
+        checked, result = await evaluate_with_retry(checked, task, config, debug_cb)
+        if result.is_error or result.score is None:
+            logger.warning(
+                "%s re-evaluation failed; falling back to pre-check solution",
+                label,
+            )
+            s_0 = pre_check
+            h_best = pre_score
+            s_0.score = h_best
+        else:
+            s_0 = checked
+            h_best = result.score
+            s_0.score = h_best
+    return s_0, h_best
+
+
+async def _apply_post_merge_safety(
+    s_0: SolutionScript,
+    h_best: float,
+    task: TaskDescription,
+    config: PipelineConfig,
+    client: Any,
+    debug_cb: Any,
+) -> tuple[SolutionScript, float]:
+    """Run post-merge safety checks: data usage then leakage (REQ-P1-030/031).
+
+    1. ``check_data_usage`` — exactly once (REQ-P1-030).
+    2. ``check_and_fix_leakage`` — after data check (REQ-P1-031).
+
+    Each check may modify the solution; if so, re-evaluation occurs.
+    On re-evaluation failure, falls back to the pre-check version.
+
+    Args:
+        s_0: Best solution after merge loop.
+        h_best: Best score after merge loop.
+        task: Task description.
+        config: Pipeline configuration.
+        client: SDK client.
+        debug_cb: Debug callback for evaluate_with_retry.
+
+    Returns:
+        Final ``(solution, score)`` tuple after all safety checks.
+    """
+    s_0, h_best = await _apply_safety_check(
+        s_0, h_best, check_data_usage, task, config, debug_cb, client, "A_data"
+    )
+    s_0, h_best = await _apply_safety_check(
+        s_0, h_best, check_and_fix_leakage, task, config, debug_cb, client, "A_leakage"
+    )
+    return s_0, h_best
+
+
 async def run_phase1(
     task: TaskDescription,
     config: PipelineConfig,
@@ -443,7 +530,12 @@ async def run_phase1(
     # Steps 7-17 — Initialize best + merge loop (REQ-P1-024 to REQ-P1-028).
     s_0, h_best = await _run_merge_loop(ranked, task, config, client, debug_cb)
 
-    # Construct Phase1Result (fields for Task 28; safety checks in Task 29).
+    # Post-merge safety checks (REQ-P1-030 to REQ-P1-033).
+    s_0, h_best = await _apply_post_merge_safety(
+        s_0, h_best, task, config, client, debug_cb
+    )
+
+    # Construct Phase1Result.
     return Phase1Result(
         retrieved_models=models,
         candidate_solutions=acc.solutions,
