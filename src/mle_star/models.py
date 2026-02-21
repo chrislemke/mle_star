@@ -7,14 +7,15 @@ by all other modules (execution, safety, phases, orchestrator).
 Refs:
     SRS 01a — Data Models Core (REQ-DM-001 through REQ-DM-012).
     SRS 01b — Data Models Agents and Output Schemas (REQ-DM-013 through REQ-DM-020).
-    IMPLEMENTATION_PLAN.md Tasks 03, 04, 05.
+    SRS 01b — Evaluation & Phase Results (REQ-DM-021 through REQ-DM-025).
+    IMPLEMENTATION_PLAN.md Tasks 03, 04, 05, 06.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -447,3 +448,135 @@ class DataContaminationResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     verdict: Literal["Novel", "Same"]
+
+
+# ---------------------------------------------------------------------------
+# Evaluation & Phase Result Models (REQ-DM-021 through REQ-DM-025)
+# ---------------------------------------------------------------------------
+
+
+class EvaluationResult(BaseModel):
+    """Result of executing and scoring a solution script (REQ-DM-021).
+
+    Captures everything produced by running a solution: parsed score,
+    stdout/stderr, exit code, timing, and any error traceback.
+
+    Attributes:
+        score: Parsed validation score (None if parsing failed).
+        stdout: Full standard output from script execution.
+        stderr: Full standard error from script execution.
+        exit_code: Process exit code (0 = success).
+        duration_seconds: Wall-clock execution time in seconds.
+        is_error: Whether execution produced an error.
+        error_traceback: Python traceback if error occurred.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    score: float | None = None
+    stdout: str
+    stderr: str
+    exit_code: int
+    duration_seconds: float
+    is_error: bool
+    error_traceback: str | None = None
+
+
+class Phase1Result(BaseModel):
+    """Output of Phase 1: model retrieval and initial solution (REQ-DM-022).
+
+    Contains retrieved models, candidate solutions produced by A_init,
+    their scores, and the final merged solution s_0.
+
+    Attributes:
+        retrieved_models: Models retrieved by A_retriever.
+        candidate_solutions: Scripts produced by A_init for each model.
+        candidate_scores: Scores for each candidate.
+        initial_solution: Final merged solution s_0.
+        initial_score: Best score after merging (h_best).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    retrieved_models: list[RetrievedModel]
+    candidate_solutions: list[SolutionScript]
+    candidate_scores: list[float | None]
+    initial_solution: SolutionScript
+    initial_score: float
+
+
+class Phase2Result(BaseModel):
+    """Output of Phase 2: targeted refinement loop (REQ-DM-023).
+
+    Contains ablation summaries, refined code blocks, the best solution
+    found during refinement, and per-step history.
+
+    Attributes:
+        ablation_summaries: T_abl summaries collected across outer steps.
+        refined_blocks: Code blocks c_t refined in each outer step.
+        best_solution: Best solution found during refinement (s_final).
+        best_score: Score of best solution (h_best).
+        step_history: Per-step records: plans tried, scores achieved.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    ablation_summaries: list[str]
+    refined_blocks: list[CodeBlock]
+    best_solution: SolutionScript
+    best_score: float
+    step_history: list[dict[str, Any]]
+
+
+class Phase3Result(BaseModel):
+    """Output of Phase 3: ensemble construction (REQ-DM-024).
+
+    Contains input solutions, ensemble plans proposed across rounds,
+    their scores, and the best ensemble solution.
+
+    Attributes:
+        input_solutions: L solutions fed into ensemble.
+        ensemble_plans: Ensemble plans e_r proposed across rounds.
+        ensemble_scores: Scores for each ensemble attempt.
+        best_ensemble: Best ensemble solution (s_ens*).
+        best_ensemble_score: Score of best ensemble.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    input_solutions: list[SolutionScript]
+    ensemble_plans: list[str]
+    ensemble_scores: list[float | None]
+    best_ensemble: SolutionScript
+    best_ensemble_score: float
+
+
+class FinalResult(BaseModel):
+    """Complete pipeline result aggregating all phases (REQ-DM-025).
+
+    Top-level container returned by the orchestrator after all phases
+    complete. Links task, config, phase outputs, and the final submission.
+
+    Attributes:
+        task: The task that was solved.
+        config: Configuration used.
+        phase1: Phase 1 output.
+        phase2_results: One Phase2Result per parallel solution path.
+        phase3: Phase 3 output (None if L=1, no ensemble).
+        final_solution: The solution submitted for test evaluation.
+        submission_path: Path to submission file.
+        total_duration_seconds: Total pipeline wall-clock time.
+        total_cost_usd: Total API cost if tracked.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    task: TaskDescription
+    config: PipelineConfig
+    phase1: Phase1Result
+    phase2_results: list[Phase2Result]
+    phase3: Phase3Result | None = None
+    final_solution: SolutionScript
+    submission_path: str
+    total_duration_seconds: float
+    total_cost_usd: float | None = None

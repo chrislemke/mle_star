@@ -68,7 +68,8 @@ src/mle_star/
     *.yaml
 tests/
   __init__.py
-  test_models_core.py  # Tests for core config models (Task 03)
+  test_models_core.py     # Tests for core config models (Task 03)
+  test_models_results.py  # Tests for evaluation & phase result models (Task 06)
 ```
 
 ---

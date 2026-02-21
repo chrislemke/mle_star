@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 39      | 0           | 5    |
+| P1       | 38      | 0           | 6    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -188,7 +188,7 @@ Implement the `AgentType` enum with exactly 14 values and all structured output 
 ---
 
 ## [P1] 06. Evaluation and phase result models
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -197,12 +197,12 @@ Implement `EvaluationResult` model (score, stdout, stderr, exit_code, duration_s
 **Spec:** SRS 01 | **Reqs:** REQ-DM-021 to REQ-DM-025
 
 ### Acceptance Criteria
-- [ ] `EvaluationResult` has all 7 fields with correct types (REQ-DM-021)
-- [ ] `Phase1Result` has: retrieved_models, candidate_solutions, candidate_scores, initial_solution, initial_score (REQ-DM-022)
-- [ ] `Phase2Result` has: ablation_summaries, refined_blocks, best_solution, best_score, step_history (REQ-DM-023)
-- [ ] `Phase3Result` has: input_solutions, ensemble_plans, ensemble_scores, best_ensemble, best_ensemble_score (REQ-DM-024)
-- [ ] `FinalResult` has: task, config, phase1, phase2_results (list), phase3 (optional None), final_solution, submission_path, total_duration_seconds, total_cost_usd (REQ-DM-025)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `EvaluationResult` has all 7 fields with correct types (REQ-DM-021)
+- [x] `Phase1Result` has: retrieved_models, candidate_solutions, candidate_scores, initial_solution, initial_score (REQ-DM-022)
+- [x] `Phase2Result` has: ablation_summaries, refined_blocks, best_solution, best_score, step_history (REQ-DM-023)
+- [x] `Phase3Result` has: input_solutions, ensemble_plans, ensemble_scores, best_ensemble, best_ensemble_score (REQ-DM-024)
+- [x] `FinalResult` has: task, config, phase1, phase2_results (list), phase3 (optional None), final_solution, submission_path, total_duration_seconds, total_cost_usd (REQ-DM-025)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
