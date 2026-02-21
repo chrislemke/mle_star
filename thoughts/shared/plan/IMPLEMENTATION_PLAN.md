@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 29      | 0           | 15   |
+| P1       | 28      | 0           | 16   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -398,7 +398,7 @@ Implement the end-to-end evaluation pipeline: `evaluate_solution(solution, task,
 ---
 
 ## [P1] 16. Subsampling utilities
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -407,11 +407,11 @@ Implement subsampling-related utilities: `SUBSAMPLE_INSTRUCTION` constant, `get_
 **Spec:** SRS 02 | **Reqs:** REQ-EX-017 to REQ-EX-020 | **Depends on:** Spec 01
 
 ### Acceptance Criteria
-- [ ] `SUBSAMPLE_INSTRUCTION` is a constant string with subsampling guidance
-- [ ] `get_subsample_instruction(config)` includes the config's `subsample_limit` value
-- [ ] `request_subsample_removal()` returns prompt text for removing subsampling
-- [ ] `request_subsample_extraction()` returns prompt text for extracting subsampling code
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `SUBSAMPLE_INSTRUCTION` is a constant string with subsampling guidance
+- [x] `get_subsample_instruction(config)` includes the config's `subsample_limit` value
+- [x] `request_subsample_removal()` returns prompt text for removing subsampling
+- [x] `request_subsample_extraction()` returns prompt text for extracting subsampling code
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

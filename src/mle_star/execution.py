@@ -553,3 +553,73 @@ def is_better_solution(
     from mle_star.scoring import is_improvement
 
     return is_improvement(new_result.score, old_score, direction)
+
+
+# ---------------------------------------------------------------------------
+# Subsampling Utilities (REQ-EX-017 through REQ-EX-020)
+# ---------------------------------------------------------------------------
+
+SUBSAMPLE_INSTRUCTION: str = (
+    "If there are more than {limit} training samples, "
+    "you must subsample to {limit} for a faster run."
+)
+"""Parameterized subsampling instruction template (REQ-EX-017).
+
+Contains two ``{limit}`` placeholders that are filled by
+``get_subsample_instruction`` with the configured subsample limit.
+"""
+
+
+def get_subsample_instruction(config: PipelineConfig) -> str:
+    """Return the subsampling instruction with the configured limit (REQ-EX-018).
+
+    Renders ``SUBSAMPLE_INSTRUCTION`` by replacing ``{limit}`` with
+    ``config.subsample_limit``.
+
+    Args:
+        config: Pipeline configuration providing ``subsample_limit``.
+
+    Returns:
+        Rendered instruction string containing the numeric limit.
+    """
+    return SUBSAMPLE_INSTRUCTION.format(limit=config.subsample_limit)
+
+
+def request_subsample_removal(solution: SolutionScript) -> str:
+    """Build a prompt instructing an agent to remove subsampling code (REQ-EX-019).
+
+    The returned prompt includes the full solution script content and
+    instructions to identify and remove all subsampling code while
+    preserving all other functionality, returning the full modified script.
+
+    Args:
+        solution: The solution script containing subsampling code.
+
+    Returns:
+        A prompt string suitable for sending to an agent.
+    """
+    return (
+        "Identify all subsampling code in the following solution script. "
+        "Remove the subsampling code while preserving all other functionality. "
+        "Return the full modified script.\n\n"
+        f"```python\n{solution.content}\n```"
+    )
+
+
+def request_subsample_extraction(solution: SolutionScript) -> str:
+    """Build a prompt instructing an agent to extract subsampling code (REQ-EX-020).
+
+    The returned prompt includes the full solution script content and
+    instructions to identify and extract the subsampling code block.
+
+    Args:
+        solution: The solution script to analyze for subsampling code.
+
+    Returns:
+        A prompt string suitable for sending to an agent.
+    """
+    return (
+        "Identify and extract the subsampling code block from the "
+        "following solution script.\n\n"
+        f"```python\n{solution.content}\n```"
+    )
