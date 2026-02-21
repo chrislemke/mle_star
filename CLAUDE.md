@@ -65,6 +65,7 @@ src/mle_star/
   models.py            # Pydantic data models (enums, configs, schemas)
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
   execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline, subsampling utilities, submission verification, batch evaluation, solution ranking (Tasks 11-17)
+  safety.py            # Safety modules: debugger agent, code block extraction (Task 19)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -82,6 +83,7 @@ tests/
   test_execution_eval.py         # Tests for evaluation pipeline, retry, score comparison (Task 15)
   test_execution_subsample.py    # Tests for subsampling utilities (Task 16)
   test_execution_submission.py   # Tests for submission verification, batch eval, ranking (Task 17)
+  test_safety_debugger.py        # Tests for debugger safety agent (Task 19)
 ```
 
 ---

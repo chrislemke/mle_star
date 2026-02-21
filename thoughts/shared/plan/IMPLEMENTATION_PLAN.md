@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 27      | 0           | 17   |
+| P1       | 26      | 0           | 18   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -467,7 +467,7 @@ Implement remaining execution harness requirements: `detect_error_masking(conten
 ---
 
 ## [P1] 19. Debugger agent
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -478,15 +478,15 @@ Implement the A_debugger agent in `src/mle_star/safety.py`: agent definition wit
 **Spec:** SRS 03 | **Reqs:** REQ-SF-001 to REQ-SF-010 | **Depends on:** Spec 01, Spec 02
 
 ### Acceptance Criteria
-- [ ] `extract_code_block()` extracts longest Python code from markdown fences; full response if no fences
-- [ ] `debug_solution()` invokes A_debugger agent with traceback context
-- [ ] `debug_solution()` retries up to `config.max_debug_attempts` times
-- [ ] `debug_solution()` returns the final `(SolutionScript, EvaluationResult)` pair (REQ-SF-006) — may still be broken
-- [ ] Calling code maintains last known working reference for fallback (REQ-SF-008); if no previous working version exists, returns the failed solution with `is_executable=False`
-- [ ] If debugged code lacks "Final Validation Performance" pattern, it is appended (REQ-SF-010)
-- [ ] `make_debug_callback(task, config, client)` returns async callable wrapping a SINGLE debugger invocation (no retry loop) for `evaluate_with_retry`
-- [ ] Debug prompt includes subsampling preservation instruction ("Do not remove subsampling if exists")
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `extract_code_block()` extracts longest Python code from markdown fences; full response if no fences
+- [x] `debug_solution()` invokes A_debugger agent with traceback context
+- [x] `debug_solution()` retries up to `config.max_debug_attempts` times
+- [x] `debug_solution()` returns the final `(SolutionScript, EvaluationResult)` pair (REQ-SF-006) — may still be broken
+- [x] Calling code maintains last known working reference for fallback (REQ-SF-008); if no previous working version exists, returns the failed solution with `is_executable=False`
+- [x] If debugged code lacks "Final Validation Performance" pattern, it is appended (REQ-SF-010)
+- [x] `make_debug_callback(task, config, client)` returns async callable wrapping a SINGLE debugger invocation (no retry loop) for `evaluate_with_retry`
+- [x] Debug prompt includes subsampling preservation instruction ("Do not remove subsampling if exists")
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
