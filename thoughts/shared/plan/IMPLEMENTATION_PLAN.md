@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 26      | 0           | 18   |
+| P1       | 25      | 0           | 19   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -491,7 +491,7 @@ Implement the A_debugger agent in `src/mle_star/safety.py`: agent definition wit
 ---
 
 ## [P1] 20. Leakage detection and correction agent
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -500,15 +500,15 @@ Implement the A_leakage agent with two-step orchestration: detection (using stru
 **Spec:** SRS 03 | **Reqs:** REQ-SF-011 to REQ-SF-023 | **Depends on:** Spec 01, Spec 02
 
 ### Acceptance Criteria
-- [ ] Detection agent uses `LeakageDetectionOutput` structured output schema
-- [ ] Detection prompt loaded from registry with `variant="detection"`
-- [ ] Correction prompt loaded from registry with `variant="correction"`
-- [ ] `check_and_fix_leakage()` returns original solution when no leakage found
-- [ ] `check_and_fix_leakage()` returns corrected solution when leakage found
-- [ ] Correction uses `SolutionScript.replace_block()` for targeted fix
-- [ ] `replace_block` ValueError is caught, logged as warning, and skipped (REQ-SF-021)
-- [ ] Agent failure returns original solution (graceful degradation)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Detection agent uses `LeakageDetectionOutput` structured output schema
+- [x] Detection prompt loaded from registry with `variant="detection"`
+- [x] Correction prompt loaded from registry with `variant="correction"`
+- [x] `check_and_fix_leakage()` returns original solution when no leakage found
+- [x] `check_and_fix_leakage()` returns corrected solution when leakage found
+- [x] Correction uses `SolutionScript.replace_block()` for targeted fix
+- [x] `replace_block` ValueError is caught, logged as warning, and skipped (REQ-SF-021)
+- [x] Agent failure returns original solution (graceful degradation)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

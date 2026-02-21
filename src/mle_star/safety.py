@@ -1,13 +1,18 @@
-"""Safety modules: debugger agent for fixing execution errors.
+"""Safety modules: debugger and leakage agents for solution integrity.
 
-Implements the A_debugger cross-cutting safety agent that fixes broken
-solution scripts by invoking the Claude Agent SDK with the error traceback
-and original code. Shared utility ``extract_code_block`` is also used by
-A_leakage correction and A_data (implemented in later tasks).
+Implements:
+- A_debugger: cross-cutting safety agent that fixes broken solution scripts
+  by invoking the Claude Agent SDK with the error traceback and original code.
+- A_leakage: two-step detection/correction agent that identifies and fixes
+  data leakage in preprocessing code.
+
+Shared utility ``extract_code_block`` is used by A_debugger, A_leakage
+correction, and A_data (implemented in later tasks).
 
 Refs:
     SRS 03a — Safety Debugger (REQ-SF-001 through REQ-SF-010).
-    IMPLEMENTATION_PLAN.md Task 19.
+    SRS 03b — Safety Leakage (REQ-SF-011 through REQ-SF-023).
+    IMPLEMENTATION_PLAN.md Tasks 19, 20.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from mle_star.execution import evaluate_solution
-from mle_star.models import AgentType, SolutionScript
+from mle_star.models import AgentType, LeakageDetectionOutput, SolutionScript
 from mle_star.prompts import PromptRegistry
 
 if TYPE_CHECKING:
@@ -241,3 +246,107 @@ def make_debug_callback(
         )
 
     return _callback
+
+
+async def check_and_fix_leakage(
+    solution: SolutionScript,
+    task: TaskDescription,
+    client: Any,
+) -> SolutionScript:
+    """Detect and correct data leakage in a solution script (REQ-SF-020).
+
+    Two-step pipeline:
+
+    1. **Detection** — invoke A_leakage with ``variant="detection"`` and
+       structured output ``LeakageDetectionOutput``.  Each answer indicates
+       whether a preprocessing code block leaks validation/test data.
+    2. **Correction** — for every ``LeakageAnswer`` with
+       ``leakage_status == "Yes Data Leakage"``, invoke A_leakage with
+       ``variant="correction"`` (free-form response), extract the corrected
+       code via ``extract_code_block``, and apply it via
+       ``SolutionScript.replace_block``.
+
+    If ``replace_block`` raises ``ValueError`` (the detected block is not
+    an exact substring of the solution), the replacement is logged as a
+    warning and skipped (REQ-SF-021).
+
+    Any exception from the SDK client or response parsing triggers graceful
+    degradation: the **original** solution is returned unchanged.
+
+    Args:
+        solution: The solution to check for data leakage.
+        task: Task description (unused directly but available for context).
+        client: SDK client for agent invocation.
+
+    Returns:
+        The (potentially corrected) ``SolutionScript``.
+    """
+    try:
+        return await _check_and_fix_leakage_impl(solution, task, client)
+    except Exception:
+        logger.exception("Leakage check failed; returning original solution")
+        return solution
+
+
+async def _check_and_fix_leakage_impl(
+    solution: SolutionScript,
+    task: TaskDescription,
+    client: Any,
+) -> SolutionScript:
+    """Inner implementation of leakage detection and correction.
+
+    Separated from ``check_and_fix_leakage`` so that the outer function
+    provides a single top-level exception boundary for graceful degradation.
+
+    Args:
+        solution: The solution to check for data leakage.
+        task: Task description (unused directly but available for context).
+        client: SDK client for agent invocation.
+
+    Returns:
+        The (potentially corrected) ``SolutionScript``.
+    """
+    registry = PromptRegistry()
+
+    # Step 1 — Detection.
+    detection_template = registry.get(AgentType.LEAKAGE, variant="detection")
+    detection_prompt = detection_template.render(code=solution.content)
+
+    detection_response: str = await client.send_message(
+        agent_type=str(AgentType.LEAKAGE),
+        message=detection_prompt,
+    )
+
+    detection_output = LeakageDetectionOutput.model_validate_json(
+        detection_response,
+    )
+
+    # Step 2 — Correction for each leaky block.
+    current_solution = solution
+    for answer in detection_output.answers:
+        if answer.leakage_status != "Yes Data Leakage":
+            continue
+
+        correction_template = registry.get(AgentType.LEAKAGE, variant="correction")
+        correction_prompt = correction_template.render(
+            code=current_solution.content,
+        )
+
+        correction_response: str = await client.send_message(
+            agent_type=str(AgentType.LEAKAGE),
+            message=correction_prompt,
+        )
+
+        corrected_block = extract_code_block(correction_response)
+
+        try:
+            current_solution = current_solution.replace_block(
+                answer.code_block, corrected_block
+            )
+        except ValueError:
+            logger.warning(
+                "Leaky code block not found in solution; skipping "
+                "replacement for this answer (REQ-SF-021)",
+            )
+
+    return current_solution
