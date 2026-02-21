@@ -63,13 +63,16 @@ src/mle_star/
   __init__.py          # Package init
   cli.py               # CLI entry point (uv run mle_star)
   models.py            # Pydantic data models (enums, configs, schemas)
+  scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
   prompts/             # YAML prompt templates for 14 agents
-    __init__.py
+    __init__.py        # PromptRegistry class (Task 08)
     *.yaml
 tests/
   __init__.py
   test_models_core.py     # Tests for core config models (Task 03)
   test_models_results.py  # Tests for evaluation & phase result models (Task 06)
+  test_models_scoring.py  # Tests for score interface & comparisons (Task 07)
+  test_prompt_system.py   # Tests for PromptTemplate & PromptRegistry (Task 08)
 ```
 
 ---
@@ -89,6 +92,8 @@ tests/
 - Google-style docstrings on all public classes and functions
 - `field_validator` for simple field constraints, `model_validator` for cross-field validation
 - Tests use `@pytest.mark.unit` markers and hypothesis for property-based testing
+- YAML prompt templates have two formats: single-template (top-level keys) and multi-template (`templates:` list with `variant` key)
+- `PromptRegistry` loads from `src/mle_star/prompts/*.yaml` using `pathlib.Path(__file__).parent`
 
 ---
 

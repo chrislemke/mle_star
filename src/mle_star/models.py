@@ -451,6 +451,46 @@ class DataContaminationResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Prompt Template Model (REQ-DM-030, REQ-DM-031)
+# ---------------------------------------------------------------------------
+
+
+class PromptTemplate(BaseModel):
+    """A prompt template for an MLE-STAR agent (REQ-DM-030).
+
+    Stores the template string with ``{variable}`` placeholders and the
+    metadata associating it with a specific agent type and paper figure.
+
+    Attributes:
+        agent_type: Which agent this template belongs to.
+        figure_ref: Paper figure reference (e.g., ``"Figure 9"``).
+        template: Template string with ``{variable}`` placeholders.
+        variables: Required variable names for this template.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    agent_type: AgentType
+    figure_ref: str
+    template: str
+    variables: list[str]
+
+    def render(self, **kwargs: object) -> str:
+        """Substitute all ``{variable}`` placeholders with provided values (REQ-DM-031).
+
+        Args:
+            **kwargs: Keyword arguments mapping variable names to values.
+
+        Returns:
+            The rendered prompt string with all placeholders substituted.
+
+        Raises:
+            KeyError: If a required variable is not provided.
+        """
+        return self.template.format(**kwargs)
+
+
+# ---------------------------------------------------------------------------
 # Evaluation & Phase Result Models (REQ-DM-021 through REQ-DM-025)
 # ---------------------------------------------------------------------------
 

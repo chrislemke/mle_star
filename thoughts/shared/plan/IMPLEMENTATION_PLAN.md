@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 38      | 0           | 6    |
+| P1       | 36      | 0           | 8    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -207,7 +207,7 @@ Implement `EvaluationResult` model (score, stdout, stderr, exit_code, duration_s
 ---
 
 ## [P1] 07. Score interface and comparison functions
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -216,20 +216,20 @@ Implement the `ScoreFunction` protocol class, the default score parsing function
 **Spec:** SRS 01 | **Reqs:** REQ-DM-026 to REQ-DM-029
 
 ### Acceptance Criteria
-- [ ] `ScoreFunction` is a `Protocol` with `__call__(solution, task) -> EvaluationResult`
-- [ ] Score parsing of `"Final Validation Performance: 0.8196"` returns `0.8196`
-- [ ] Score parsing returns `None` when pattern not found
-- [ ] Score parsing of `"...Performance: 0.5\n...Performance: 0.8196"` returns `0.8196` (LAST match per REQ-EX-011)
-- [ ] `is_improvement(0.9, 0.8, "maximize")` returns `True`
-- [ ] `is_improvement(0.9, 0.8, "minimize")` returns `False`
-- [ ] `is_improvement_or_equal(0.8, 0.8, "maximize")` returns `True`
-- [ ] Tests include property-based testing with hypothesis
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `ScoreFunction` is a `Protocol` with `__call__(solution, task) -> EvaluationResult`
+- [x] Score parsing of `"Final Validation Performance: 0.8196"` returns `0.8196`
+- [x] Score parsing returns `None` when pattern not found
+- [x] Score parsing of `"...Performance: 0.5\n...Performance: 0.8196"` returns `0.8196` (LAST match per REQ-EX-011)
+- [x] `is_improvement(0.9, 0.8, "maximize")` returns `True`
+- [x] `is_improvement(0.9, 0.8, "minimize")` returns `False`
+- [x] `is_improvement_or_equal(0.8, 0.8, "maximize")` returns `True`
+- [x] Tests include property-based testing with hypothesis
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
 ## [P1] 08. Prompt template system
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -238,14 +238,14 @@ Implement `PromptTemplate` Pydantic model (agent_type, figure_ref, template, var
 **Spec:** SRS 01 | **Reqs:** REQ-DM-030 to REQ-DM-035 | **Depends on:** Task 02
 
 ### Acceptance Criteria
-- [ ] `PromptTemplate.render(M=4, task_description="classify images")` substitutes placeholders
-- [ ] `PromptTemplate.render()` raises `KeyError` for missing required variables
-- [ ] `PromptRegistry.get(AgentType.retriever)` returns retriever template
-- [ ] `PromptRegistry.get(AgentType.leakage, variant="detection")` returns detection template
-- [ ] `PromptRegistry.get(AgentType.leakage, variant="correction")` returns correction template
-- [ ] `PromptRegistry.get(AgentType.test, variant="subsampling_extract")` works
-- [ ] `len(registry)` covers all 14 agent types (18 total template variants)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `PromptTemplate.render(M=4, task_description="classify images")` substitutes placeholders
+- [x] `PromptTemplate.render()` raises `KeyError` for missing required variables
+- [x] `PromptRegistry.get(AgentType.retriever)` returns retriever template
+- [x] `PromptRegistry.get(AgentType.leakage, variant="detection")` returns detection template
+- [x] `PromptRegistry.get(AgentType.leakage, variant="correction")` returns correction template
+- [x] `PromptRegistry.get(AgentType.test, variant="subsampling_extract")` works
+- [x] `len(registry)` covers all 14 agent types (18 total template variants)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
