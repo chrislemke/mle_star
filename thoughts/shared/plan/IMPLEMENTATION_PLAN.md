@@ -316,7 +316,7 @@ Implement `write_script(solution, working_dir, filename)` that writes a `Solutio
 - [ ] `write_script()` writes solution content to `working_dir/filename` with UTF-8 encoding
 - [ ] Returns absolute path to written file
 - [ ] Raises `ValueError` for empty content (whitespace-only)
-- [ ] Raises `ValueError` when content contains `exit()` or `sys.exit()` (REQ-EX-006)
+- [ ] Raises `ValueError` when content contains `exit()`, `sys.exit()`, `os._exit()`, or `quit()` (REQ-EX-006, REQ-EX-044 extended list)
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
 ---
@@ -338,6 +338,7 @@ Implement `execute_script(script_path, working_dir, timeout_seconds, env)` as an
 - [ ] Partial stdout/stderr preserved on timeout
 - [ ] Subprocess inherits only provided environment variables
 - [ ] Non-zero exit codes do not raise exceptions (captured in result)
+- [ ] Orphan child process cleanup via `os.killpg` on process group after timeout (REQ-EX-037)
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
 ---
@@ -630,7 +631,8 @@ Implement three Phase 1 agent invocation functions in `src/mle_star/phase1.py`: 
 - [ ] `retrieve_models()` returns `list[RetrievedModel]` with ≥1 models
 - [ ] `retrieve_models()` uses structured output `RetrieverOutput` schema
 - [ ] `retrieve_models()` with < M results logs warning; 0 results raises ValueError (REQ-P1-005)
-- [ ] `generate_candidate()` returns `SolutionScript` with `phase="init"`
+- [ ] Models with empty `example_code` excluded from candidate generation (REQ-P1-006)
+- [ ] `generate_candidate()` returns `SolutionScript` with `phase="init"` and `source_model` set to `RetrievedModel.model_name`
 - [ ] `merge_solutions()` returns `SolutionScript` with `phase="merged"`
 - [ ] All functions load prompts from `PromptRegistry`
 - [ ] Agent failures return appropriate error/fallback values
@@ -654,7 +656,7 @@ Implement `run_phase1(client, task, config)` as the Phase 1 entry point implemen
 - [ ] Merge loop uses `is_improvement_or_equal()` (>=) for comparison per Algorithm 1
 - [ ] Break-on-first-failure: merge loop stops on first non-improvement OR execution failure (REQ-P1-028)
 - [ ] Single candidate (M=1 or only 1 success) skips merge loop
-- [ ] All-candidates-failed raises appropriate error
+- [ ] All-candidates-failed raises `RuntimeError("Phase 1 failed: all {M} candidates produced execution errors")` (REQ-P1-022)
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
 ---
@@ -730,7 +732,9 @@ Implement A_summarize and A_extractor agents. A_summarize (REQ-P2O-008 to REQ-P2
 
 ### Acceptance Criteria
 - [ ] A_summarize returns text summary from ablation results (uses full response)
+- [ ] A_summarize fallback on empty/unparseable response: truncate raw ablation output to last 2000 chars with prefix `"[Auto-summary from raw output] "` (REQ-P2O-036)
 - [ ] A_extractor uses `ExtractorOutput` structured output schema
+- [ ] A_extractor retry on malformed JSON: retry once before entering validation recovery (REQ-P2O-034)
 - [ ] A_extractor returns `list[RefinePlan]` with code_block + plan pairs
 - [ ] `validate_code_block(code_block, solution)` returns `True` iff code_block is exact substring of `solution.content`
 - [ ] Validation recovery level 1: strip trailing whitespace from each line of both code_block and solution, check substring match; if match found, use the matched substring from solution source as c_t
@@ -755,9 +759,11 @@ Implement `run_phase2_outer_loop(client, task, config, initial_solution, session
 - [ ] Each iteration: ablation → summarize → extract → inner loop
 - [ ] Uses FIRST plan from ExtractorOutput: c_t = plans[0].code_block, p_0 = plans[0].plan
 - [ ] Ablation summaries accumulated across iterations in T_abl list
-- [ ] Code blocks accumulated for provenance tracking in C list
+- [ ] Code blocks accumulated for provenance tracking in C list; each `CodeBlock` has `outer_step=t` set (REQ-P2O-044)
 - [ ] Best solution updated when inner loop's best score passes `is_improvement_or_equal()` (>=) against current `h_best` (REQ-P2O-027) — do NOT use `InnerLoopResult.improved` flag (which uses strict >)
 - [ ] Inner loop receives: solution=s_t, code_block=c_t, initial_plan=p_0, best_score=h_best
+- [ ] Skipped iterations (validation recovery level 4 failure) recorded in step history with `was_skipped=True` (REQ-P2O-030)
+- [ ] `Phase2Result.best_score` never worse than `initial_score` — score guarantee (REQ-P2O-029)
 - [ ] `Phase2Result` correctly constructed with all fields
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
@@ -823,6 +829,8 @@ Implement `run_phase3(client, task, config, solutions)` executing R ensemble rou
 - [ ] Best ensemble selected by score comparison; ties won by LAST occurrence (REQ-P3-025)
 - [ ] `check_and_fix_leakage()` called before each evaluation (REQ-SF-022)
 - [ ] Exactly R `EnsembleAttempt` records created regardless of success/failure (REQ-P3-044)
+- [ ] Failed ensembler: record `EnsembleAttempt` with `SolutionScript(content="", ...)` (REQ-P3-030)
+- [ ] Failed ens_planner: record plan as `"[ens_planner failed]"` in accumulated history (REQ-P3-031)
 - [ ] All-rounds-failed: fallback returns best input solution, no exception raised (REQ-P3-026)
 - [ ] `Phase3Result` correctly constructed
 - [ ] Tests pass with ≥90% coverage; mypy clean
@@ -1117,6 +1125,28 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 ---
 
 ## Changelog
+
+### 2026-02-21 (v7)
+
+Re-analysis of all 36 spec files (including constraint sections 02d, 03d, 05d, 08d) against v6 plan. Codebase still empty (skeleton CLI only) — all 48 tasks remain pending.
+
+**Missing details added:**
+1. **Task 12 (Script validation)**: Added `os._exit()` and `quit()` to rejection patterns per REQ-EX-044 extended list (was only `exit()` and `sys.exit()`).
+2. **Task 13 (Async execution)**: Added orphan child process cleanup via `os.killpg` on process group after timeout (REQ-EX-037).
+3. **Task 27 (Phase 1 agents)**: Added exclusion of models with empty `example_code` from candidate generation (REQ-P1-006). Added `source_model` field set to `RetrievedModel.model_name` in `generate_candidate()`.
+4. **Task 28 (Phase 1 orchestration)**: Specified exact error message format: `RuntimeError("Phase 1 failed: all {M} candidates produced execution errors")` per REQ-P1-022.
+5. **Task 32 (Summarize/extractor agents)**: Added A_summarize fallback behavior — truncate raw output to last 2000 chars with prefix `"[Auto-summary from raw output] "` per REQ-P2O-036. Added A_extractor malformed JSON retry (once before validation recovery) per REQ-P2O-034.
+6. **Task 33 (Outer loop orchestration)**: Added `was_skipped=True` field for skipped iterations in step history (REQ-P2O-030). Added `CodeBlock.outer_step=t` provenance tracking (REQ-P2O-044). Added `Phase2Result.best_score` guarantee — never worse than `initial_score` (REQ-P2O-029).
+7. **Task 36 (Phase 3 orchestration)**: Added failed ensembler recording with empty content `SolutionScript` (REQ-P3-030). Added failed ens_planner history placeholder `"[ens_planner failed]"` (REQ-P3-031).
+
+**Verified correct (no change needed):**
+- All 436 requirements still covered across 48 tasks
+- Requirement Coverage table unchanged
+- Task priorities and dependencies unchanged
+- All previously documented cross-cutting constraints remain accurate
+- Tool assignments per REQ-OR-008 correctly reflected in Task 09
+
+---
 
 ### 2026-02-21 (v6)
 
