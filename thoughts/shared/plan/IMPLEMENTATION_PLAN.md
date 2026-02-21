@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 42      | 0           | 2    |
+| P1       | 41      | 0           | 3    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -116,7 +116,7 @@ Create YAML prompt template files containing the prompt text for each of the 14 
 ---
 
 ## [P1] 03. Core configuration models
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -125,20 +125,20 @@ Implement the foundational configuration Pydantic models in `src/mle_star/models
 **Spec:** SRS 01 | **Reqs:** REQ-DM-001 to REQ-DM-007, REQ-OR-009, REQ-OR-025, REQ-OR-028, REQ-OR-044
 
 ### Acceptance Criteria
-- [ ] `PipelineConfig()` with no args produces paper defaults (M=4, T=4, K=4, L=2, R=5, time_limit=86400, subsample_limit=30000, max_debug_attempts=3)
-- [ ] `PipelineConfig` includes `max_budget_usd: float | None = None` (REQ-OR-028)
-- [ ] `PipelineConfig` includes `permission_mode: str = "bypassPermissions"` (REQ-OR-009)
-- [ ] `PipelineConfig` includes `model: str = "sonnet"` (REQ-OR-044)
-- [ ] `PipelineConfig` includes `log_level: str = "INFO"` (REQ-OR-047)
-- [ ] `PipelineConfig` includes `log_file: str | None = None` for optional file handler (REQ-OR-047)
-- [ ] `PhaseTimeBudget` model defined in `models.py` with fields: `phase1_pct: float = 10.0`, `phase2_pct: float = 65.0`, `phase3_pct: float = 15.0`, `finalization_pct: float = 10.0`; validator ensures sum equals 100.0; frozen model
-- [ ] `PipelineConfig` includes `phase_time_budget: PhaseTimeBudget | None = None` (REQ-OR-025)
-- [ ] `PipelineConfig(num_retrieved_models=0)` raises `ValidationError`
-- [ ] Round-trip JSON serialization preserves all `PipelineConfig` field values
-- [ ] `TaskType` enum has 8 values; `DataModality` has 5; `MetricDirection` has 2
-- [ ] `TaskDescription` has fields: competition_id, task_type, data_modality, evaluation_metric, metric_direction, description, data_dir (default `"./input"`), output_dir (default `"./final"`)
-- [ ] `TaskDescription` missing required field raises `ValidationError`
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `PipelineConfig()` with no args produces paper defaults (M=4, T=4, K=4, L=2, R=5, time_limit=86400, subsample_limit=30000, max_debug_attempts=3)
+- [x] `PipelineConfig` includes `max_budget_usd: float | None = None` (REQ-OR-028)
+- [x] `PipelineConfig` includes `permission_mode: str = "bypassPermissions"` (REQ-OR-009)
+- [x] `PipelineConfig` includes `model: str = "sonnet"` (REQ-OR-044)
+- [x] `PipelineConfig` includes `log_level: str = "INFO"` (REQ-OR-047)
+- [x] `PipelineConfig` includes `log_file: str | None = None` for optional file handler (REQ-OR-047)
+- [x] `PhaseTimeBudget` model defined in `models.py` with fields: `phase1_pct: float = 10.0`, `phase2_pct: float = 65.0`, `phase3_pct: float = 15.0`, `finalization_pct: float = 10.0`; validator ensures sum equals 100.0; frozen model
+- [x] `PipelineConfig` includes `phase_time_budget: PhaseTimeBudget | None = None` (REQ-OR-025)
+- [x] `PipelineConfig(num_retrieved_models=0)` raises `ValidationError`
+- [x] Round-trip JSON serialization preserves all `PipelineConfig` field values
+- [x] `TaskType` enum has 8 values; `DataModality` has 5; `MetricDirection` has 2
+- [x] `TaskDescription` has fields: competition_id, task_type, data_modality, evaluation_metric, metric_direction, description, data_dir (default `"./input"`), output_dir (default `"./final"`)
+- [x] `TaskDescription` missing required field raises `ValidationError`
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
