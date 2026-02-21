@@ -623,3 +623,169 @@ def request_subsample_extraction(solution: SolutionScript) -> str:
         "following solution script.\n\n"
         f"```python\n{solution.content}\n```"
     )
+
+
+# ---------------------------------------------------------------------------
+# Submission Verification (REQ-EX-024, REQ-EX-025)
+# ---------------------------------------------------------------------------
+
+
+def verify_submission(
+    working_dir: str,
+    expected_filename: str = "submission.csv",
+) -> bool:
+    """Check that a valid submission file exists (REQ-EX-024).
+
+    Returns ``True`` if ``{working_dir}/final/{expected_filename}`` exists
+    and has a file size strictly greater than 0 bytes.
+
+    Args:
+        working_dir: Root directory containing the ``final/`` subdirectory.
+        expected_filename: Name of the submission file to verify.
+
+    Returns:
+        ``True`` if the file exists and is non-empty, ``False`` otherwise.
+    """
+    submission = Path(working_dir) / "final" / expected_filename
+    return submission.is_file() and submission.stat().st_size > 0
+
+
+def get_submission_info(
+    working_dir: str,
+    expected_filename: str = "submission.csv",
+) -> dict[str, bool | str | int | None]:
+    """Return metadata about the submission file (REQ-EX-025).
+
+    Args:
+        working_dir: Root directory containing the ``final/`` subdirectory.
+        expected_filename: Name of the submission file to inspect.
+
+    Returns:
+        A dict with keys:
+
+        - ``exists`` (bool): Whether the submission file exists.
+        - ``path`` (str): Absolute path to the submission file.
+        - ``size_bytes`` (int): File size in bytes (0 if not exists).
+        - ``row_count`` (int | None): Number of data rows (lines minus
+          header), or ``None`` if the file does not exist.
+    """
+    submission = Path(working_dir) / "final" / expected_filename
+    abs_path = str(submission.resolve())
+
+    if not submission.is_file():
+        return {
+            "exists": False,
+            "path": abs_path,
+            "size_bytes": 0,
+            "row_count": None,
+        }
+
+    size_bytes = submission.stat().st_size
+    text = submission.read_text(encoding="utf-8")
+    lines = [line for line in text.splitlines() if line]
+    # row_count = data lines, excluding the header (first line)
+    row_count = max(0, len(lines) - 1)
+
+    return {
+        "exists": True,
+        "path": abs_path,
+        "size_bytes": size_bytes,
+        "row_count": row_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Batch Evaluation (REQ-EX-026)
+# ---------------------------------------------------------------------------
+
+
+async def evaluate_batch(
+    solutions: list[SolutionScript],
+    task: TaskDescription,
+    config: PipelineConfig,
+) -> list[EvaluationResult]:
+    """Evaluate multiple solutions sequentially (REQ-EX-026).
+
+    Calls ``evaluate_solution`` for each solution in order. Solutions are
+    evaluated **sequentially** — not concurrently — to avoid resource
+    contention. The returned list preserves the input order.
+
+    Args:
+        solutions: List of solution scripts to evaluate.
+        task: Task description for evaluation context.
+        config: Pipeline configuration.
+
+    Returns:
+        A list of ``EvaluationResult`` instances in the same order as
+        the input *solutions* list.
+    """
+    results: list[EvaluationResult] = []
+    for solution in solutions:
+        result = await evaluate_solution(solution, task, config)
+        results.append(result)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Solution Ranking (REQ-EX-027)
+# ---------------------------------------------------------------------------
+
+
+def _sort_key(
+    pair: tuple[SolutionScript, EvaluationResult],
+    direction: MetricDirection,
+) -> tuple[int, float]:
+    """Produce a sort key for ranking a (solution, result) pair.
+
+    The key is a ``(tier, score_key)`` tuple where:
+
+    - **tier 0**: valid score, no error
+    - **tier 1**: ``None`` score, no error
+    - **tier 2**: ``is_error=True``
+
+    Within tier 0, *score_key* orders by score according to *direction*.
+    Tiers 1 and 2 use ``0.0`` as a neutral sort key.
+
+    Args:
+        pair: A ``(SolutionScript, EvaluationResult)`` tuple.
+        direction: Whether to maximize or minimize the metric.
+
+    Returns:
+        A ``(tier, score_key)`` tuple for use with ``sorted()``.
+    """
+    result = pair[1]
+    if result.is_error:
+        return (2, 0.0)
+    if result.score is None:
+        return (1, 0.0)
+    # For maximize: negate so that higher scores sort first (ascending sort)
+    # For minimize: use raw score so that lower scores sort first
+    if direction == MetricDirection.MAXIMIZE:
+        return (0, -result.score)
+    return (0, result.score)
+
+
+def rank_solutions(
+    solutions: list[SolutionScript],
+    results: list[EvaluationResult],
+    direction: MetricDirection,
+) -> list[tuple[SolutionScript, EvaluationResult]]:
+    """Sort solutions by score, best first (REQ-EX-027).
+
+    Returns a list of ``(solution, result)`` tuples sorted according to
+    *direction*. The ordering has three tiers:
+
+    1. Valid scores, sorted best-first per *direction*.
+    2. ``None`` scores (no error).
+    3. Error results (``is_error=True``).
+
+    Args:
+        solutions: List of solution scripts.
+        results: Corresponding list of evaluation results (same length).
+        direction: Whether to maximize or minimize the metric.
+
+    Returns:
+        A sorted list of ``(SolutionScript, EvaluationResult)`` tuples.
+    """
+    pairs = list(zip(solutions, results, strict=True))
+    return sorted(pairs, key=lambda p: _sort_key(p, direction))

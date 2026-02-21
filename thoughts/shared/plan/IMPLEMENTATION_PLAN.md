@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 28      | 0           | 16   |
+| P1       | 27      | 0           | 17   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -416,7 +416,7 @@ Implement subsampling-related utilities: `SUBSAMPLE_INSTRUCTION` constant, `get_
 ---
 
 ## [P1] 17. Submission verification and batch evaluation
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -425,12 +425,12 @@ Implement `verify_submission(working_dir, expected_filename)` to check that `sub
 **Spec:** SRS 02 | **Reqs:** REQ-EX-024 to REQ-EX-027 | **Depends on:** Task 15
 
 ### Acceptance Criteria
-- [ ] `verify_submission()` returns `True` when valid submission.csv exists and is non-empty
-- [ ] `verify_submission()` returns `False` when file missing or invalid
-- [ ] `get_submission_info()` returns dict with row count, column names, file size
-- [ ] `evaluate_batch()` evaluates multiple solutions **sequentially** (REQ-EX-026), not concurrently
-- [ ] `rank_solutions()` returns solutions sorted by score per metric direction; None scores at end
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `verify_submission()` returns `True` when valid submission.csv exists and is non-empty
+- [x] `verify_submission()` returns `False` when file missing or invalid
+- [x] `get_submission_info()` returns dict with row count, column names, file size
+- [x] `evaluate_batch()` evaluates multiple solutions **sequentially** (REQ-EX-026), not concurrently
+- [x] `rank_solutions()` returns solutions sorted by score per metric direction; None scores at end
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
