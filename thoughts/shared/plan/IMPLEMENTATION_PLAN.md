@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 33      | 0           | 11   |
+| P1       | 32      | 0           | 12   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -318,7 +318,7 @@ Implement environment setup functions in `src/mle_star/execution.py`: `setup_wor
 ---
 
 ## [P1] 12. Script writing and validation
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -327,11 +327,11 @@ Implement `write_script(solution, working_dir, filename)` that writes a `Solutio
 **Spec:** SRS 02 | **Reqs:** REQ-EX-005 to REQ-EX-006 | **Depends on:** Task 11
 
 ### Acceptance Criteria
-- [ ] `write_script()` writes solution content to `working_dir/filename` with UTF-8 encoding
-- [ ] Returns absolute path to written file
-- [ ] Raises `ValueError` for empty content (whitespace-only)
-- [ ] Raises `ValueError` when content contains `exit()`, `sys.exit()`, `os._exit()`, or `quit()` (REQ-EX-006, REQ-EX-044 extended list)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `write_script()` writes solution content to `working_dir/filename` with UTF-8 encoding
+- [x] Returns absolute path to written file
+- [x] Raises `ValueError` for empty content (whitespace-only)
+- [x] Raises `ValueError` when content contains `exit()`, `sys.exit()`, `os._exit()`, or `quit()` (REQ-EX-006, REQ-EX-044 extended list)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

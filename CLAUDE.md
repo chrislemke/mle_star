@@ -76,6 +76,7 @@ tests/
   test_models_agent_config.py  # Tests for AgentConfig & build_default_agent_configs (Task 09)
   test_prompt_system.py        # Tests for PromptTemplate & PromptRegistry (Task 08)
   test_execution_env.py        # Tests for working directory & environment setup (Task 11)
+  test_execution_script_write.py # Tests for script writing & validation (Task 12)
 ```
 
 ---

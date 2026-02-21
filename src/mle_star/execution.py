@@ -1,19 +1,27 @@
-"""Execution harness: environment setup and working directory management.
+"""Execution harness: environment setup, working directory management, and script operations.
 
 Provides functions for setting up the working directory structure,
-cleaning output directories, detecting GPU hardware, and building
-subprocess environment variables for script execution.
+cleaning output directories, detecting GPU hardware, building
+subprocess environment variables for script execution, and writing
+validated solution scripts to disk.
 
 Refs:
     SRS 02a — Execution Environment (REQ-EX-001 through REQ-EX-004).
-    IMPLEMENTATION_PLAN.md Task 11.
+    SRS 02b — Script Operations (REQ-EX-005, REQ-EX-006).
+    SRS 02d — Constraints (REQ-EX-044).
+    IMPLEMENTATION_PLAN.md Tasks 11, 12.
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import subprocess
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mle_star.models import SolutionScript
 
 
 def setup_working_directory(base_path: str) -> str:
@@ -111,3 +119,68 @@ def build_execution_env(
     if gpu_indices is not None:
         env["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in gpu_indices)
     return env
+
+
+# ---------------------------------------------------------------------------
+# Forbidden exit-call patterns (REQ-EX-006, REQ-EX-044)
+# ---------------------------------------------------------------------------
+
+_FORBIDDEN_EXIT_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\bexit\s*\("),
+    re.compile(r"\bsys\.exit\s*\("),
+    re.compile(r"\bos\._exit\s*\("),
+    re.compile(r"\bquit\s*\("),
+]
+
+
+def _validate_script_content(content: str) -> None:
+    """Validate script content before writing to disk (REQ-EX-006, REQ-EX-044).
+
+    Checks that content is non-empty after stripping and does not contain
+    forbidden exit calls (``exit()``, ``sys.exit()``, ``os._exit()``,
+    ``quit()``).
+
+    Args:
+        content: Python source code to validate.
+
+    Raises:
+        ValueError: If content is empty or contains forbidden exit calls.
+    """
+    if not content.strip():
+        msg = "Script content is empty after stripping whitespace"
+        raise ValueError(msg)
+
+    for pattern in _FORBIDDEN_EXIT_PATTERNS:
+        match = pattern.search(content)
+        if match:
+            msg = f"Script contains forbidden call: {match.group()!r}"
+            raise ValueError(msg)
+
+
+def write_script(
+    solution: SolutionScript,
+    working_dir: str,
+    filename: str = "solution.py",
+) -> str:
+    """Write a solution script to disk with pre-validation (REQ-EX-005, REQ-EX-006).
+
+    Validates the script content, then writes it to
+    ``{working_dir}/{filename}`` with UTF-8 encoding. Overwrites any
+    existing file at the target path.
+
+    Args:
+        solution: The solution script to write.
+        working_dir: Directory in which to create the script file.
+        filename: Name of the script file (default ``"solution.py"``).
+
+    Returns:
+        The absolute path to the written file.
+
+    Raises:
+        ValueError: If content is empty or contains forbidden exit calls.
+    """
+    _validate_script_content(solution.content)
+
+    target = Path(working_dir) / filename
+    target.write_text(solution.content, encoding="utf-8")
+    return str(target.resolve())
