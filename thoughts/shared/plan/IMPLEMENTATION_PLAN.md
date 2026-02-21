@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 40      | 0           | 4    |
+| P1       | 39      | 0           | 5    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -164,7 +164,7 @@ Implement `SolutionPhase` enum, `SolutionScript` model (with `content`, `phase`,
 ---
 
 ## [P1] 05. Agent type enum and structured output schemas
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -173,17 +173,17 @@ Implement the `AgentType` enum with exactly 14 values and all structured output 
 **Spec:** SRS 01 | **Reqs:** REQ-DM-013 to REQ-DM-020
 
 ### Acceptance Criteria
-- [ ] `len(AgentType)` equals 14; values match paper agent names
-- [ ] `RetrievedModel` has fields: `model_name: str`, `example_code: str` (REQ-DM-014)
-- [ ] `RetrieverOutput` has `models: list[RetrievedModel]` with `len >= 1` validator (REQ-DM-015)
-- [ ] `RefinePlan` has fields: `code_block: str`, `plan: str` (REQ-DM-016)
-- [ ] `ExtractorOutput` has `plans: list[RefinePlan]` with `len >= 1` validator (REQ-DM-017)
-- [ ] `LeakageAnswer` has `leakage_status: Literal["Yes Data Leakage", "No Data Leakage"]` AND `code_block: str` (REQ-DM-018)
-- [ ] `LeakageDetectionOutput` has `answers: list[LeakageAnswer]` with `len >= 1` validator (REQ-DM-019)
-- [ ] `DataContaminationResult` has `verdict: Literal["Novel", "Same"]` (REQ-DM-020)
-- [ ] All schemas produce valid JSON via `model_json_schema()` (REQ-DM-041)
-- [ ] Validators reject empty lists (`RetrieverOutput(models=[])` raises error)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `len(AgentType)` equals 14; values match paper agent names
+- [x] `RetrievedModel` has fields: `model_name: str`, `example_code: str` (REQ-DM-014)
+- [x] `RetrieverOutput` has `models: list[RetrievedModel]` with `len >= 1` validator (REQ-DM-015)
+- [x] `RefinePlan` has fields: `code_block: str`, `plan: str` (REQ-DM-016)
+- [x] `ExtractorOutput` has `plans: list[RefinePlan]` with `len >= 1` validator (REQ-DM-017)
+- [x] `LeakageAnswer` has `leakage_status: Literal["Yes Data Leakage", "No Data Leakage"]` AND `code_block: str` (REQ-DM-018)
+- [x] `LeakageDetectionOutput` has `answers: list[LeakageAnswer]` with `len >= 1` validator (REQ-DM-019)
+- [x] `DataContaminationResult` has `verdict: Literal["Novel", "Same"]` (REQ-DM-020)
+- [x] All schemas produce valid JSON via `model_json_schema()` (REQ-DM-041)
+- [x] Validators reject empty lists (`RetrieverOutput(models=[])` raises error)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

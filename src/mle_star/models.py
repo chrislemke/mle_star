@@ -6,13 +6,15 @@ by all other modules (execution, safety, phases, orchestrator).
 
 Refs:
     SRS 01a — Data Models Core (REQ-DM-001 through REQ-DM-012).
-    IMPLEMENTATION_PLAN.md Tasks 03, 04.
+    SRS 01b — Data Models Agents and Output Schemas (REQ-DM-013 through REQ-DM-020).
+    IMPLEMENTATION_PLAN.md Tasks 03, 04, 05.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -283,3 +285,165 @@ class CodeBlock(BaseModel):
     content: str
     category: CodeBlockCategory | None = None
     outer_step: int | None = None
+
+
+# ---------------------------------------------------------------------------
+# Agent Identity (REQ-DM-013)
+# ---------------------------------------------------------------------------
+
+
+class AgentType(StrEnum):
+    """Identifier for each of the 14 MLE-STAR agents (REQ-DM-013).
+
+    One value per agent from A_retriever through A_test, matching the paper's
+    agent naming convention (Section 6).
+    """
+
+    RETRIEVER = "retriever"
+    INIT = "init"
+    MERGER = "merger"
+    ABLATION = "ablation"
+    SUMMARIZE = "summarize"
+    EXTRACTOR = "extractor"
+    CODER = "coder"
+    PLANNER = "planner"
+    ENS_PLANNER = "ens_planner"
+    ENSEMBLER = "ensembler"
+    DEBUGGER = "debugger"
+    LEAKAGE = "leakage"
+    DATA = "data"
+    TEST = "test"
+
+
+# ---------------------------------------------------------------------------
+# Structured Output Schemas (REQ-DM-014 through REQ-DM-020)
+# ---------------------------------------------------------------------------
+
+
+class RetrievedModel(BaseModel):
+    """A single ML model retrieved by the retriever agent (REQ-DM-014).
+
+    Attributes:
+        model_name: Name of the retrieved ML model.
+        example_code: Concise example code for the model.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    model_name: str
+    example_code: str
+
+
+class RetrieverOutput(BaseModel):
+    """Structured output from the retriever agent (REQ-DM-015).
+
+    Contains at least one retrieved model with its example code.
+
+    Attributes:
+        models: Non-empty list of retrieved ML models.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    models: list[RetrievedModel]
+
+    @field_validator("models")
+    @classmethod
+    def _models_must_be_nonempty(
+        cls,
+        v: list[RetrievedModel],
+    ) -> list[RetrievedModel]:
+        """Validate that models list contains at least one entry."""
+        if len(v) < 1:
+            msg = "models list must contain at least 1 entry"
+            raise ValueError(msg)
+        return v
+
+
+class RefinePlan(BaseModel):
+    """A targeted refinement plan for a code block (REQ-DM-016).
+
+    Attributes:
+        code_block: Exact code block extracted from the solution script.
+        plan: Natural language refinement plan (3-5 sentences).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    code_block: str
+    plan: str
+
+
+class ExtractorOutput(BaseModel):
+    """Structured output from the extractor agent (REQ-DM-017).
+
+    Contains at least one refinement plan targeting a code block.
+
+    Attributes:
+        plans: Non-empty list of refinement plans.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    plans: list[RefinePlan]
+
+    @field_validator("plans")
+    @classmethod
+    def _plans_must_be_nonempty(cls, v: list[RefinePlan]) -> list[RefinePlan]:
+        """Validate that plans list contains at least one entry."""
+        if len(v) < 1:
+            msg = "plans list must contain at least 1 entry"
+            raise ValueError(msg)
+        return v
+
+
+class LeakageAnswer(BaseModel):
+    """Detection result for a single preprocessing code block (REQ-DM-018).
+
+    Attributes:
+        leakage_status: Whether data leakage was detected in the code block.
+        code_block: The preprocessing code block extracted from the solution.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    leakage_status: Literal["Yes Data Leakage", "No Data Leakage"]
+    code_block: str
+
+
+class LeakageDetectionOutput(BaseModel):
+    """Structured output from the leakage detection agent (REQ-DM-019).
+
+    Contains at least one leakage analysis answer for a preprocessing block.
+
+    Attributes:
+        answers: Non-empty list of leakage detection answers.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    answers: list[LeakageAnswer]
+
+    @field_validator("answers")
+    @classmethod
+    def _answers_must_be_nonempty(
+        cls,
+        v: list[LeakageAnswer],
+    ) -> list[LeakageAnswer]:
+        """Validate that answers list contains at least one entry."""
+        if len(v) < 1:
+            msg = "answers list must contain at least 1 entry"
+            raise ValueError(msg)
+        return v
+
+
+class DataContaminationResult(BaseModel):
+    """Verdict from the data contamination check agent (REQ-DM-020).
+
+    Attributes:
+        verdict: Whether the competition data is novel or previously seen.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    verdict: Literal["Novel", "Same"]
