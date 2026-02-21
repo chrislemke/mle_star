@@ -66,7 +66,7 @@ src/mle_star/
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
   execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline, subsampling utilities, submission verification, batch evaluation, solution ranking (Tasks 11-17)
   safety.py            # Safety modules: debugger agent, leakage agent, data agent, code block extraction (Tasks 19, 20, 21)
-  phase2_inner.py      # Phase 2 inner loop: coder and planner agent invocations (Task 23)
+  phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration (Tasks 23, 24)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -88,6 +88,7 @@ tests/
   test_safety_data.py            # Tests for data usage verification agent (Task 21)
   test_safety_leakage.py         # Tests for leakage detection/correction agent (Task 20)
   test_phase2_inner_agents.py    # Tests for coder and planner agents (Task 23)
+  test_phase2_inner_loop.py      # Tests for run_phase2_inner_loop orchestration (Task 24)
 ```
 
 ---
@@ -100,6 +101,7 @@ tests/
 - `start_new_session=True` on subprocess creates a new process group, enabling `os.killpg` to clean up orphan child processes on timeout
 - Agent invocation pattern: `PromptRegistry().get(AgentType.X)` → `template.render(**vars)` → `await client.send_message(agent_type=str(AgentType.X), message=prompt)` → parse response
 - A_coder uses `extract_code_block()` for response parsing; A_planner returns raw stripped text (no extraction)
+- Inner loop passes `list(accumulated_plans)` (copies) to `invoke_planner` to provide a snapshot at invocation time — passing the mutable list directly would let later mutations leak into captured references
 
 ---
 

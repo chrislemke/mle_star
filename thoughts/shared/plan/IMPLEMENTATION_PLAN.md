@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 23      | 0           | 21   |
+| P1       | 22      | 0           | 22   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -574,7 +574,7 @@ Implement `invoke_coder(code_block, plan, client)` and `invoke_planner(code_bloc
 ---
 
 ## [P1] 24. Inner loop orchestration
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -583,17 +583,17 @@ Implement `run_phase2_inner_loop(client, solution, code_block, initial_plan, bes
 **Spec:** SRS 06 | **Reqs:** REQ-P2I-016 to REQ-P2I-029 | **Depends on:** Task 23
 
 ### Acceptance Criteria
-- [ ] `run_phase2_inner_loop(client, solution, code_block, initial_plan, best_score, task, config)` executes exactly K iterations (failed ones still count, REQ-P2I-029)
-- [ ] k=0: uses `initial_plan` directly, NO A_planner call (REQ-P2I-018)
-- [ ] k≥1: A_planner receives full history of ALL previous plans/scores (REQ-P2I-020)
-- [ ] A_coder always receives original `code_block.content` (REQ-P2I-021), never a previous attempt's code
-- [ ] `replace_block` called against original `solution`, not any intermediate (REQ-P2I-022/023)
-- [ ] Best updated when `is_improvement_or_equal()` returns True (REQ-P2I-026, >= semantics)
-- [ ] `local_best_score` initialized from `best_score` parameter (REQ-P2I-024)
-- [ ] `RefinementAttempt` records created for EVERY iteration including failures (REQ-P2I-028)
-- [ ] `attempts` list has exactly K entries in step order (REQ-P2I-029)
-- [ ] Returns `InnerLoopResult`; `improved` is True iff strict `is_improvement()` from input best_score
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `run_phase2_inner_loop(client, solution, code_block, initial_plan, best_score, task, config)` executes exactly K iterations (failed ones still count, REQ-P2I-029)
+- [x] k=0: uses `initial_plan` directly, NO A_planner call (REQ-P2I-018)
+- [x] k≥1: A_planner receives full history of ALL previous plans/scores (REQ-P2I-020)
+- [x] A_coder always receives original `code_block.content` (REQ-P2I-021), never a previous attempt's code
+- [x] `replace_block` called against original `solution`, not any intermediate (REQ-P2I-022/023)
+- [x] Best updated when `is_improvement_or_equal()` returns True (REQ-P2I-026, >= semantics)
+- [x] `local_best_score` initialized from `best_score` parameter (REQ-P2I-024)
+- [x] `RefinementAttempt` records created for EVERY iteration including failures (REQ-P2I-028)
+- [x] `attempts` list has exactly K entries in step order (REQ-P2I-029)
+- [x] Returns `InnerLoopResult`; `improved` is True iff strict `is_improvement()` from input best_score
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

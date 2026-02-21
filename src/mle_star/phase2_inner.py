@@ -1,4 +1,4 @@
-"""Phase 2 inner loop: coder and planner agent invocations.
+"""Phase 2 inner loop: coder and planner agent invocations and orchestration.
 
 Implements ``invoke_coder`` and ``invoke_planner`` for the targeted code
 block refinement inner loop (Algorithm 2, lines 9-25).  A_coder receives
@@ -6,9 +6,16 @@ a code block and a refinement plan, returning improved code.  A_planner
 receives a code block and the history of prior plans/scores, returning a
 new refinement strategy.
 
+``run_phase2_inner_loop`` orchestrates K iterations of the inner loop:
+k=0 uses the initial plan from A_extractor (no planner); k>=1 invokes
+A_planner with accumulated history.  Each iteration calls A_coder with
+the ORIGINAL code block, replaces against the ORIGINAL solution, evaluates,
+and tracks the best score using >= semantics.
+
 Refs:
     SRS 06a — Phase 2 Inner Agents (REQ-P2I-001 through REQ-P2I-015).
-    IMPLEMENTATION_PLAN.md Task 23.
+    SRS 06b — Phase 2 Inner Orchestration (REQ-P2I-016 through REQ-P2I-029).
+    IMPLEMENTATION_PLAN.md Tasks 23, 24.
 """
 
 from __future__ import annotations
@@ -16,9 +23,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from mle_star.models import AgentType
+from mle_star.execution import evaluate_solution
+from mle_star.models import (
+    AgentType,
+    CodeBlock,
+    InnerLoopResult,
+    PipelineConfig,
+    RefinementAttempt,
+    SolutionScript,
+    TaskDescription,
+)
 from mle_star.prompts import PromptRegistry
 from mle_star.safety import extract_code_block
+from mle_star.scoring import is_improvement, is_improvement_or_equal
 
 logger = logging.getLogger(__name__)
 
@@ -149,3 +166,158 @@ async def invoke_planner(
         return None
 
     return stripped
+
+
+async def run_phase2_inner_loop(
+    client: Any,
+    solution: SolutionScript,
+    code_block: CodeBlock,
+    initial_plan: str,
+    best_score: float,
+    task: TaskDescription,
+    config: PipelineConfig,
+) -> InnerLoopResult:
+    """Execute K inner-loop iterations for targeted code block refinement (REQ-P2I-016).
+
+    Implements Algorithm 2 lines 9-25.  For each iteration k:
+
+    - **k=0**: Uses ``initial_plan`` directly (no A_planner call, REQ-P2I-018).
+    - **k>=1**: Invokes A_planner with full accumulated history (REQ-P2I-020).
+
+    A_coder always receives the **original** ``code_block.content`` (REQ-P2I-021).
+    ``replace_block`` is always called against the **original** ``solution``
+    (REQ-P2I-022/023).  Best score is updated using ``is_improvement_or_equal``
+    (>= semantics, REQ-P2I-026).  ``InnerLoopResult.improved`` uses strict
+    ``is_improvement`` (REQ-P2I-036).
+
+    Args:
+        client: SDK client for agent invocation.
+        solution: Current best solution s_t from the outer loop.
+        code_block: Target code block c_t to refine.
+        initial_plan: Initial refinement plan p_0 from A_extractor.
+        best_score: Current h_best from the outer loop.
+        task: Task description for evaluation context.
+        config: Pipeline configuration (provides ``inner_loop_steps`` = K).
+
+    Returns:
+        ``InnerLoopResult`` with the best solution, best score, all K
+        ``RefinementAttempt`` records, and the ``improved`` flag.
+    """
+    k_steps: int = config.inner_loop_steps
+    original_code = code_block.content
+
+    # REQ-P2I-024: Initialize tracking from input parameters.
+    local_best_score = best_score
+    local_best_solution = solution
+
+    accumulated_plans: list[str] = []
+    accumulated_scores: list[float | None] = []
+    attempts: list[RefinementAttempt] = []
+
+    for k in range(k_steps):
+        # ------------------------------------------------------------------
+        # Step 1: Determine the plan for this iteration.
+        # ------------------------------------------------------------------
+        if k == 0:
+            # REQ-P2I-018: Use initial_plan directly, no planner call.
+            plan = initial_plan
+        else:
+            # REQ-P2I-019/020: Invoke A_planner with full history.
+            # Pass copies so the planner receives a snapshot of history at
+            # the time of invocation, not a reference that grows later.
+            plan_result = await invoke_planner(
+                original_code, list(accumulated_plans), list(accumulated_scores), client
+            )
+            if plan_result is None:
+                # REQ-P2I-034: Planner failure → record and skip.
+                logger.warning("A_planner returned None at k=%d; skipping", k)
+                failed_plan = "[planner failed]"
+                accumulated_plans.append(failed_plan)
+                accumulated_scores.append(None)
+                attempts.append(
+                    RefinementAttempt(
+                        plan=failed_plan,
+                        score=None,
+                        code_block="",
+                        was_improvement=False,
+                    )
+                )
+                continue
+            plan = plan_result
+
+        # ------------------------------------------------------------------
+        # Step 2: Invoke A_coder with ORIGINAL code block (REQ-P2I-021).
+        # ------------------------------------------------------------------
+        coder_output = await invoke_coder(original_code, plan, client)
+        if coder_output is None:
+            # REQ-P2I-032: Coder failure → record with code_block="" and skip eval.
+            logger.warning("A_coder returned None at k=%d; skipping eval", k)
+            accumulated_plans.append(plan)
+            accumulated_scores.append(None)
+            attempts.append(
+                RefinementAttempt(
+                    plan=plan,
+                    score=None,
+                    code_block="",
+                    was_improvement=False,
+                )
+            )
+            continue
+
+        # ------------------------------------------------------------------
+        # Step 3: Replace block in ORIGINAL solution (REQ-P2I-022/023).
+        # ------------------------------------------------------------------
+        try:
+            candidate = solution.replace_block(original_code, coder_output)
+        except ValueError:
+            # REQ-P2I-033: Replacement failure → record with coder output.
+            logger.warning("replace_block failed at k=%d; code block not found", k)
+            accumulated_plans.append(plan)
+            accumulated_scores.append(None)
+            attempts.append(
+                RefinementAttempt(
+                    plan=plan,
+                    score=None,
+                    code_block=coder_output,
+                    was_improvement=False,
+                )
+            )
+            continue
+
+        # ------------------------------------------------------------------
+        # Step 4: Evaluate the candidate solution.
+        # ------------------------------------------------------------------
+        eval_result = await evaluate_solution(candidate, task, config)
+        score = eval_result.score
+
+        # ------------------------------------------------------------------
+        # Step 5: Track score and update best (REQ-P2I-025/026/027).
+        # ------------------------------------------------------------------
+        was_improvement = False
+        if score is not None and is_improvement_or_equal(
+            score, local_best_score, task.metric_direction
+        ):
+            local_best_score = score
+            local_best_solution = candidate
+            was_improvement = True
+
+        accumulated_plans.append(plan)
+        accumulated_scores.append(score)
+        attempts.append(
+            RefinementAttempt(
+                plan=plan,
+                score=score,
+                code_block=coder_output,
+                was_improvement=was_improvement,
+            )
+        )
+
+    # REQ-P2I-036/037: Construct result. improved uses strict is_improvement.
+    improved = is_improvement(local_best_score, best_score, task.metric_direction)
+
+    return InnerLoopResult(
+        best_solution=local_best_solution,
+        best_score=local_best_score,
+        attempts=attempts,
+        improved=improved,
+    )
