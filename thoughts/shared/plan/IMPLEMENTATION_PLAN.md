@@ -118,6 +118,7 @@ Implement the foundational configuration Pydantic models in `src/mle_star/models
 - [ ] `PipelineConfig` includes `permission_mode: str = "bypassPermissions"` (REQ-OR-009)
 - [ ] `PipelineConfig` includes `model: str = "sonnet"` (REQ-OR-044)
 - [ ] `PipelineConfig` includes `log_level: str = "INFO"` (REQ-OR-047)
+- [ ] `PipelineConfig` includes `log_file: str | None = None` for optional file handler (REQ-OR-047)
 - [ ] `PipelineConfig` includes `phase_time_budget: PhaseTimeBudget | None = None` where `PhaseTimeBudget` defines proportional time allocation (Phase 1: 10%, Phase 2: 65%, Phase 3: 15%, Finalization: 10%) (REQ-OR-025)
 - [ ] `PipelineConfig(num_retrieved_models=0)` raises `ValidationError`
 - [ ] Round-trip JSON serialization preserves all `PipelineConfig` field values
@@ -414,7 +415,7 @@ Implement `verify_submission(working_dir, expected_filename)` to check that `sub
 - [ ] `verify_submission()` returns `True` when valid submission.csv exists and is non-empty
 - [ ] `verify_submission()` returns `False` when file missing or invalid
 - [ ] `get_submission_info()` returns dict with row count, column names, file size
-- [ ] `evaluate_batch()` evaluates multiple solutions **sequentially** (REQ-EX-020), not concurrently
+- [ ] `evaluate_batch()` evaluates multiple solutions **sequentially** (REQ-EX-026), not concurrently
 - [ ] `rank_solutions()` returns solutions sorted by score per metric direction; None scores at end
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
@@ -888,6 +889,7 @@ Implement A_test agent (Figure 25) and `generate_test_submission(client, task, c
 
 ### Acceptance Criteria
 - [ ] `generate_test_submission()` invokes A_test agent with minimal-modification instruction
+- [ ] `clean_output_directory()` called before test script execution to clear `./final/` (REQ-FN-020)
 - [ ] Test script executed with FULL timeout (REQ-FN-021)
 - [ ] `verify_submission()` then `get_submission_info()` used to validate output
 - [ ] `evaluate_with_retry()` used for error recovery with leakage check (REQ-SF-022)
@@ -1125,6 +1127,24 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 ---
 
 ## Changelog
+
+### 2026-02-21 (v8)
+
+Re-analysis of all 36 spec files against v7 plan. Codebase still empty (skeleton CLI only) — all 48 tasks remain pending.
+
+**Gaps fixed:**
+1. **Task 03 (Core configuration models)**: Added `log_file: str | None = None` field to PipelineConfig acceptance criteria per REQ-OR-047 ("if PipelineConfig.log_file is set, append logs to the specified file"). This optional field was missing from PipelineConfig despite being specified in the orchestrator spec.
+2. **Task 17 (Batch evaluation)**: Corrected cross-reference typo — `evaluate_batch()` sequential requirement references REQ-EX-026, not REQ-EX-020 (which is `request_subsample_extraction`). Comment-only fix; no behavioral change.
+3. **Task 39 (Test submission)**: Added explicit `clean_output_directory()` step before test script execution per REQ-FN-020 ("clean ./final/ first"). The clean step was implied by the orchestration sequence in Task 40 but not listed in Task 39's own acceptance criteria.
+
+**Verified correct (no change needed):**
+- All 436 requirements still covered across 48 tasks
+- Requirement Coverage table unchanged
+- Task priorities and dependencies unchanged
+- All previously documented cross-cutting constraints remain accurate
+- REQ-OR-006 vs REQ-SF-024 spec discrepancy (A_data output_schema) correctly resolved in favor of REQ-SF-024 (output_schema=None)
+
+---
 
 ### 2026-02-21 (v7)
 
