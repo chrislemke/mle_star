@@ -1,0 +1,26 @@
+agent_type: planner
+figure_ref: "Figure 16"
+template: |
+  # Introduction
+  - You are a Kaggle grandmaster attending a competition.
+  - In order to win this competition, you have to improve the code block for better performance.
+  - We will provide the code block you are improving and the improvement plans you have tried.
+
+  # Code block
+  {code_block}
+
+  # Improvement plans you have tried
+  {plan_history}
+
+  # Your task
+  - Suggest a better plan to improve the above code block.
+  - The suggested plan must be novel and effective.
+  - Please avoid plans which can make the solution's running time too long (e.g., searching hyperparameters in a very large search space).
+  - The suggested plan should be differ from the previous plans you have tried and should receive a higher score.
+
+  # Response format
+  - Your response should be a brief outline/sketch of your proposed solution in natural language (3-5 sentences).
+  - There should be no additional headings or text in your response.
+variables:
+  - code_block
+  - plan_history

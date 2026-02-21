@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 43      | 0           | 1    |
+| P1       | 42      | 0           | 2    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -92,7 +92,7 @@ Add required production dependencies to `pyproject.toml`. The project currently 
 ---
 
 ## [P1] 02. Create prompt template YAML files for all 14 agents
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -101,13 +101,13 @@ Create YAML prompt template files containing the prompt text for each of the 14 
 **Depends on:** None (content authoring only)
 
 ### Acceptance Criteria
-- [ ] YAML files exist for all 14 agent types: retriever, init, merger, ablation, summarize, extractor, coder, planner, ens_planner, ensembler, debugger, leakage, data, test
-- [ ] Leakage agent has two template variants: `detection` and `correction` (Figures 20, 21)
-- [ ] Test agent has three additional variants: `subsampling_extract` (Figure 26), `subsampling_remove` (Figure 27), and `contamination_check` (Figure 28)
-- [ ] Each template specifies: `agent_type`, `figure_ref`, `template`, `variables`
-- [ ] All `{variable}` placeholders in templates match the `variables` list
-- [ ] Total of 18 prompt templates across the YAML files (11 base + 2 leakage variants + 1 test base + 3 test variants + 1 data = 18)
-- [ ] `src/mle_star/prompts/__init__.py` exists to make prompts a proper Python package (see also Task 52)
+- [x] YAML files exist for all 14 agent types: retriever, init, merger, ablation, summarize, extractor, coder, planner, ens_planner, ensembler, debugger, leakage, data, test
+- [x] Leakage agent has two template variants: `detection` and `correction` (Figures 20, 21)
+- [x] Test agent has three additional variants: `subsampling_extract` (Figure 26), `subsampling_remove` (Figure 27), and `contamination_check` (Figure 28)
+- [x] Each template specifies: `agent_type`, `figure_ref`, `template`, `variables`
+- [x] All `{variable}` placeholders in templates match the `variables` list
+- [x] Total of 18 prompt templates across the YAML files (11 base + 2 leakage variants + 1 test base + 3 test variants + 1 data = 18)
+- [x] `src/mle_star/prompts/__init__.py` exists to make prompts a proper Python package (see also Task 52)
 
 ---
 

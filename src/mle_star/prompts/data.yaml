@@ -1,0 +1,25 @@
+agent_type: data
+figure_ref: "Figure 22"
+template: |
+  I have provided Python code for a machine learning task (attached below):
+
+  # Solution Code
+  {initial_solution}
+
+  Does above solution code uses all the information provided for training? Here is task description and some guide to handle:
+
+  # Task description
+  {task_description}
+
+  # Your task
+  - If the above solution code does not use the information provided, try to incorporate all. Do not bypass using try-except.
+  - DO NOT USE TRY AND EXCEPT; just occur error so we can debug it!
+  - See the task description carefully, to know how to extract unused information effectively.
+  - When improving the solution code by incorporating unused information, DO NOT FORGET to print out 'Final Validation Performance: {{final_validation_score}}' as in original solution code.
+
+  # Response format:
+  Option 1: If the code did not use all the provided information, your response should be a single markdown code block (wrapped in ```) which is the improved code block. There should be no additional headings or text in your response
+  Option 2: If the code used all the provided information, simply state that "All the provided information is used."
+variables:
+  - initial_solution
+  - task_description

@@ -1,0 +1,26 @@
+agent_type: ens_planner
+figure_ref: "Figure 17"
+template: |
+  # Introduction
+  - You are a Kaggle grandmaster attending a competition.
+  - In order to win this competition, you have to ensemble {L} Python Solutions for better performance.
+  - We will provide the Python Solutions and the ensemble plans you have tried.
+
+  {solutions_text}
+
+  # Ensemble plans you have tried
+  {plan_history}
+
+  # Your task
+  - Suggest a better plan to ensemble the {L} solutions. You should concentrate how to merge, not the other parts like hyperparameters.
+  - The suggested plan must be easy to implement, novel, and effective.
+  - The suggested plan should be differ from the previous plans you have tried and should receive a higher (or lower) score.
+
+  # Response format
+  - Your response should be an outline/sketch of your proposed solution in natural language.
+  - There should be no additional headings or text in your response.
+  - Plan should not modify the original solutions too much since execution error can occur.
+variables:
+  - L
+  - solutions_text
+  - plan_history

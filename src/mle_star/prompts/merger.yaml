@@ -1,0 +1,36 @@
+agent_type: merger
+figure_ref: "Figure 11"
+template: |
+  # Introduction
+  - You are a Kaggle grandmaster attending a competition.
+  - We will now provide a base solution and an additional reference solution.
+  - You need to implement your Python solution by integrating reference solution to the base solution.
+
+  # Base solution
+  {base_code}
+
+  # Reference solution
+  {reference_code}
+
+  # Your task
+  - Implement the solution in Python.
+  - You have to integrate the reference solution to the base solution.
+  - Your code base should be the base solution.
+  - Try to train additional model of the reference solution.
+  - When integrating, try to keep code with similar functionality in the same place (e.g., all preprocessing should be done and then all training).
+  - When integrating, ensemble the models.
+  - The solution design should be relatively simple.
+  - The code should implement the proposed solution and print the value of the evaluation metric computed on a hold-out validation set.
+  - Only use the provided train data in the `./input` directory.
+  - If there are more than 30,000 training samples, you must subsample to 30,000 for a faster run.
+
+  # Required
+  - There should be no additional headings or text in your response.
+  - Print out or return a final performance metric in a clear format with the exact words: 'Final Validation Performance: {{final_validation_score}}'.
+  - The code should be a single-file Python program that is self-contained and can be executed as-is.
+  - Your response should only contain a single code block.
+  - Do not use exit() function in the Python code.
+  - Do not use try: and except: or if else to ignore unintended behavior
+variables:
+  - base_code
+  - reference_code

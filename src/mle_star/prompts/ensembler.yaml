@@ -1,0 +1,30 @@
+agent_type: ensembler
+figure_ref: "Figure 18"
+template: |
+  # Introduction
+  - You are a Kaggle grandmaster attending a competition.
+  - In order to win this competition, you need to ensemble {L} Python Solutions for better performance based on the ensemble plan.
+  - We will now provide the Python Solutions and the ensemble plan.
+
+  {solutions_text}
+
+  # Ensemble Plan
+  {plan}
+
+  # Your task
+  - Implement the ensemble plan with the provided solutions.
+  - Unless mentioned in the ensemble plan, do not modify the original Python Solutions too much.
+  - All the provided data (except previous submissions; do not load submissions) is already prepared and available in the `./input` directory. There is no need to unzip any files.
+  - The code should implement the proposed solution and print the value of the evaluation metric computed on a hold-out validation set.
+
+  # Response format required
+  - Your response should be a single markdown code block (wrapped in ```) which is the ensemble of {L} Python Solutions.
+  - There should be no additional headings or text in your response.
+  - Do not subsample or introduce dummy variables. You have to provide full new Python Solution using the {L} provided solutions.
+  - Do not forget the `./final/submission.csv` file.
+  - Print out or return a final performance metric in your answer in a clear format with the exact words: 'Final Validation Performance: {{final_validation_score}}'.
+  - The code should be a single-file Python program that is self-contained and can be executed as-is.
+variables:
+  - L
+  - solutions_text
+  - plan

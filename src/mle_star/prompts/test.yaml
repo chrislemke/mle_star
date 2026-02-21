@@ -1,0 +1,96 @@
+templates:
+  - agent_type: test
+    variant:
+    figure_ref: "Figure 25"
+    template: |
+      # Introduction
+      - You are a Kaggle grandmaster attending a competition.
+      - In order to win this competition, you need to come up with an excellent solution in Python.
+      - We will now provide a task description and a Python solution.
+      - What you have to do on the solution is just loading test samples and create a submission file.
+
+      # Task description
+      {task_description}
+
+      # Python solution
+      {final_solution}
+
+      # Your task
+      - Load the test samples and create a submission file.
+      - All the provided data is already prepared and available in the `./input` directory. There is no need to unzip any files.
+      - Test data is available in the `./input` directory.
+      - Save the test predictions in a `submission.csv` file. Put the `submission.csv` into `./final` directory.
+      - You should not drop any test samples. Predict the target value for all test samples.
+      - This is a very easy task because the only thing to do is to load test samples and then replace the validation samples with the test samples. Then you can even use the full training set!
+
+      # Required
+      - Do not modify the given Python solution code too much. Try to integrate test submission with minimal changes.
+      - There should be no additional headings or text in your response.
+      - The code should be a single-file Python program that is self-contained and can be executed as-is.
+      - Your response should only contain a single code block.
+      - Do not forget the ./final/submission.csv file.
+      - Do not use exit() function in the Python code.
+      - Do not use try: and except: or if else to ignore unintended behavior.
+    variables:
+      - task_description
+      - final_solution
+
+  - agent_type: test
+    variant: subsampling_extract
+    figure_ref: "Figure 26"
+    template: |
+      # Introduction
+      - From the given Python solution, you need to extract a code block where subsampling of training samples is used. We will now provide the current Python solution.
+
+      # Current Python solution
+      {final_solution}
+
+      # Your task
+      - Extract a code block where subsampling of training samples is used.
+
+      # Response format
+      - Your response should be a single markdown code block (wrapped in ```) which is the code block.
+      - The code block should be exactly extracted from the Python script provided above.
+    variables:
+      - final_solution
+
+  - agent_type: test
+    variant: subsampling_remove
+    figure_ref: "Figure 27"
+    template: |
+      # Introduction
+      - From the given Python code block, remove the subsampling and make it to use full training samples. We will now provide the current Python code block.
+
+      # Current Python code block
+      {code_block_with_subsampling}
+
+      # Your task
+      - Remove the subsampling and make it to use full training samples.
+      - Note that all the variable including actual data is defined earlier (since you are just seeing a code block), therefore do not introduce dummy variables.
+
+      # Response format
+      - Your response should be a single markdown code block (wrapped in ```) which is the code block.
+    variables:
+      - code_block_with_subsampling
+
+  - agent_type: test
+    variant: contamination_check
+    figure_ref: "Figure 28"
+    template: |
+      Your task is to check whether the python solution is similar to the reference discussion.
+      Now we will give you reference discussion and our python solution.
+
+      # Reference discussion
+      {reference_discussion}
+
+      # Python solution
+      {final_solution}
+
+      # Your task
+      - Check whether the python solution just copy and pastes the reference discussion.
+      - If it is sufficiently novel and different, please answer 'Novel'.
+      - Otherwise, if you think it is too similar, please answer 'Same'.
+      - Your answer should be only one of 'Novel' or 'Same'.
+    variables:
+      - reference_discussion
+      - final_solution

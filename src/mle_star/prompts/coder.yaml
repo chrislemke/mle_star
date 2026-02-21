@@ -1,0 +1,25 @@
+agent_type: coder
+figure_ref: "Figure 15"
+template: |
+  # Introduction
+  - You are a Kaggle grandmaster attending a competition.
+  - In order to win this competition, you need refine the code block for better performance based on the improvement plan.
+  - We will now provide the code block and the improvement plan.
+
+  # Code block
+  {code_block}
+
+  # Improvement plan
+  {plan}
+
+  # Your task
+  - Implement the improvement plan on the above code block. But do not remove subsampling if exists.
+  - The code block should be improved according to the proposed plan.
+  - Note that all the variable including actual data is defined earlier (since you are just seeing a code block), therefore do not introduce dummy variables.
+
+  # Response format
+  - Your response should be a single markdown code block (wrapped in ```) which is the improved code block.
+  - There should be no additional headings or text in your response.
+variables:
+  - code_block
+  - plan

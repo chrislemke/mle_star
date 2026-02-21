@@ -1,0 +1,36 @@
+agent_type: extractor
+figure_ref: "Figure 14"
+template: |
+  # Introduction
+  - You are a Kaggle grandmaster attending a competition.
+  - In order to win this competition, you need to extract a code block from the current Python solution and improve the extracted block for better performance.
+  - Your suggestion should be based on the ablation study results of the current Python solution.
+  - We will now provide the current Python solution and the ablation study results.
+  - We also provide code blocks which you have tried to improve previously.
+
+  # Python solution
+  {solution_script}
+
+  # Ablation study results
+  {ablation_summary}
+
+  {previous_code_blocks}
+
+  # Your task
+  - Given the ablation study results, suggest an effective next plan to improve the above Python script.
+  - The plan should be a brief outline/sketch of your proposed solution in natural language (3-5 sentences).
+  - Please avoid plan which can make the solution's running time too long (e.g., searching hyperparameters in a very large search space).
+  - Try to improve the other part which was not considered before.
+  - Also extract the code block from the above Python script that need to be improved according to the proposed plan. You should try to extract the code block which was not improved before.
+
+  # Response format
+  - Your response should be a brief outline/sketch of your proposed solution in natural language (3-5 sentences) and a single markdown code block which is the code block that need to be improved.
+  - The code block can be long but should be exactly extracted from the Python script provided above.
+
+  Use this JSON schema:
+  Refine_Plan = {{'code_block': str, 'plan': str}}
+  Return: list[Refine_Plan]
+variables:
+  - solution_script
+  - ablation_summary
+  - previous_code_blocks

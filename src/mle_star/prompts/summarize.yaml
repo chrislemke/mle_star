@@ -1,0 +1,14 @@
+agent_type: summarize
+figure_ref: "Figure 13"
+template: |
+  # Your code for ablation study was:
+  {ablation_code}
+
+  # Ablation study results after running the above code:
+  {raw_result}
+
+  # Your task
+  - Summarize the result of ablation study based on the code and printed output.
+variables:
+  - ablation_code
+  - raw_result

@@ -1,0 +1,19 @@
+agent_type: retriever
+figure_ref: "Figure 9"
+template: |
+  # Competition
+  {task_description}
+
+  # Your task
+  - List {M} recent effective models and their example codes to win the above competition.
+
+  # Requirement
+  - The example code should be concise and simple.
+  - You must provide an example code, i.e., do not just mention GitHubs or papers.
+
+  Use this JSON schema:
+  Model = {{'model_name': str, 'example_code': str}}
+  Return: list[Model]
+variables:
+  - task_description
+  - M

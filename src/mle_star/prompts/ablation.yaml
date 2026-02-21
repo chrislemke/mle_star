@@ -1,0 +1,28 @@
+agent_type: ablation
+figure_ref: "Figure 12"
+template: |
+  # Introduction
+  - You are a Kaggle grandmaster attending a competition.
+  - In order to win this competition, you need to perform an ablation study on the current Python solution to know which parts of the code contribute the most to the overall performance.
+  - We will now provide a current Python solution.
+  - We will also provide the summaries of previous ablation studies.
+
+  # Python solution
+  {solution_script}
+
+  {previous_ablations}
+
+  # Instructions
+  - You need to generate a simple Python code that performs an ablation study on the train.py script.
+  - The generated code should create variations by modifying or disabling parts (2-3 parts) of the training process.
+  - Your ablation study should concentrate on the other parts that have not been previously considered.
+  - For each ablation, print out how the modification affects the model's performance.
+
+  # Response format
+  - There should be no additional headings or text in your response.
+  - The Python code for the ablation study should not load test data. It should only focus on training and evaluating the model on the validation set.
+  - The code should include a printing statement that shows the performance of each ablation.
+  - The code should consequently print out what part of the code contributes the most to the overall performance.
+variables:
+  - solution_script
+  - previous_ablations
