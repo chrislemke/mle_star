@@ -66,7 +66,7 @@ src/mle_star/
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
   execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline, subsampling utilities, submission verification, batch evaluation, solution ranking (Tasks 11-17)
   safety.py            # Safety modules: debugger agent, leakage agent, data agent, code block extraction (Tasks 19, 20, 21)
-  phase1.py            # Phase 1 agents: retrieve_models, generate_candidate, merge_solutions + parse_retriever_output (Task 27)
+  phase1.py            # Phase 1 agents + orchestration: retrieve_models, generate_candidate, merge_solutions, run_phase1 (Tasks 27, 28)
   phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration with safety integration (Tasks 23, 24, 25)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
@@ -89,6 +89,7 @@ tests/
   test_safety_data.py            # Tests for data usage verification agent (Task 21)
   test_safety_leakage.py         # Tests for leakage detection/correction agent (Task 20)
   test_phase1_agents.py          # Tests for Phase 1 agents: retriever, init, merger (Task 27)
+  test_phase1_orchestration.py   # Tests for run_phase1 orchestration (Task 28)
   test_phase2_inner_agents.py    # Tests for coder and planner agents (Task 23)
   test_phase2_inner_loop.py      # Tests for run_phase2_inner_loop orchestration (Task 24)
   test_phase2_inner_safety.py    # Tests for inner loop safety integration (Task 25)
@@ -107,6 +108,7 @@ tests/
 - Inner loop passes `list(accumulated_plans)` (copies) to `invoke_planner` to provide a snapshot at invocation time — passing the mutable list directly would let later mutations leak into captured references
 - Safety integration pattern in inner loop: `check_and_fix_leakage(candidate, task, client)` → `make_debug_callback(task, config, client)` → `evaluate_with_retry(candidate, task, config, debug_callback)` — leakage check runs before EVERY evaluation, debug retry handles execution errors
 - Phase 1 agent pattern: `retrieve_models` parses structured JSON via `RetrieverOutput.model_validate_json()`; `generate_candidate` and `merge_solutions` extract code via `extract_code_block()` and return `SolutionScript | None` (None on empty extraction). Empty-check uses `.strip()` for whitespace-only responses
+- Phase 1 orchestration (`run_phase1`): decomposed into `_generate_and_evaluate_candidates` + `_run_merge_loop` to stay under xenon complexity threshold B. `_CandidateResults` class accumulates candidate loop state. Merge loop uses `is_improvement_or_equal` (>= semantics) and breaks on first failure/non-improvement
 
 ---
 

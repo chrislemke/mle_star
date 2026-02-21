@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 20      | 0           | 24   |
+| P1       | 19      | 0           | 25   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -664,7 +664,7 @@ Implement three Phase 1 agent invocation functions in `src/mle_star/phase1.py`: 
 ---
 
 ## [P1] 28. Phase 1 orchestration (run_phase1, Algorithm 1)
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -673,14 +673,14 @@ Implement `run_phase1(client, task, config)` as the Phase 1 entry point implemen
 **Spec:** SRS 04 | **Reqs:** REQ-P1-018 to REQ-P1-029 | **Depends on:** Task 27
 
 ### Acceptance Criteria
-- [ ] `run_phase1()` retrieves M models and generates M candidates
-- [ ] Leakage check called on each candidate after evaluation
-- [ ] Candidates sorted by score before merge loop
-- [ ] Merge loop uses `is_improvement_or_equal()` (>=) for comparison per Algorithm 1
-- [ ] Break-on-first-failure: merge loop stops on first non-improvement OR execution failure (REQ-P1-028)
-- [ ] Single candidate (M=1 or only 1 success) skips merge loop
-- [ ] All-candidates-failed raises `RuntimeError("Phase 1 failed: all {M} candidates produced execution errors")` (REQ-P1-022)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `run_phase1()` retrieves M models and generates M candidates
+- [x] Leakage check called on each candidate after evaluation
+- [x] Candidates sorted by score before merge loop
+- [x] Merge loop uses `is_improvement_or_equal()` (>=) for comparison per Algorithm 1
+- [x] Break-on-first-failure: merge loop stops on first non-improvement OR execution failure (REQ-P1-028)
+- [x] Single candidate (M=1 or only 1 success) skips merge loop
+- [x] All-candidates-failed raises `RuntimeError("Phase 1 failed: all {M} candidates produced execution errors")` (REQ-P1-022)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
