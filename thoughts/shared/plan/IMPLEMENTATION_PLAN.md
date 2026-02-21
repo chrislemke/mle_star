@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 43      | 0           | 0    |
+| P1       | 44      | 0           | 0    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -439,16 +439,25 @@ Implement `verify_submission(working_dir, expected_filename)` to check that `sub
 **Priority:** P2
 
 ### Description
-Implement remaining execution harness requirements: `detect_error_masking(content)` advisory detection, `ExecutorStrategy` enum for selecting execution backends (REQ-EX-047), interface compliance verification (SolutionScript/EvaluationResult/TaskDescription/PipelineConfig type contracts), performance constraints (execution overhead, score parsing speed), reliability (graceful timeout, large output handling with UTF-8 `errors="replace"`), structured logging, and process group termination for orphan cleanup via `os.killpg`.
+Implement remaining execution harness requirements: `detect_error_masking(content)` advisory detection (REQ-EX-045), `ExecutorStrategy` enum for selecting execution backends (REQ-EX-034), `execute_script_via_sdk(script_path, working_dir, timeout_ms)` alternative executor using SDK Bash tool (REQ-EX-033), SDK Bash timeout cap at 600,000ms with automatic fallback to subprocess executor (REQ-EX-047), interface compliance verification (SolutionScript/EvaluationResult/TaskDescription/PipelineConfig type contracts, REQ-EX-028 to REQ-EX-032), performance constraints (execution overhead < 2s per invocation excluding script runtime REQ-EX-035, score parsing < 10ms REQ-EX-036), reliability (graceful timeout with orphan cleanup REQ-EX-037, large output handling up to 100MB with truncation REQ-EX-038, UTF-8 `errors="replace"` REQ-EX-043), structured logging (REQ-EX-039), default timeout derivation from config (REQ-EX-046), single module organization (REQ-EX-040), and subprocess-only execution constraint (REQ-EX-041).
 
 **Spec:** SRS 02 | **Reqs:** REQ-EX-028 to REQ-EX-047 | **Depends on:** Tasks 11–17
 
 ### Acceptance Criteria
-- [ ] `detect_error_masking()` identifies try/except patterns that suppress errors
-- [ ] All public functions accept/return correct Spec 01 types
-- [ ] Execution overhead < 100ms per invocation (excluding script runtime)
-- [ ] UTF-8 decoding with `errors="replace"` for subprocess output
-- [ ] Structured logging covers all execution events
+- [ ] `detect_error_masking(content)` identifies broad try/except patterns that suppress errors (REQ-EX-045)
+- [ ] `ExecutorStrategy` enum with values `"subprocess"` and `"sdk_bash"` (REQ-EX-034)
+- [ ] `execute_script_via_sdk(script_path, working_dir, timeout_ms) -> ExecutionRawResult` using SDK Bash tool interface `{"command": str, "timeout": int}` (REQ-EX-033)
+- [ ] SDK Bash executor timeout capped at 600,000ms; falls back to subprocess when timeout exceeds cap (REQ-EX-047)
+- [ ] `evaluate_solution()` accepts optional `strategy: ExecutorStrategy` parameter to select backend (REQ-EX-034)
+- [ ] All public functions accept/return correct Spec 01 types (REQ-EX-028 to REQ-EX-032)
+- [ ] `evaluate_solution()` satisfies `ScoreFunction` protocol when wrapped (REQ-EX-032)
+- [ ] Execution overhead < 2 seconds per invocation excluding script runtime (REQ-EX-035)
+- [ ] Score parsing executes in < 10ms for stdout up to 1MB (REQ-EX-036)
+- [ ] UTF-8 decoding with `errors="replace"` for subprocess output (REQ-EX-043)
+- [ ] Large output handling: up to 100MB stdout/stderr with truncation warning (REQ-EX-038)
+- [ ] Default timeout derived from `config.time_limit_seconds` when no override provided (REQ-EX-046)
+- [ ] Structured logging covers all execution events (REQ-EX-039)
+- [ ] No persistent state between executions (REQ-EX-042)
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
 ---
@@ -1197,11 +1206,38 @@ Create `src/mle_star/prompts/__init__.py` to make the prompts directory a proper
 | — — Project Setup | `pyproject.toml`, `prompts/` | — | 01–02, 52 (3) | — | 3 |
 | — — Test Infrastructure | `tests/conftest.py` | — | 51 (1) | — | 1 |
 | — — CLI Integration | `cli.py` | — | 50 (1) | — | 1 |
-| **Total** | | **436** | **43** | **8** | **51** |
+| **Total** | | **436** | **44** | **8** | **52** |
 
 ---
 
 ## Changelog
+
+### 2026-02-21 (v13)
+
+Re-analysis of all 36 spec files, full implementation plan (v12), and codebase against requirements. Codebase still empty (skeleton CLI only) — all 52 tasks remain pending.
+
+**Bugs fixed:**
+1. **Summary table count error**: P1 was 43, should be 44. Total was 51, should be 52. The v12 changelog added 3 tasks (50, 51, 52) to the previous 49, yielding 52 total. Of those, 8 are P2 (tasks 18, 22, 26, 30, 34, 37, 41, 49), leaving 44 P1. The off-by-one propagated through the summary table and the Requirement Coverage total row. Both corrected.
+2. **Requirement Coverage table total**: Bottom row said "43 P1, 8 P2, 51 total" but individual rows summed to 44 P1, 8 P2, 52 total. Corrected to match.
+
+**Improvements:**
+1. **Task 18 (Execution harness constraints) — expanded acceptance criteria**: Added explicit acceptance criteria for SDK Bash executor requirements that were within the task's scope (REQ-EX-028 to REQ-EX-047) but only partially reflected in the acceptance criteria:
+   - `execute_script_via_sdk()` function using SDK Bash tool (REQ-EX-033)
+   - `ExecutorStrategy` enum with subprocess/sdk_bash values (REQ-EX-034)
+   - SDK Bash 600,000ms timeout cap with automatic subprocess fallback (REQ-EX-047)
+   - `evaluate_solution()` accepting optional `strategy` parameter (REQ-EX-034)
+   - `ScoreFunction` protocol compliance (REQ-EX-032)
+   - Expanded performance criteria with specific thresholds from spec (REQ-EX-035/036)
+   - Large output handling (REQ-EX-038), default timeout derivation (REQ-EX-046), no persistent state (REQ-EX-042)
+   - Description expanded with full REQ-ID cross-references for traceability
+
+**Verified correct (no change needed):**
+- All 436 requirements from specs 01-09 still covered by 52 tasks
+- Task priorities and dependencies unchanged
+- All cross-cutting constraints remain accurate
+- No new requirements discovered from spec re-read
+
+---
 
 ### 2026-02-21 (v12)
 
@@ -1215,7 +1251,7 @@ Re-analysis of all 36 spec files, full implementation plan (v11), and codebase a
 2. **Task 51 — Shared test infrastructure (P1)**: Every task from Layer 2 onward needs to mock the SDK client, create test `SolutionScript`/`TaskDescription`/`PipelineConfig` instances, and set up temporary working directories. Without shared fixtures, each test module would independently reimplement these mocks. Task 51 centralizes this in `tests/conftest.py`. Depends on Tasks 03-05 (model layer).
 3. **Task 52 — Prompts package initialization (P1)**: Task 02 creates YAML files in `src/mle_star/prompts/` but the directory needs an `__init__.py` to be a proper Python package. Without it, `importlib.resources.files("mle_star.prompts")` fails at runtime and `PromptRegistry` (Task 08) cannot discover template files. Also added a cross-reference in Task 02's acceptance criteria.
 
-**Updated counts:** 43 P1 + 8 P2 = 51 total tasks covering 436 requirements.
+**Updated counts:** 44 P1 + 8 P2 = 52 total tasks covering 436 requirements. *(Note: v12 originally stated 43 P1 / 51 total due to a counting error; corrected in v13.)*
 
 **Verified correct (no change needed):**
 - All 436 requirements from specs 01-09 still covered
