@@ -44,6 +44,8 @@ Layer 5: Spec 09 — Orchestrator (depends on all above)
 - REQ-SF-006/008 layering: `debug_solution()` returns the final attempted pair (may still be broken); the **calling code** (evaluate_with_retry / phase orchestration) maintains the reference to the last known working version and performs fallback
 - Score comparison semantics vary by context: `is_improvement_or_equal()` (>=) for best-score tracking within loops AND outer loop `s_final` update (REQ-P2O-027); `is_improvement()` (strict >) ONLY for `InnerLoopResult.improved` flag
 
+**SDK client threading:** Several spec function signatures omit the `client` parameter despite requiring SDK agent invocation (REQ-SF-006, REQ-P2I-005, REQ-P2I-013, REQ-P2I-016, REQ-FN-009, REQ-FN-019, REQ-FN-034). All functions that invoke agents shall receive `client: ClaudeSDKClient` as a parameter. This applies to: phase-level entry points (`run_phase1`, `run_phase2_outer_loop`, `run_phase2_inner_loop`, `run_phase3`, `run_finalization`) and agent invocation functions (`invoke_coder`, `invoke_planner`, `debug_solution`, `make_debug_callback`, `remove_subsampling`, `generate_test_submission`, `check_contamination`). The plan adds `client` to these signatures as an implementation necessity; specs that omit it are treated as under-specified.
+
 **Score mutation pattern:** The execution harness does NOT mutate `SolutionScript` (REQ-EX-016). Phase orchestration code is responsible for updating `solution.score = result.score` after evaluation. `SolutionScript` is non-frozen (REQ-DM-039) specifically to allow this.
 
 **Session ID strategy:** Phase 1: `"phase-1"`, Phase 2 paths: `"path-{i}"` (REQ-OR-021), Phase 3: `"phase-3"`, Finalization: `"finalization"`. Phase 2 paths may fork from Phase 1 session via `fork_session=True`.
@@ -119,7 +121,8 @@ Implement the foundational configuration Pydantic models in `src/mle_star/models
 - [ ] `PipelineConfig` includes `model: str = "sonnet"` (REQ-OR-044)
 - [ ] `PipelineConfig` includes `log_level: str = "INFO"` (REQ-OR-047)
 - [ ] `PipelineConfig` includes `log_file: str | None = None` for optional file handler (REQ-OR-047)
-- [ ] `PipelineConfig` includes `phase_time_budget: PhaseTimeBudget | None = None` where `PhaseTimeBudget` defines proportional time allocation (Phase 1: 10%, Phase 2: 65%, Phase 3: 15%, Finalization: 10%) (REQ-OR-025)
+- [ ] `PhaseTimeBudget` model defined in `models.py` with fields: `phase1_pct: float = 10.0`, `phase2_pct: float = 65.0`, `phase3_pct: float = 15.0`, `finalization_pct: float = 10.0`; validator ensures sum equals 100.0; frozen model
+- [ ] `PipelineConfig` includes `phase_time_budget: PhaseTimeBudget | None = None` (REQ-OR-025)
 - [ ] `PipelineConfig(num_retrieved_models=0)` raises `ValidationError`
 - [ ] Round-trip JSON serialization preserves all `PipelineConfig` field values
 - [ ] `TaskType` enum has 8 values; `DataModality` has 5; `MetricDirection` has 2
@@ -449,7 +452,7 @@ Implement remaining execution harness requirements: `detect_error_masking(conten
 **Priority:** P1
 
 ### Description
-Implement the A_debugger agent in `src/mle_star/safety.py`: agent definition with prompt template from registry (Figure 19), `extract_code_block(response)` utility to extract the longest fenced code block (or full response if no fences), `debug_solution(solution, traceback, task, config)` (async) retry loop that invokes A_debugger up to max_debug_attempts times, `make_debug_callback(task, config)` factory returning an async callback compatible with `evaluate_with_retry`. Includes subsampling preservation in debug prompt, and appending "Final Validation Performance" print if missing from debugged code (REQ-SF-010).
+Implement the A_debugger agent in `src/mle_star/safety.py`: agent definition with prompt template from registry (Figure 19), `extract_code_block(response)` utility to extract the longest fenced code block (or full response if no fences), `debug_solution(solution, traceback, task, config, client)` (async) retry loop that invokes A_debugger up to max_debug_attempts times, `make_debug_callback(task, config, client)` factory returning an async callback compatible with `evaluate_with_retry`. Includes subsampling preservation in debug prompt, and appending "Final Validation Performance" print if missing from debugged code (REQ-SF-010).
 
 **Important layering note:** `debug_solution()` returns the final `(SolutionScript, EvaluationResult)` pair per REQ-SF-006 — this may still be a broken solution if all retries failed. The **calling code** (phase orchestration) is responsible for maintaining a reference to the last known working version and performing fallback per REQ-SF-008. `make_debug_callback()` wraps a single debugger invocation (no retry loop) for use with `evaluate_with_retry()`.
 
@@ -462,7 +465,7 @@ Implement the A_debugger agent in `src/mle_star/safety.py`: agent definition wit
 - [ ] `debug_solution()` returns the final `(SolutionScript, EvaluationResult)` pair (REQ-SF-006) — may still be broken
 - [ ] Calling code maintains last known working reference for fallback (REQ-SF-008); if no previous working version exists, returns the failed solution with `is_executable=False`
 - [ ] If debugged code lacks "Final Validation Performance" pattern, it is appended (REQ-SF-010)
-- [ ] `make_debug_callback()` returns async callable wrapping a SINGLE debugger invocation (no retry loop) for `evaluate_with_retry`
+- [ ] `make_debug_callback(task, config, client)` returns async callable wrapping a SINGLE debugger invocation (no retry loop) for `evaluate_with_retry`
 - [ ] Debug prompt includes subsampling preservation instruction ("Do not remove subsampling if exists")
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
@@ -536,14 +539,14 @@ Implement remaining safety module requirements: agent default configs inclusion 
 **Priority:** P1
 
 ### Description
-Implement `invoke_coder(code_block, plan, ...)` and `invoke_planner(code_block, plans, scores, ...)` functions in `src/mle_star/phase2_inner.py`. A_coder (REQ-P2I-001 to REQ-P2I-007) receives a code block + plan and returns modified code. A_planner (REQ-P2I-008 to REQ-P2I-015) receives a code block + previous plan/score history and returns a new refinement plan (3-5 sentences). History format uses Plan:/Score: labels; failed scores displayed as "N/A (evaluation failed)". Both use prompt templates from PromptRegistry and extract code/text from agent responses.
+Implement `invoke_coder(code_block, plan, client)` and `invoke_planner(code_block, plans, scores, client)` functions in `src/mle_star/phase2_inner.py`. A_coder (REQ-P2I-001 to REQ-P2I-007) receives a code block + plan and returns modified code. A_planner (REQ-P2I-008 to REQ-P2I-015) receives a code block + previous plan/score history and returns a new refinement plan (3-5 sentences). History format uses Plan:/Score: labels; failed scores displayed as "N/A (evaluation failed)". Both use prompt templates from PromptRegistry and extract code/text from agent responses.
 
 **Spec:** SRS 06 | **Reqs:** REQ-P2I-001 to REQ-P2I-015 | **Depends on:** Spec 01, Spec 02, Spec 03
 
 ### Acceptance Criteria
-- [ ] `invoke_coder()` sends code_block + plan to A_coder and returns modified code string
+- [ ] `invoke_coder(code_block, plan, client)` sends code_block + plan to A_coder via SDK client and returns modified code string
 - [ ] `invoke_coder()` returns `None` on agent failure (unparseable response)
-- [ ] `invoke_planner()` sends code_block + history to A_planner and returns plan string
+- [ ] `invoke_planner(code_block, plans, scores, client)` sends code_block + history to A_planner via SDK client and returns plan string
 - [ ] `invoke_planner()` formats history with Plan:/Score: labels; None scores as "N/A (evaluation failed)"
 - [ ] `invoke_planner()` returns `None` on agent failure (empty response)
 - [ ] Both functions load prompts from `PromptRegistry`
@@ -556,12 +559,12 @@ Implement `invoke_coder(code_block, plan, ...)` and `invoke_planner(code_block, 
 **Priority:** P1
 
 ### Description
-Implement `run_phase2_inner_loop(solution, code_block, initial_plan, best_score, task, config)` that executes exactly K inner iterations per Algorithm 2. First iteration (k=0) uses the initial plan from A_extractor — NO planner call (REQ-P2I-018); subsequent iterations (k=1..K-1) invoke A_planner with full history of all previous plans and scores (REQ-P2I-020). Each attempt: A_coder always receives ORIGINAL c_t (REQ-P2I-021), `replace_block` against ORIGINAL solution s_t (REQ-P2I-022/023), evaluate, track score. Uses `is_improvement_or_equal()` for best-score update. `InnerLoopResult.improved` uses strict `is_improvement()`.
+Implement `run_phase2_inner_loop(client, solution, code_block, initial_plan, best_score, task, config)` that executes exactly K inner iterations per Algorithm 2. First iteration (k=0) uses the initial plan from A_extractor — NO planner call (REQ-P2I-018); subsequent iterations (k=1..K-1) invoke A_planner with full history of all previous plans and scores (REQ-P2I-020). Each attempt: A_coder always receives ORIGINAL c_t (REQ-P2I-021), `replace_block` against ORIGINAL solution s_t (REQ-P2I-022/023), evaluate, track score. Uses `is_improvement_or_equal()` for best-score update. `InnerLoopResult.improved` uses strict `is_improvement()`.
 
 **Spec:** SRS 06 | **Reqs:** REQ-P2I-016 to REQ-P2I-029 | **Depends on:** Task 23
 
 ### Acceptance Criteria
-- [ ] `run_phase2_inner_loop()` executes exactly K iterations (failed ones still count, REQ-P2I-029)
+- [ ] `run_phase2_inner_loop(client, solution, code_block, initial_plan, best_score, task, config)` executes exactly K iterations (failed ones still count, REQ-P2I-029)
 - [ ] k=0: uses `initial_plan` directly, NO A_planner call (REQ-P2I-018)
 - [ ] k≥1: A_planner receives full history of ALL previous plans/scores (REQ-P2I-020)
 - [ ] A_coder always receives original `code_block.content` (REQ-P2I-021), never a previous attempt's code
@@ -751,11 +754,13 @@ Implement A_summarize and A_extractor agents. A_summarize (REQ-P2O-008 to REQ-P2
 **Priority:** P1
 
 ### Description
-Implement `run_phase2_outer_loop(client, task, config, initial_solution, session_id)` executing T outer iterations per Algorithm 2. Each iteration: (1) run ablation, (2) summarize → accumulate T_abl, (3) extract code blocks (FIRST plan's code_block = c_t, FIRST plan = p_0), (4) call `run_phase2_inner_loop()`, (5) update best solution only if inner loop `improved` (strict >). Track state: T_abl (accumulated ablation summaries), C (refined code blocks). Construct `Phase2Result` with all fields.
+Implement `run_phase2_outer_loop(client, task, config, initial_solution, initial_score, session_id)` executing T outer iterations per Algorithm 2. `initial_score: float` is passed explicitly (REQ-P2O-019) because `SolutionScript.score` is `float | None` but `h_best` must be a guaranteed `float`. Each iteration: (1) run ablation, (2) summarize → accumulate T_abl, (3) extract code blocks (FIRST plan's code_block = c_t, FIRST plan = p_0), (4) call `run_phase2_inner_loop()`, (5) update best solution when inner loop's best score passes `is_improvement_or_equal()` (>= semantics, REQ-P2O-027). Track state: T_abl (accumulated ablation summaries), C (refined code blocks). Construct `Phase2Result` with all fields.
 
 **Spec:** SRS 05 | **Reqs:** REQ-P2O-019 to REQ-P2O-030 | **Depends on:** Tasks 31, 32, Layer 4a (Phase 2 Inner)
 
 ### Acceptance Criteria
+- [ ] Signature: `run_phase2_outer_loop(client, task, config, initial_solution, initial_score, session_id)` — `initial_score: float` required per REQ-P2O-019
+- [ ] `h_best` initialized from `initial_score` parameter (not from `initial_solution.score`) to avoid `None` check
 - [ ] Executes exactly T outer iterations
 - [ ] Each iteration: ablation → summarize → extract → inner loop
 - [ ] Uses FIRST plan from ExtractorOutput: c_t = plans[0].code_block, p_0 = plans[0].plan
@@ -865,14 +870,14 @@ Implement remaining Phase 3 requirements: performance (orchestration overhead), 
 **Priority:** P1
 
 ### Description
-Implement subsampling removal pipeline in `src/mle_star/finalization.py`. Uses two A_test agent calls with different variants: (1) variant "subsampling_extract" (Figure 26) identifies the subsampling code block, (2) variant "subsampling_remove" (Figure 27) generates replacement code without subsampling. `remove_subsampling(solution, task, client)` (async) orchestrates both steps, applies fix via `SolutionScript.replace_block()`. No-subsampling passthrough: if no subsampling detected (empty block or not found in content), returns original solution.
+Implement subsampling removal pipeline in `src/mle_star/finalization.py`. Uses two A_test agent calls with different variants: (1) variant "subsampling_extract" (Figure 26) identifies the subsampling code block, (2) variant "subsampling_remove" (Figure 27) generates replacement code without subsampling. `remove_subsampling(client, solution, task)` (async) orchestrates both steps, applies fix via `SolutionScript.replace_block()`. No-subsampling passthrough: if no subsampling detected (empty block or not found in content), returns original solution.
 
 **Spec:** SRS 08 | **Reqs:** REQ-FN-001 to REQ-FN-009 | **Depends on:** Spec 01, Spec 02, Spec 03
 
 ### Acceptance Criteria
 - [ ] Extraction uses A_test with `variant="subsampling_extract"` (Figure 26)
 - [ ] Removal uses A_test with `variant="subsampling_remove"` (Figure 27)
-- [ ] `remove_subsampling()` applies fix via `replace_block()`
+- [ ] `remove_subsampling(client, solution, task)` applies fix via `replace_block()`
 - [ ] No-subsampling detected (empty block or not substring) → returns original solution unchanged
 - [ ] Tests pass with ≥90% coverage; mypy clean
 
@@ -883,12 +888,12 @@ Implement subsampling removal pipeline in `src/mle_star/finalization.py`. Uses t
 **Priority:** P1
 
 ### Description
-Implement A_test agent (Figure 25) and `generate_test_submission(client, task, config, solution)` (async). The test agent takes a validated solution and minimally modifies it to produce test predictions: uses full training set (no subsampling), reads test data from correct location, writes `./final/submission.csv` covering all test samples. Execute with FULL timeout (not reduced, REQ-FN-021), verify submission file. Retry with debug on failure (up to max_debug_attempts). Fallback to best validation solution if all retries fail (REQ-FN-025).
+Implement A_test agent (Figure 25) and `generate_test_submission(client, task, solution)` (async). The test agent takes a validated solution and minimally modifies it to produce test predictions: uses full training set (no subsampling), reads test data from correct location, writes `./final/submission.csv` covering all test samples. Execute with FULL timeout (not reduced, REQ-FN-021), verify submission file. Retry with debug on failure (up to max_debug_attempts). Fallback to best validation solution if all retries fail (REQ-FN-025).
 
 **Spec:** SRS 08 | **Reqs:** REQ-FN-010 to REQ-FN-025 | **Depends on:** Task 38
 
 ### Acceptance Criteria
-- [ ] `generate_test_submission()` invokes A_test agent with minimal-modification instruction
+- [ ] `generate_test_submission(client, task, solution)` invokes A_test agent via SDK client with minimal-modification instruction
 - [ ] `clean_output_directory()` called before test script execution to clear `./final/` (REQ-FN-020)
 - [ ] Test script executed with FULL timeout (REQ-FN-021)
 - [ ] `verify_submission()` then `get_submission_info()` used to validate output
@@ -904,14 +909,14 @@ Implement A_test agent (Figure 25) and `generate_test_submission(client, task, c
 **Priority:** P1
 
 ### Description
-Implement `check_contamination(solution, reference_discussions, client)` (async) using a contamination check variant of A_test agent (`AgentType.test`, not A_data) with `DataContaminationResult` structured output (Figure 28, REQ-FN-026). **Contamination check variant uses `tools=None` and `output_schema=DataContaminationResult`**, differing from the default A_test config (`tools=["Read"]`, `output_schema=None`) — override at invocation time per REQ-FN-048. Multiple references: ANY "Same" verdict → overall "Same". Implement `run_finalization(solution, task, config, phase1_result, phase2_results, phase3_result, reference_discussions=None)` entry point per REQ-FN-034. Pipeline: (1) remove subsampling, (2) generate test submission, (3) leakage check on test script (REQ-SF-022), (4) evaluate with full timeout, (5) verify submission, (6) fallback handling if execution failed (REQ-FN-025), (7) check contamination (optional, skipped if no references), (8) construct FinalResult with all phase results (REQ-FN-036).
+Implement `check_contamination(client, solution, reference_discussions)` (async) using a contamination check variant of A_test agent (`AgentType.test`, not A_data) with `DataContaminationResult` structured output (Figure 28, REQ-FN-026). **Contamination check variant uses `tools=None` and `output_schema=DataContaminationResult`**, differing from the default A_test config (`tools=["Read"]`, `output_schema=None`) — override at invocation time per REQ-FN-048. Multiple references: ANY "Same" verdict → overall "Same". Implement `run_finalization(client, solution, task, config, phase1_result, phase2_results, phase3_result, reference_discussions=None)` entry point per REQ-FN-034 (with `client` added per cross-cutting SDK threading convention). Pipeline: (1) remove subsampling, (2) generate test submission, (3) leakage check on test script (REQ-SF-022), (4) evaluate with full timeout, (5) verify submission, (6) fallback handling if execution failed (REQ-FN-025), (7) check contamination (optional, skipped if no references), (8) construct FinalResult with all phase results (REQ-FN-036).
 
 **Spec:** SRS 08 | **Reqs:** REQ-FN-026 to REQ-FN-036 | **Depends on:** Tasks 38, 39
 
 ### Acceptance Criteria
 - [ ] `check_contamination()` returns `DataContaminationResult` or `None` (when no references)
 - [ ] Multiple references: ANY "Same" → overall "Same" verdict
-- [ ] `run_finalization()` signature matches REQ-FN-034: includes `phase1_result`, `phase2_results`, `phase3_result` parameters
+- [ ] `run_finalization(client, solution, task, config, phase1_result, phase2_results, phase3_result, reference_discussions=None)` signature matches REQ-FN-034 (with `client` added)
 - [ ] `run_finalization()` executes full pipeline: remove subsampling → test submission → leakage check → execute with retry → verify → fallback → contamination → FinalResult
 - [ ] `FinalResult` correctly assembled with all phase results per REQ-FN-036
 - [ ] Contamination check skipped when no reference discussions provided
@@ -993,7 +998,7 @@ Implement L parallel Phase 2 paths using `asyncio.gather(*tasks, return_exceptio
 
 ### Acceptance Criteria
 - [ ] L paths run concurrently via `asyncio.gather(return_exceptions=True)`
-- [ ] Each path receives a deep copy of Phase 1 solution (REQ-OR-020)
+- [ ] Each path receives a deep copy of Phase 1 solution (REQ-OR-020) and `Phase1Result.initial_score` as the `initial_score` parameter
 - [ ] Each path uses separate working directory `./work/path-{i}/` and session ID `"path-{i}"` (REQ-OR-020/021)
 - [ ] Session forking from Phase 1 session supported (REQ-OR-021)
 - [ ] Failed path does not affect other paths (REQ-OR-022)
@@ -1127,6 +1132,48 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 ---
 
 ## Changelog
+
+### 2026-02-21 (v10)
+
+Re-analysis of all 36 spec files against v9 plan. Codebase still empty (skeleton CLI only) — all 48 tasks remain pending.
+
+**Bugs fixed:**
+1. **Task 33 (Outer loop orchestration) — description/signature mismatch**: The description's step 5 still said "update best solution only if inner loop `improved` (strict >)" despite the v6 correction to the acceptance criteria. This created a contradiction within the same task — the description implied strict `>` while the acceptance criteria correctly specified `is_improvement_or_equal()` (>=). Fixed description to match the acceptance criteria and REQ-P2O-027.
+2. **Task 33 (Outer loop orchestration) — missing `initial_score` parameter**: The function signature `run_phase2_outer_loop(client, task, config, initial_solution, session_id)` was missing the `initial_score: float` parameter that REQ-P2O-019 explicitly includes. This parameter matters because `SolutionScript.score` is `float | None` but `h_best` must be a guaranteed `float` for the outer loop's comparison logic. Fixed signature to `run_phase2_outer_loop(client, task, config, initial_solution, initial_score, session_id)`. Also updated Task 44 to note that `Phase1Result.initial_score` is passed to each Phase 2 path.
+
+**Verified correct (no change needed):**
+- All 436 requirements still covered across 48 tasks
+- Requirement Coverage table unchanged
+- Task priorities and dependencies unchanged
+- All previously documented cross-cutting constraints remain accurate
+- REQ-P2I-036 (`InnerLoopResult`) correctly mapped to Task 10 (models layer)
+- REQ-SF-034 type contract signatures correctly augmented with `client` and `task` per cross-cutting convention
+- REQ-DM-050 (no external deps beyond Pydantic for models module) naturally satisfied by design
+
+---
+
+### 2026-02-21 (v9)
+
+Re-analysis of all 36 spec files against v8 plan. Codebase still empty (skeleton CLI only) — all 48 tasks remain pending.
+
+**Gaps fixed:**
+1. **SDK client parameter threading**: Added cross-cutting note documenting that all functions invoking SDK agents must receive `client: ClaudeSDKClient` as a parameter. Several spec function signatures omit `client` (REQ-SF-006, REQ-P2I-005, REQ-P2I-013, REQ-P2I-016, REQ-FN-009, REQ-FN-019, REQ-FN-034) despite requiring agent invocation — these are treated as under-specified and the plan adds `client` to their signatures.
+2. **Task 03 (PhaseTimeBudget)**: Added explicit field definitions for `PhaseTimeBudget` model (`phase1_pct`, `phase2_pct`, `phase3_pct`, `finalization_pct` with sum=100 validator). Previously, Task 03 referenced `PhaseTimeBudget` as a type on `PipelineConfig` without defining its fields, which would force implementers to infer field names.
+3. **Task 19 (Debugger)**: Added `client` to `debug_solution(solution, traceback, task, config, client)` and `make_debug_callback(task, config, client)` signatures. These functions invoke A_debugger via the SDK but the spec signatures (REQ-SF-006/007) omitted `client`.
+4. **Task 23 (Coder/planner agents)**: Replaced `...` with explicit `client` parameter in `invoke_coder(code_block, plan, client)` and `invoke_planner(code_block, plans, scores, client)` signatures. Spec signatures (REQ-P2I-005/013) omitted `client`.
+5. **Task 24 (Inner loop orchestration)**: Added `client` as first parameter to `run_phase2_inner_loop(client, solution, code_block, initial_plan, best_score, task, config)`. The spec signature (REQ-P2I-016) omitted `client` but the function calls `invoke_coder`, `invoke_planner`, `check_and_fix_leakage`, and `make_debug_callback`, all of which require the SDK client.
+6. **Task 38 (Subsampling removal)**: Normalized `remove_subsampling` signature to `remove_subsampling(client, solution, task)` with `client` as first parameter, consistent with the cross-cutting convention. Spec signature (REQ-FN-009) omitted `client`.
+7. **Task 39 (Test submission)**: Removed `config` from `generate_test_submission(client, task, solution)` signature to match REQ-FN-019 (which specifies only task + solution inputs). Added `client` per cross-cutting convention.
+8. **Task 40 (Contamination/finalization)**: Added `client` as first parameter to both `check_contamination(client, solution, reference_discussions)` and `run_finalization(client, solution, task, config, ...)`. Spec signature for `run_finalization` (REQ-FN-034) omitted `client` but the function invokes `remove_subsampling`, `generate_test_submission`, `check_and_fix_leakage`, `make_debug_callback`, and `check_contamination`, all requiring the SDK client.
+
+**Verified correct (no change needed):**
+- All 436 requirements still covered across 48 tasks
+- Requirement Coverage table unchanged
+- Task priorities and dependencies unchanged
+- All previously documented cross-cutting constraints remain accurate
+- Phase-level entry points `run_phase1(client, ...)`, `run_phase2_outer_loop(client, ...)`, and `run_phase3(client, ...)` already had `client` — no change needed
+
+---
 
 ### 2026-02-21 (v8)
 
