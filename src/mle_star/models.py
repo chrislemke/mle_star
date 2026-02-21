@@ -5,12 +5,13 @@ all pipeline phases. This module is the foundational type system referenced
 by all other modules (execution, safety, phases, orchestrator).
 
 Refs:
-    SRS 01a — Data Models Core (REQ-DM-001 through REQ-DM-007).
-    IMPLEMENTATION_PLAN.md Task 03.
+    SRS 01a — Data Models Core (REQ-DM-001 through REQ-DM-012).
+    IMPLEMENTATION_PLAN.md Tasks 03, 04.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
@@ -171,3 +172,114 @@ class TaskDescription(BaseModel):
     description: str
     data_dir: str = "./input"
     output_dir: str = "./final"
+
+
+# ---------------------------------------------------------------------------
+# Solution & Code Block Models (REQ-DM-008 through REQ-DM-012)
+# ---------------------------------------------------------------------------
+
+
+class SolutionPhase(StrEnum):
+    """Pipeline phase that produced a solution script (REQ-DM-008).
+
+    Tracks the provenance of each solution through the five pipeline stages.
+    """
+
+    INIT = "init"
+    MERGED = "merged"
+    REFINED = "refined"
+    ENSEMBLE = "ensemble"
+    FINAL = "final"
+
+
+class SolutionScript(BaseModel):
+    """Wrapper around a single-file Python solution script (REQ-DM-009).
+
+    The only non-frozen model — mutable so that phase orchestration code
+    can update ``score`` after evaluation (REQ-DM-039).
+
+    Attributes:
+        content: Full Python source code of the solution.
+        phase: Which pipeline phase produced this script.
+        score: Evaluation score (None if not yet evaluated).
+        is_executable: Whether the script ran without errors.
+        source_model: Name of the model used (if from Phase 1).
+        created_at: Timestamp of creation (auto-set to UTC now).
+    """
+
+    model_config = ConfigDict(frozen=False)
+
+    content: str
+    phase: SolutionPhase
+    score: float | None = None
+    is_executable: bool = True
+    source_model: str | None = None
+    created_at: datetime = None  # type: ignore[assignment]
+
+    @model_validator(mode="after")
+    def _set_created_at_default(self) -> SolutionScript:
+        """Auto-set created_at to UTC now when not provided."""
+        if self.created_at is None:
+            self.created_at = datetime.now(UTC)
+        return self
+
+    def replace_block(self, old: str, new: str) -> SolutionScript:
+        """Return a new SolutionScript with the first occurrence of *old* replaced by *new*.
+
+        Args:
+            old: Substring to find in content.
+            new: Replacement text.
+
+        Returns:
+            A new SolutionScript with the substitution applied.
+
+        Raises:
+            ValueError: If *old* is not found in content.
+        """
+        if old != "" and old not in self.content:
+            msg = f"Block not found in solution content: {old!r}"
+            raise ValueError(msg)
+        replaced = self.content.replace(old, new, 1)
+        return SolutionScript(
+            content=replaced,
+            phase=self.phase,
+            score=self.score,
+            is_executable=self.is_executable,
+            source_model=self.source_model,
+        )
+
+
+class CodeBlockCategory(StrEnum):
+    """Semantic category of a code block extracted from a solution (REQ-DM-011).
+
+    Eight categories matching the types of code regions identified by
+    the extractor agent during targeted refinement.
+    """
+
+    PREPROCESSING = "preprocessing"
+    FEATURE_ENGINEERING = "feature_engineering"
+    MODEL_SELECTION = "model_selection"
+    TRAINING = "training"
+    HYPERPARAMETER_TUNING = "hyperparameter_tuning"
+    ENSEMBLE = "ensemble"
+    POSTPROCESSING = "postprocessing"
+    OTHER = "other"
+
+
+class CodeBlock(BaseModel):
+    """An exact code block substring extracted from a solution script (REQ-DM-012).
+
+    Represents one targeted region of code identified by the extractor agent
+    for refinement during Phase 2.
+
+    Attributes:
+        content: Exact code block text extracted from the solution.
+        category: Semantic category of the code block.
+        outer_step: Outer loop step t at which this block was extracted.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    content: str
+    category: CodeBlockCategory | None = None
+    outer_step: int | None = None

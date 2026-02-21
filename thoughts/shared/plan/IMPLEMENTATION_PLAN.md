@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 41      | 0           | 3    |
+| P1       | 40      | 0           | 4    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -143,7 +143,7 @@ Implement the foundational configuration Pydantic models in `src/mle_star/models
 ---
 
 ## [P1] 04. Solution and code block models
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -152,14 +152,14 @@ Implement `SolutionPhase` enum, `SolutionScript` model (with `content`, `phase`,
 **Spec:** SRS 01 | **Reqs:** REQ-DM-008 to REQ-DM-012
 
 ### Acceptance Criteria
-- [ ] `SolutionPhase` has 5 values: init, merged, refined, ensemble, final
-- [ ] `SolutionScript` fields: content (str), phase (SolutionPhase), score (float|None), is_executable (bool, default True), source_model (str|None), created_at (datetime, auto)
-- [ ] `SolutionScript` uses `frozen=False` (mutable for score updates)
-- [ ] `replace_block(old, new)` returns new `SolutionScript` with first occurrence substitution
-- [ ] `replace_block()` raises `ValueError` when `old` not in content
-- [ ] `CodeBlockCategory` has 8 values; `CodeBlock` has content (str), category (CodeBlockCategory|None), outer_step (int|None)
-- [ ] `CodeBlock` uses `frozen=True`
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `SolutionPhase` has 5 values: init, merged, refined, ensemble, final
+- [x] `SolutionScript` fields: content (str), phase (SolutionPhase), score (float|None), is_executable (bool, default True), source_model (str|None), created_at (datetime, auto)
+- [x] `SolutionScript` uses `frozen=False` (mutable for score updates)
+- [x] `replace_block(old, new)` returns new `SolutionScript` with first occurrence substitution
+- [x] `replace_block()` raises `ValueError` when `old` not in content
+- [x] `CodeBlockCategory` has 8 values; `CodeBlock` has content (str), category (CodeBlockCategory|None), outer_step (int|None)
+- [x] `CodeBlock` uses `frozen=True`
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
