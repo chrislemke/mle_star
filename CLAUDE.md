@@ -68,6 +68,7 @@ src/mle_star/
   safety.py            # Safety modules: debugger agent, leakage agent, data agent, code block extraction (Tasks 19, 20, 21)
   phase1.py            # Phase 1 agents + orchestration: retrieve_models, generate_candidate, merge_solutions, run_phase1 (Tasks 27, 28)
   phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration with safety integration (Tasks 23, 24, 25)
+  phase2_outer.py      # Phase 2 outer loop: ablation agent invocation, timeout computation, execution with debug retry (Task 31)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -94,6 +95,7 @@ tests/
   test_phase2_inner_agents.py    # Tests for coder and planner agents (Task 23)
   test_phase2_inner_loop.py      # Tests for run_phase2_inner_loop orchestration (Task 24)
   test_phase2_inner_safety.py    # Tests for inner loop safety integration (Task 25)
+  test_phase2_outer_ablation.py  # Tests for ablation agent invocation and execution (Task 31)
 ```
 
 ---
@@ -111,6 +113,8 @@ tests/
 - Phase 1 agent pattern: `retrieve_models` parses structured JSON via `RetrieverOutput.model_validate_json()`; `generate_candidate` and `merge_solutions` extract code via `extract_code_block()` and return `SolutionScript | None` (None on empty extraction). Empty-check uses `.strip()` for whitespace-only responses
 - Phase 1 orchestration (`run_phase1`): decomposed into `_generate_and_evaluate_candidates` + `_run_merge_loop` + `_apply_post_merge_safety` to stay under xenon complexity threshold B. `_CandidateResults` class accumulates candidate loop state. Merge loop uses `is_improvement_or_equal` (>= semantics) and breaks on first failure/non-improvement
 - Post-merge safety pattern: `_apply_safety_check()` generic helper uses identity check (`is not`) to detect modification, re-evaluates if modified, and falls back to pre-check version on failure. Applied twice in sequence: `check_data_usage` (exactly once, REQ-P1-030) then `check_and_fix_leakage` (REQ-P1-031). Phase1Result.initial_score always reflects the final post-safety score
+- Ablation script execution uses a custom retry loop (NOT `evaluate_with_retry`) because ablation scripts are informational only — no score parsing, custom timeout, and different error recovery semantics. Timeout formula: `min(time_limit // (outer_steps * 2), 600)` using integer division
+- `_format_previous_ablations()` returns empty string for first iteration (omits section from prompt), and numbered markdown for subsequent iterations with header "# Previous Ablation Study Results"
 
 ---
 

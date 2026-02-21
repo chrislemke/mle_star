@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 18      | 0           | 26   |
+| P1       | 17      | 0           | 27   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -726,7 +726,7 @@ Implement remaining Phase 1 requirements: candidate independence (parallel gener
 ---
 
 ## [P1] 31. Ablation agent
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -735,12 +735,12 @@ Implement A_abl agent invocation in `src/mle_star/phase2_outer.py`. The ablation
 **Spec:** SRS 05 | **Reqs:** REQ-P2O-001 to REQ-P2O-007 | **Depends on:** Spec 01, Spec 02, Spec 03
 
 ### Acceptance Criteria
-- [ ] Ablation agent invocation returns ablation script content
-- [ ] Ablation script is executed with timeout = `min(time_limit / (outer_steps * 2), 600)` (REQ-P2O-035)
-- [ ] On execution error: A_debugger retry up to max_debug_attempts; all fail → set T_abl^t="" and continue
-- [ ] Previously ablated components tracked and excluded
-- [ ] Evaluation is validation-only (no test set)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Ablation agent invocation returns ablation script content
+- [x] Ablation script is executed with timeout = `min(time_limit / (outer_steps * 2), 600)` (REQ-P2O-035)
+- [x] On execution error: A_debugger retry up to max_debug_attempts; all fail → set T_abl^t="" and continue
+- [x] Previously ablated components tracked and excluded
+- [x] Evaluation is validation-only (no test set)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
