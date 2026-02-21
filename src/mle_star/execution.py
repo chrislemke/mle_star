@@ -3,14 +3,15 @@
 Provides functions for setting up the working directory structure,
 cleaning output directories, detecting GPU hardware, building
 subprocess environment variables for script execution, writing
-validated solution scripts to disk, and running scripts as async
-subprocesses with timeout enforcement and output capture.
+validated solution scripts to disk, running scripts as async
+subprocesses with timeout enforcement and output capture, and
+parsing subprocess output into structured evaluation results.
 
 Refs:
     SRS 02a — Execution Environment (REQ-EX-001 through REQ-EX-004).
-    SRS 02b — Script Operations (REQ-EX-005 through REQ-EX-010).
+    SRS 02b — Script Operations (REQ-EX-005 through REQ-EX-014).
     SRS 02d — Constraints (REQ-EX-037, REQ-EX-043, REQ-EX-044).
-    IMPLEMENTATION_PLAN.md Tasks 11, 12, 13.
+    IMPLEMENTATION_PLAN.md Tasks 11, 12, 13, 14.
 """
 
 from __future__ import annotations
@@ -28,6 +29,8 @@ import time
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
+
+from mle_star.models import EvaluationResult
 
 if TYPE_CHECKING:
     from mle_star.models import SolutionScript
@@ -332,4 +335,94 @@ async def execute_script(
         exit_code=exit_code,
         duration_seconds=duration,
         timed_out=timed_out,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Output Parsing (REQ-EX-011 through REQ-EX-014)
+# ---------------------------------------------------------------------------
+
+_TRACEBACK_MARKER = "Traceback (most recent call last):"
+
+_TRACEBACK_PATTERN: re.Pattern[str] = re.compile(
+    r"(?P<tb>Traceback \(most recent call last\):\n"
+    r"(?:[ \t]+.+\n)*"
+    r"\S[^\n]*)",
+    re.MULTILINE,
+)
+
+
+def extract_traceback(stderr: str) -> str | None:
+    """Extract the last Python traceback from stderr (REQ-EX-012).
+
+    Matches the standard Python traceback pattern starting from
+    ``Traceback (most recent call last):`` through the final exception
+    line. When multiple tracebacks exist, returns the **last** one.
+
+    Args:
+        stderr: Full standard error output from a subprocess.
+
+    Returns:
+        The extracted traceback string, or ``None`` if no traceback is found.
+    """
+    matches = list(_TRACEBACK_PATTERN.finditer(stderr))
+    if not matches:
+        return None
+    return matches[-1].group("tb")
+
+
+def detect_error(raw: ExecutionRawResult) -> bool:
+    """Determine whether a script execution produced an error (REQ-EX-013).
+
+    Returns ``True`` if any of the following conditions hold:
+
+    1. ``raw.exit_code != 0``
+    2. ``raw.timed_out is True``
+    3. ``raw.stderr`` contains the traceback marker string
+
+    Args:
+        raw: Raw execution result to inspect.
+
+    Returns:
+        ``True`` if the execution is considered an error.
+    """
+    if raw.exit_code != 0:
+        return True
+    if raw.timed_out:
+        return True
+    return _TRACEBACK_MARKER in raw.stderr
+
+
+def build_evaluation_result(raw: ExecutionRawResult) -> EvaluationResult:
+    """Construct an ``EvaluationResult`` from raw execution output (REQ-EX-014).
+
+    Composes output parsers to build a structured evaluation result:
+
+    1. Calls ``parse_score(raw.stdout)`` to obtain the score.
+    2. Calls ``detect_error(raw)`` to set ``is_error``.
+    3. Calls ``extract_traceback(raw.stderr)`` to obtain ``error_traceback``
+       (only when ``is_error`` is ``True``).
+    4. Maps ``stdout``, ``stderr``, ``exit_code``, ``duration_seconds``
+       directly from the raw result.
+
+    Args:
+        raw: Raw execution result from ``execute_script``.
+
+    Returns:
+        A fully constructed ``EvaluationResult`` instance.
+    """
+    from mle_star.scoring import parse_score
+
+    score = parse_score(raw.stdout)
+    is_error = detect_error(raw)
+    error_traceback = extract_traceback(raw.stderr) if is_error else None
+
+    return EvaluationResult(
+        score=score,
+        stdout=raw.stdout,
+        stderr=raw.stderr,
+        exit_code=raw.exit_code,
+        duration_seconds=raw.duration_seconds,
+        is_error=is_error,
+        error_traceback=error_traceback,
     )

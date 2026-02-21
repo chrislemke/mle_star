@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 31      | 0           | 13   |
+| P1       | 30      | 0           | 14   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -358,7 +358,7 @@ Implement `execute_script(script_path, working_dir, timeout_seconds, env)` as an
 ---
 
 ## [P1] 14. Output parsing and evaluation result construction
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -367,14 +367,14 @@ Implement output parsing functions: `parse_score(stdout)` extracts float from "F
 **Spec:** SRS 02 | **Reqs:** REQ-EX-011 to REQ-EX-014 | **Depends on:** Task 13
 
 ### Acceptance Criteria
-- [ ] `parse_score("Final Validation Performance: 0.8196\n")` returns `0.8196`
-- [ ] `parse_score("...Performance: 0.5\n...Performance: 0.8196\n")` returns `0.8196` (LAST match, REQ-EX-011)
-- [ ] `parse_score("Training complete.\n")` returns `None`
-- [ ] `parse_score()` returns `None` on float conversion failure
-- [ ] `extract_traceback()` extracts LAST traceback from stderr (REQ-EX-012)
-- [ ] `detect_error()` returns `True` for: non-zero exit code, timed_out, or traceback in stderr (REQ-EX-013)
-- [ ] `build_evaluation_result()` combines parsers into `EvaluationResult`; `error_traceback` set only when `is_error=True`
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `parse_score("Final Validation Performance: 0.8196\n")` returns `0.8196`
+- [x] `parse_score("...Performance: 0.5\n...Performance: 0.8196\n")` returns `0.8196` (LAST match, REQ-EX-011)
+- [x] `parse_score("Training complete.\n")` returns `None`
+- [x] `parse_score()` returns `None` on float conversion failure
+- [x] `extract_traceback()` extracts LAST traceback from stderr (REQ-EX-012)
+- [x] `detect_error()` returns `True` for: non-zero exit code, timed_out, or traceback in stderr (REQ-EX-013)
+- [x] `build_evaluation_result()` combines parsers into `EvaluationResult`; `error_traceback` set only when `is_error=True`
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
