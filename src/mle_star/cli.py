@@ -1,4 +1,5 @@
-def main():
+def main() -> None:
+    """Entry point for the mle_star CLI application."""
     print("Hello from mle_star!")
 
 

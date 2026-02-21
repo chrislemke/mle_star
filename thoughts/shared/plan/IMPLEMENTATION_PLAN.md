@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 44      | 0           | 0    |
+| P1       | 43      | 0           | 1    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -76,18 +76,18 @@ Layer 5: Spec 09 — Orchestrator (depends on all above)
 ---
 
 ## [P1] 01. Add production dependencies
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
 Add required production dependencies to `pyproject.toml`. The project currently has zero production dependencies — only dev dependencies are configured. The MLE-STAR pipeline requires Pydantic v2 for data models and JSON schema generation, PyYAML for prompt template loading, and the `claude-agent-sdk` for agent invocation. All data model schemas, structured outputs, and SDK integrations depend on these packages being available.
 
 ### Acceptance Criteria
-- [ ] `pydantic>=2.0.0` added to `[project] dependencies`
-- [ ] `pyyaml>=6.0` added to `[project] dependencies`
-- [ ] `claude-agent-sdk>=0.1.39` added to `[project] dependencies`
-- [ ] `uv sync` succeeds without errors
-- [ ] `uv run python -c "import pydantic; import yaml; print('ok')"` succeeds
+- [x] `pydantic>=2.0.0` added to `[project] dependencies`
+- [x] `pyyaml>=6.0` added to `[project] dependencies`
+- [x] `claude-agent-sdk>=0.1.39` added to `[project] dependencies`
+- [x] `uv sync` succeeds without errors
+- [x] `uv run python -c "import pydantic; import yaml; print('ok')"` succeeds
 
 ---
 
