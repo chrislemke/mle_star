@@ -30,9 +30,16 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
-from mle_star.models import EvaluationResult
+from mle_star.models import (
+    EvaluationResult,
+    MetricDirection,
+    PipelineConfig,
+    TaskDescription,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from mle_star.models import SolutionScript
 
 logger = logging.getLogger(__name__)
@@ -426,3 +433,123 @@ def build_evaluation_result(raw: ExecutionRawResult) -> EvaluationResult:
         is_error=is_error,
         error_traceback=error_traceback,
     )
+
+
+# ---------------------------------------------------------------------------
+# End-to-End Evaluation Pipeline (REQ-EX-015 through REQ-EX-023)
+# ---------------------------------------------------------------------------
+
+
+async def evaluate_solution(
+    solution: SolutionScript,
+    task: TaskDescription,
+    config: PipelineConfig,
+    timeout_override: int | None = None,
+) -> EvaluationResult:
+    """Evaluate a solution script end-to-end (REQ-EX-015).
+
+    Orchestrates the full evaluation pipeline: set up working directory,
+    clean output, write the script to disk, build the execution environment,
+    execute the script as a subprocess, and parse the output into an
+    ``EvaluationResult``.
+
+    The input ``SolutionScript`` is **never** mutated (REQ-EX-016). The
+    caller is responsible for updating ``solution.score`` after evaluation.
+
+    Args:
+        solution: The solution script to evaluate.
+        task: Task description providing ``data_dir`` and context.
+        config: Pipeline configuration with ``time_limit_seconds``.
+        timeout_override: If provided, overrides ``config.time_limit_seconds``
+            as the execution timeout in seconds.
+
+    Returns:
+        An ``EvaluationResult`` with parsed score, error status, and output.
+
+    Raises:
+        ValueError: If the solution content is invalid (empty or contains
+            forbidden exit calls).
+    """
+    timeout = (
+        timeout_override if timeout_override is not None else config.time_limit_seconds
+    )
+
+    working_dir = setup_working_directory(task.data_dir)
+    clean_output_directory(working_dir)
+    script_path = write_script(solution, working_dir)
+    env = build_execution_env()
+    raw = await execute_script(script_path, working_dir, timeout, env)
+    return build_evaluation_result(raw)
+
+
+async def evaluate_with_retry(
+    solution: SolutionScript,
+    task: TaskDescription,
+    config: PipelineConfig,
+    debug_callback: Callable[[SolutionScript, str | None], Awaitable[SolutionScript]],
+    max_retries: int | None = None,
+) -> tuple[SolutionScript, EvaluationResult]:
+    """Evaluate a solution with retry-on-failure via debug callback (REQ-EX-021).
+
+    Calls ``evaluate_solution`` and, if the result has ``is_error=True``,
+    invokes *debug_callback* with the current solution and error traceback
+    to obtain a fixed solution, then re-evaluates. Repeats up to
+    *max_retries* times.
+
+    Args:
+        solution: The initial solution script to evaluate.
+        task: Task description for evaluation context.
+        config: Pipeline configuration (provides ``max_debug_attempts``
+            as the default retry limit).
+        debug_callback: Async callable ``(solution, traceback) -> fixed_solution``
+            invoked on each failure to produce a corrected script.
+        max_retries: Maximum number of debug retries. Defaults to
+            ``config.max_debug_attempts`` when ``None``.
+
+    Returns:
+        A ``(SolutionScript, EvaluationResult)`` tuple. On success the
+        result has ``is_error=False``. If all retries are exhausted, returns
+        the last attempted pair with ``is_error=True``.
+    """
+    retries = max_retries if max_retries is not None else config.max_debug_attempts
+
+    current_solution = solution
+    result = await evaluate_solution(current_solution, task, config)
+
+    for _ in range(retries):
+        if not result.is_error:
+            break
+        current_solution = await debug_callback(
+            current_solution, result.error_traceback
+        )
+        result = await evaluate_solution(current_solution, task, config)
+
+    return current_solution, result
+
+
+def is_better_solution(
+    new_result: EvaluationResult,
+    old_score: float,
+    direction: MetricDirection,
+) -> bool:
+    """Check if a new evaluation result is strictly better than an old score (REQ-EX-023).
+
+    Returns ``False`` immediately if the new result has no score or is an
+    error. Otherwise delegates to ``is_improvement`` from the scoring module
+    (REQ-EX-022).
+
+    Args:
+        new_result: The evaluation result to assess.
+        old_score: The previous best score to compare against.
+        direction: Whether to maximize or minimize the metric.
+
+    Returns:
+        ``True`` if *new_result* represents a strict improvement.
+    """
+    if new_result.score is None:
+        return False
+    if new_result.is_error:
+        return False
+    from mle_star.scoring import is_improvement
+
+    return is_improvement(new_result.score, old_score, direction)

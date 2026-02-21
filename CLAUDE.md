@@ -64,7 +64,7 @@ src/mle_star/
   cli.py               # CLI entry point (uv run mle_star)
   models.py            # Pydantic data models (enums, configs, schemas)
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
-  execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing (Tasks 11-14)
+  execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline (Tasks 11-15)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -79,6 +79,7 @@ tests/
   test_execution_script_write.py # Tests for script writing & validation (Task 12)
   test_execution_async.py        # Tests for async script execution (Task 13)
   test_execution_output.py       # Tests for output parsing & evaluation result (Task 14)
+  test_execution_eval.py         # Tests for evaluation pipeline, retry, score comparison (Task 15)
 ```
 
 ---

@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 30      | 0           | 14   |
+| P1       | 29      | 0           | 15   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -379,7 +379,7 @@ Implement output parsing functions: `parse_score(stdout)` extracts float from "F
 ---
 
 ## [P1] 15. Solution evaluation pipeline
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -388,12 +388,12 @@ Implement the end-to-end evaluation pipeline: `evaluate_solution(solution, task,
 **Spec:** SRS 02 | **Reqs:** REQ-EX-015 to REQ-EX-023 | **Depends on:** Task 14
 
 ### Acceptance Criteria
-- [ ] `evaluate_solution()` orchestrates: setup_working_directory → clean_output → write_script → build_env → execute → build_evaluation_result
-- [ ] `evaluate_solution()` does NOT mutate the input SolutionScript (REQ-EX-016)
-- [ ] `evaluate_with_retry()` calls debug_callback on failure and retries
-- [ ] `evaluate_with_retry()` respects max_retries limit (defaults to config.max_debug_attempts)
-- [ ] `is_better_solution()` delegates to Spec 01 score comparison functions
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `evaluate_solution()` orchestrates: setup_working_directory → clean_output → write_script → build_env → execute → build_evaluation_result
+- [x] `evaluate_solution()` does NOT mutate the input SolutionScript (REQ-EX-016)
+- [x] `evaluate_with_retry()` calls debug_callback on failure and retries
+- [x] `evaluate_with_retry()` respects max_retries limit (defaults to config.max_debug_attempts)
+- [x] `is_better_solution()` delegates to Spec 01 score comparison functions
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
