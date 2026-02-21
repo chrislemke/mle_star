@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 35      | 0           | 9    |
+| P1       | 34      | 0           | 10   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -273,7 +273,7 @@ Implement `AgentConfig` Pydantic model mapping MLE-STAR agents to SDK configurat
 ---
 
 ## [P1] 10. Iteration records and model constraints
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -282,16 +282,16 @@ Implement `RefinementAttempt` (plan, score, code_block, was_improvement), `Ensem
 **Spec:** SRS 01 | **Reqs:** REQ-DM-039, REQ-DM-041 to REQ-DM-050, REQ-P2I-036
 
 ### Acceptance Criteria
-- [ ] `RefinementAttempt` has 4 fields: plan (str), score (float|None), code_block (str), was_improvement (bool) (REQ-DM-042)
-- [ ] `EnsembleAttempt` has 3 fields: plan (str), score (float|None), solution (SolutionScript) (REQ-DM-043)
-- [ ] `InnerLoopResult` has 4 fields: best_solution (SolutionScript), best_score (float), attempts (list[RefinementAttempt]), improved (bool) (REQ-P2I-036)
-- [ ] `InnerLoopResult.improved` is True iff best_score is strictly better than input (uses `is_improvement`, not `is_improvement_or_equal`)
-- [ ] All structured output schemas produce valid JSON via `model_json_schema()`
-- [ ] Frozen models raise error on attribute assignment
-- [ ] `SolutionScript` is mutable (not frozen)
-- [ ] All models in single `mle_star/models.py` module
-- [ ] Public types re-exported from `mle_star/__init__.py`
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `RefinementAttempt` has 4 fields: plan (str), score (float|None), code_block (str), was_improvement (bool) (REQ-DM-042)
+- [x] `EnsembleAttempt` has 3 fields: plan (str), score (float|None), solution (SolutionScript) (REQ-DM-043)
+- [x] `InnerLoopResult` has 4 fields: best_solution (SolutionScript), best_score (float), attempts (list[RefinementAttempt]), improved (bool) (REQ-P2I-036)
+- [x] `InnerLoopResult.improved` is True iff best_score is strictly better than input (uses `is_improvement`, not `is_improvement_or_equal`)
+- [x] All structured output schemas produce valid JSON via `model_json_schema()`
+- [x] Frozen models raise error on attribute assignment
+- [x] `SolutionScript` is mutable (not frozen)
+- [x] All models in single `mle_star/models.py` module
+- [x] Public types re-exported from `mle_star/__init__.py`
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

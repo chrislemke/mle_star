@@ -8,7 +8,8 @@ Refs:
     SRS 01a — Data Models Core (REQ-DM-001 through REQ-DM-012).
     SRS 01b — Data Models Agents and Output Schemas (REQ-DM-013 through REQ-DM-020).
     SRS 01b — Evaluation & Phase Results (REQ-DM-021 through REQ-DM-025).
-    IMPLEMENTATION_PLAN.md Tasks 03, 04, 05, 06.
+    SRS 01d — Iteration Records (REQ-DM-042, REQ-DM-043, REQ-P2I-036).
+    IMPLEMENTATION_PLAN.md Tasks 03, 04, 05, 06, 10.
 """
 
 from __future__ import annotations
@@ -448,6 +449,74 @@ class DataContaminationResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     verdict: Literal["Novel", "Same"]
+
+
+# ---------------------------------------------------------------------------
+# Iteration Records (REQ-DM-042, REQ-DM-043, REQ-P2I-036)
+# ---------------------------------------------------------------------------
+
+
+class RefinementAttempt(BaseModel):
+    """Record of a single inner-loop refinement attempt (REQ-DM-042).
+
+    Captures the plan, resulting score, code block used, and whether
+    the attempt produced a strict improvement over the previous best.
+
+    Attributes:
+        plan: Natural language refinement plan that was attempted.
+        score: Evaluation score after applying the plan (None if failed).
+        code_block: The code block that was refined.
+        was_improvement: Whether this attempt strictly improved the score.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    plan: str
+    score: float | None = None
+    code_block: str
+    was_improvement: bool
+
+
+class EnsembleAttempt(BaseModel):
+    """Record of a single ensemble round attempt (REQ-DM-043).
+
+    Captures the ensemble plan, resulting score, and the produced
+    ensemble solution script.
+
+    Attributes:
+        plan: Natural language ensemble strategy that was attempted.
+        score: Evaluation score of the ensemble solution (None if failed).
+        solution: The ensemble solution script produced.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    plan: str
+    score: float | None = None
+    solution: SolutionScript
+
+
+class InnerLoopResult(BaseModel):
+    """Result of running the Phase 2 inner loop (REQ-P2I-036).
+
+    Aggregates all refinement attempts for a single code block across
+    K iterations. The ``improved`` flag is True iff ``best_score`` is
+    strictly better than the input score (uses ``is_improvement``,
+    not ``is_improvement_or_equal``).
+
+    Attributes:
+        best_solution: The best solution found during the inner loop.
+        best_score: Score of the best solution.
+        attempts: List of all refinement attempts made.
+        improved: True iff best_score is strictly better than input.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    best_solution: SolutionScript
+    best_score: float
+    attempts: list[RefinementAttempt]
+    improved: bool
 
 
 # ---------------------------------------------------------------------------
