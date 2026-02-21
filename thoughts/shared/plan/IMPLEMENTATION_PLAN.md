@@ -58,6 +58,15 @@ Layer 5: Spec 09 — Orchestrator (depends on all above)
 
 **Project target:** Python 3.13+ (`requires-python = ">=3.13"` in pyproject.toml). Specs reference 3.10+ as a floor, but the project already targets 3.13+. Use modern syntax (type unions `X | Y`, etc.).
 
+**Pre-commit hooks (apply to all tasks):** Every commit must pass the full pre-commit hook chain configured in `.pre-commit-config.yaml`. This imposes cross-cutting requirements beyond what the specs mandate:
+- **Ruff lint** with D rules enabled (Google-style docstrings required for all public functions, classes, and methods — `pydocstyle convention = "google"` in pyproject.toml). D100 (module) and D104 (package) are ignored, but D101 (class), D102 (method), D103 (function) are enforced. Every task producing public APIs must include Google-style docstrings.
+- **Ruff format** auto-formats on commit (line-length=88, double quotes, space indent).
+- **Mypy strict mode** (`strict = true`, `disallow_untyped_defs = true`) — all function signatures must have complete type annotations.
+- **Bandit security scan** — no security anti-patterns (subprocess with `shell=True`, hardcoded passwords, etc.). B404/B603 are pre-skipped for safe subprocess usage.
+- **Xenon code complexity** — max average B, max modules B, max absolute B. Functions must stay below cyclomatic complexity threshold B (≤5). Complex orchestration functions may need decomposition.
+- **pip-audit** — all production dependencies must be free of known vulnerabilities at commit time.
+- Each task's acceptance criteria ("Tests pass with ≥90% coverage; mypy clean") implicitly includes "all pre-commit hooks pass" as a gate.
+
 ---
 
 ## Tasks
@@ -1132,6 +1141,24 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 ---
 
 ## Changelog
+
+### 2026-02-21 (v11)
+
+Re-analysis of all 36 spec files and project tooling configuration against v10 plan. Codebase still empty (skeleton CLI only) — all 48 tasks remain pending.
+
+**Gaps fixed:**
+1. **Pre-commit hook constraints (cross-cutting)**: Added comprehensive cross-cutting note documenting pre-commit hook requirements from `.pre-commit-config.yaml`. The hook chain enforces: ruff lint with Google-style docstrings (D rules), ruff format, mypy strict, bandit security, xenon complexity (max B), and pip-audit vulnerability checks. These gates apply to every task and were not previously documented in the plan. Particularly impactful: (a) all public functions/classes/methods need Google-style docstrings to pass ruff D101/D102/D103, (b) xenon complexity cap at B may require decomposing complex orchestration functions (e.g., `run_phase1`, `run_phase2_outer_loop`, `run_phase3`), (c) bandit scans will flag subprocess usage patterns that aren't pre-skipped.
+
+**Verified correct (no change needed):**
+- All 436 requirements still covered across 48 tasks
+- Requirement Coverage table unchanged
+- Task priorities and dependencies unchanged
+- All previously documented cross-cutting constraints remain accurate
+- `requires-python = ">=3.13"` confirmed in pyproject.toml; dev venv uses Python 3.14 (compatible)
+- pytest-asyncio configured with `asyncio_mode = "auto"` (no manual `@pytest.mark.asyncio` needed)
+- Coverage threshold (90%) in pyproject.toml matches task acceptance criteria
+
+---
 
 ### 2026-02-21 (v10)
 
