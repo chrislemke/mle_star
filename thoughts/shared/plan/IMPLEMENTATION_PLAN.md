@@ -42,7 +42,7 @@ Layer 5: Spec 09 — Orchestrator (depends on all above)
 - REQ-DM-039: All Pydantic models frozen except SolutionScript
 - All phase functions receive a `client` parameter (the shared `ClaudeSDKClient` instance)
 - REQ-SF-006/008 layering: `debug_solution()` returns the final attempted pair (may still be broken); the **calling code** (evaluate_with_retry / phase orchestration) maintains the reference to the last known working version and performs fallback
-- Score comparison semantics vary by context: `is_improvement_or_equal()` (>=) for best-score tracking within loops; `is_improvement()` (strict >) for `InnerLoopResult.improved` flag and outer loop `s_final` update
+- Score comparison semantics vary by context: `is_improvement_or_equal()` (>=) for best-score tracking within loops AND outer loop `s_final` update (REQ-P2O-027); `is_improvement()` (strict >) ONLY for `InnerLoopResult.improved` flag
 
 **Score mutation pattern:** The execution harness does NOT mutate `SolutionScript` (REQ-EX-016). Phase orchestration code is responsible for updating `solution.score = result.score` after evaluation. `SolutionScript` is non-frozen (REQ-DM-039) specifically to allow this.
 
@@ -110,7 +110,7 @@ Create YAML prompt template files containing the prompt text for each of the 14 
 ### Description
 Implement the foundational configuration Pydantic models in `src/mle_star/models.py`. Covers `PipelineConfig` with paper-specified defaults (M=4, T=4, K=4, L=2, R=5), validation (all ints > 0), and JSON serialization. Also covers `TaskType`, `DataModality`, and `MetricDirection` string enums, and the `TaskDescription` model with all required fields. `PipelineConfig` must also include orchestrator-level fields from Spec 09: `max_budget_usd` (REQ-OR-028), `permission_mode` (REQ-OR-009), `model` (REQ-OR-044), and `log_level` (REQ-OR-047).
 
-**Spec:** SRS 01 | **Reqs:** REQ-DM-001 to REQ-DM-007, REQ-OR-009, REQ-OR-028, REQ-OR-044
+**Spec:** SRS 01 | **Reqs:** REQ-DM-001 to REQ-DM-007, REQ-OR-009, REQ-OR-025, REQ-OR-028, REQ-OR-044
 
 ### Acceptance Criteria
 - [ ] `PipelineConfig()` with no args produces paper defaults (M=4, T=4, K=4, L=2, R=5, time_limit=86400, subsample_limit=30000, max_debug_attempts=3)
@@ -118,6 +118,7 @@ Implement the foundational configuration Pydantic models in `src/mle_star/models
 - [ ] `PipelineConfig` includes `permission_mode: str = "bypassPermissions"` (REQ-OR-009)
 - [ ] `PipelineConfig` includes `model: str = "sonnet"` (REQ-OR-044)
 - [ ] `PipelineConfig` includes `log_level: str = "INFO"` (REQ-OR-047)
+- [ ] `PipelineConfig` includes `phase_time_budget: PhaseTimeBudget | None = None` where `PhaseTimeBudget` defines proportional time allocation (Phase 1: 10%, Phase 2: 65%, Phase 3: 15%, Finalization: 10%) (REQ-OR-025)
 - [ ] `PipelineConfig(num_retrieved_models=0)` raises `ValidationError`
 - [ ] Round-trip JSON serialization preserves all `PipelineConfig` field values
 - [ ] `TaskType` enum has 8 values; `DataModality` has 5; `MetricDirection` has 2
@@ -755,7 +756,7 @@ Implement `run_phase2_outer_loop(client, task, config, initial_solution, session
 - [ ] Uses FIRST plan from ExtractorOutput: c_t = plans[0].code_block, p_0 = plans[0].plan
 - [ ] Ablation summaries accumulated across iterations in T_abl list
 - [ ] Code blocks accumulated for provenance tracking in C list
-- [ ] Best solution updated only when inner loop `improved` flag is True (strict >)
+- [ ] Best solution updated when inner loop's best score passes `is_improvement_or_equal()` (>=) against current `h_best` (REQ-P2O-027) — do NOT use `InnerLoopResult.improved` flag (which uses strict >)
 - [ ] Inner loop receives: solution=s_t, code_block=c_t, initial_plan=p_0, best_score=h_best
 - [ ] `Phase2Result` correctly constructed with all fields
 - [ ] Tests pass with ≥90% coverage; mypy clean
@@ -1116,6 +1117,27 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 ---
 
 ## Changelog
+
+### 2026-02-21 (v6)
+
+Re-analysis of all 36 spec files (including constraint/traceability sections 04c, 04d, 05d, 06c, 06d, 07c, 07d, 08d, 09d) against v5 plan. Codebase still empty (skeleton CLI only) — all 48 tasks remain pending.
+
+**Bugs fixed:**
+1. **Task 33 (Outer loop orchestration)**: Corrected outer loop best-score update semantics from strict `>` (via `InnerLoopResult.improved` flag) to `>=` (via `is_improvement_or_equal()`) per REQ-P2O-027. The outer loop must independently compare `inner_result.best_score` against `h_best` using `is_improvement_or_equal()`, NOT rely on the `improved` flag (which uses strict `>`). Example: if inner loop starts with h_best=0.85 and returns best_score=0.85, `improved=False` but outer loop should still adopt the solution.
+2. **Gap Analysis cross-cutting note**: Corrected score comparison semantics — `is_improvement_or_equal()` (>=) applies to BOTH inner loop best-score tracking AND outer loop `s_final` update (REQ-P2O-027). `is_improvement()` (strict >) is ONLY for `InnerLoopResult.improved` flag.
+
+**Missing details added:**
+1. **Task 03 (Core configuration models)**: Added `phase_time_budget: PhaseTimeBudget | None = None` field to `PipelineConfig` acceptance criteria per REQ-OR-025 (proportional time allocation is an optional PipelineConfig field). Added REQ-OR-025 to task's Reqs reference.
+
+**Verified correct (no change needed):**
+- All 436 requirements still covered across 48 tasks
+- Requirement Coverage table unchanged
+- Task priorities and dependencies unchanged
+- All other cross-cutting constraints remain accurate
+- Non-functional requirements from specs 04c, 06c, 06d, 07c, 08d correctly mapped to P2 constraint tasks (30, 26, 37, 41, 49)
+- Traceability sections (04d, 05d, 07d, 09d) reference same requirement IDs already covered by functional/orchestration tasks
+
+---
 
 ### 2026-02-20 (v5)
 
