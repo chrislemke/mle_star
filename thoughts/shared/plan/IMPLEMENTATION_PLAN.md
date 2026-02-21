@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 21      | 0           | 23   |
+| P1       | 20      | 0           | 24   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -642,7 +642,7 @@ Implement remaining inner loop requirements: performance constraints (agent invo
 ---
 
 ## [P1] 27. Phase 1 agents (retriever, init, merger)
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -651,15 +651,15 @@ Implement three Phase 1 agent invocation functions in `src/mle_star/phase1.py`: 
 **Spec:** SRS 04 | **Reqs:** REQ-P1-001 to REQ-P1-017 | **Depends on:** Spec 01, Spec 02, Spec 03
 
 ### Acceptance Criteria
-- [ ] `retrieve_models()` returns `list[RetrievedModel]` with ≥1 models
-- [ ] `retrieve_models()` uses structured output `RetrieverOutput` schema
-- [ ] `retrieve_models()` with < M results logs warning; 0 results raises ValueError (REQ-P1-005)
-- [ ] Models with empty `example_code` excluded from candidate generation (REQ-P1-006)
-- [ ] `generate_candidate()` returns `SolutionScript` with `phase="init"` and `source_model` set to `RetrievedModel.model_name`
-- [ ] `merge_solutions()` returns `SolutionScript` with `phase="merged"`
-- [ ] All functions load prompts from `PromptRegistry`
-- [ ] Agent failures return appropriate error/fallback values
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `retrieve_models()` returns `list[RetrievedModel]` with ≥1 models
+- [x] `retrieve_models()` uses structured output `RetrieverOutput` schema
+- [x] `retrieve_models()` with < M results logs warning; 0 results raises ValueError (REQ-P1-005)
+- [x] Models with empty `example_code` excluded from candidate generation (REQ-P1-006)
+- [x] `generate_candidate()` returns `SolutionScript` with `phase="init"` and `source_model` set to `RetrievedModel.model_name`
+- [x] `merge_solutions()` returns `SolutionScript` with `phase="merged"`
+- [x] All functions load prompts from `PromptRegistry`
+- [x] Agent failures return appropriate error/fallback values
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
