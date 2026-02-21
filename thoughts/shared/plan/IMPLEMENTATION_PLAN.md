@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 24      | 0           | 20   |
+| P1       | 23      | 0           | 21   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -554,7 +554,7 @@ Implement remaining safety module requirements: agent default configs inclusion 
 ---
 
 ## [P1] 23. Coder and planner agents
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -563,13 +563,13 @@ Implement `invoke_coder(code_block, plan, client)` and `invoke_planner(code_bloc
 **Spec:** SRS 06 | **Reqs:** REQ-P2I-001 to REQ-P2I-015 | **Depends on:** Spec 01, Spec 02, Spec 03
 
 ### Acceptance Criteria
-- [ ] `invoke_coder(code_block, plan, client)` sends code_block + plan to A_coder via SDK client and returns modified code string
-- [ ] `invoke_coder()` returns `None` on agent failure (unparseable response)
-- [ ] `invoke_planner(code_block, plans, scores, client)` sends code_block + history to A_planner via SDK client and returns plan string
-- [ ] `invoke_planner()` formats history with Plan:/Score: labels; None scores as "N/A (evaluation failed)"
-- [ ] `invoke_planner()` returns `None` on agent failure (empty response)
-- [ ] Both functions load prompts from `PromptRegistry`
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `invoke_coder(code_block, plan, client)` sends code_block + plan to A_coder via SDK client and returns modified code string
+- [x] `invoke_coder()` returns `None` on agent failure (unparseable response)
+- [x] `invoke_planner(code_block, plans, scores, client)` sends code_block + history to A_planner via SDK client and returns plan string
+- [x] `invoke_planner()` formats history with Plan:/Score: labels; None scores as "N/A (evaluation failed)"
+- [x] `invoke_planner()` returns `None` on agent failure (empty response)
+- [x] Both functions load prompts from `PromptRegistry`
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
