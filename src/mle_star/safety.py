@@ -1,18 +1,21 @@
-"""Safety modules: debugger and leakage agents for solution integrity.
+"""Safety modules: debugger, leakage, and data agents for solution integrity.
 
 Implements:
 - A_debugger: cross-cutting safety agent that fixes broken solution scripts
   by invoking the Claude Agent SDK with the error traceback and original code.
 - A_leakage: two-step detection/correction agent that identifies and fixes
   data leakage in preprocessing code.
+- A_data: data usage verification agent that ensures solutions incorporate
+  all provided data sources.
 
 Shared utility ``extract_code_block`` is used by A_debugger, A_leakage
-correction, and A_data (implemented in later tasks).
+correction, and A_data.
 
 Refs:
     SRS 03a — Safety Debugger (REQ-SF-001 through REQ-SF-010).
     SRS 03b — Safety Leakage (REQ-SF-011 through REQ-SF-023).
-    IMPLEMENTATION_PLAN.md Tasks 19, 20.
+    SRS 03c — Safety Data (REQ-SF-024 through REQ-SF-031).
+    IMPLEMENTATION_PLAN.md Tasks 19, 20, 21.
 """
 
 from __future__ import annotations
@@ -350,3 +353,107 @@ async def _check_and_fix_leakage_impl(
             )
 
     return current_solution
+
+
+# ---------------------------------------------------------------------------
+# A_data — Data usage verification agent (REQ-SF-024 to REQ-SF-031)
+# ---------------------------------------------------------------------------
+
+_ALL_USED_PHRASE = "all the provided information is used."
+
+
+def parse_data_agent_response(
+    response: str,
+    original_solution: SolutionScript,
+) -> SolutionScript:
+    """Parse the A_data agent response into a SolutionScript (REQ-SF-028).
+
+    Two response formats are supported:
+
+    1. **Confirmation** — the response contains the phrase
+       ``"All the provided information is used."`` (case-insensitive).
+       Returns ``original_solution`` unchanged.
+    2. **Revised code** — otherwise, extract the code block via
+       ``extract_code_block()`` and return a new ``SolutionScript`` with the
+       extracted code, preserving the original's ``phase``.
+
+    Args:
+        response: Raw text response from the A_data agent.
+        original_solution: The solution that was checked.
+
+    Returns:
+        The original or a new ``SolutionScript`` depending on the response.
+    """
+    if _ALL_USED_PHRASE in response.lower():
+        return original_solution
+
+    code = extract_code_block(response)
+    return SolutionScript(
+        content=code,
+        phase=original_solution.phase,
+    )
+
+
+async def check_data_usage(
+    solution: SolutionScript,
+    task: TaskDescription,
+    client: Any,
+) -> SolutionScript:
+    """Verify and fix data usage in a solution script (REQ-SF-026).
+
+    Invokes the A_data agent with the solution code and task description.
+    The agent checks whether all provided data sources are used and either
+    confirms or returns corrected code incorporating unused information.
+
+    This function runs **exactly once** per pipeline execution, after the
+    initial solution is generated in Phase 1 (REQ-SF-030).
+
+    On any exception (SDK failure, parsing error), gracefully degrades by
+    returning the original solution unchanged.
+
+    Args:
+        solution: The initial solution to check for data utilization.
+        task: Task description providing context about available data sources.
+        client: SDK client for agent invocation.
+
+    Returns:
+        The (potentially corrected) ``SolutionScript``.
+    """
+    try:
+        return await _check_data_usage_impl(solution, task, client)
+    except Exception:
+        logger.exception("Data usage check failed; returning original solution")
+        return solution
+
+
+async def _check_data_usage_impl(
+    solution: SolutionScript,
+    task: TaskDescription,
+    client: Any,
+) -> SolutionScript:
+    """Inner implementation of data usage verification.
+
+    Separated from ``check_data_usage`` so that the outer function provides
+    a single top-level exception boundary for graceful degradation.
+
+    Args:
+        solution: The initial solution to check.
+        task: Task description for prompt context.
+        client: SDK client for agent invocation.
+
+    Returns:
+        The (potentially corrected) ``SolutionScript``.
+    """
+    registry = PromptRegistry()
+    template = registry.get(AgentType.DATA)
+    prompt = template.render(
+        initial_solution=solution.content,
+        task_description=task.description,
+    )
+
+    response: str = await client.send_message(
+        agent_type=str(AgentType.DATA),
+        message=prompt,
+    )
+
+    return parse_data_agent_response(response, solution)

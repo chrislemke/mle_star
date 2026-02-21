@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 25      | 0           | 19   |
+| P1       | 24      | 0           | 20   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -513,7 +513,7 @@ Implement the A_leakage agent with two-step orchestration: detection (using stru
 ---
 
 ## [P1] 21. Data contamination agent
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -522,12 +522,12 @@ Implement the A_data agent: agent definition (Figure 22), `check_data_usage(solu
 **Spec:** SRS 03 | **Reqs:** REQ-SF-024 to REQ-SF-031 | **Depends on:** Spec 01, Spec 02
 
 ### Acceptance Criteria
-- [ ] `check_data_usage()` invokes A_data agent with solution and task context
-- [ ] `parse_data_agent_response()` returns original when response contains "All the provided information is used."
-- [ ] `parse_data_agent_response()` extracts corrected solution via `extract_code_block()` otherwise
-- [ ] Data agent prompt includes "no try/except" instruction
-- [ ] Returns original solution on agent failure (graceful degradation)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `check_data_usage()` invokes A_data agent with solution and task context
+- [x] `parse_data_agent_response()` returns original when response contains "All the provided information is used."
+- [x] `parse_data_agent_response()` extracts corrected solution via `extract_code_block()` otherwise
+- [x] Data agent prompt includes "no try/except" instruction
+- [x] Returns original solution on agent failure (graceful degradation)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
