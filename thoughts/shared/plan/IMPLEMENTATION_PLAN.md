@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 36      | 0           | 8    |
+| P1       | 35      | 0           | 9    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -250,7 +250,7 @@ Implement `PromptTemplate` Pydantic model (agent_type, figure_ref, template, var
 ---
 
 ## [P1] 09. Agent config and SDK integration types
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -259,16 +259,16 @@ Implement `AgentConfig` Pydantic model mapping MLE-STAR agents to SDK configurat
 **Spec:** SRS 01 | **Reqs:** REQ-DM-036 to REQ-DM-040, REQ-OR-008
 
 ### Acceptance Criteria
-- [ ] `AgentConfig` has all 7 fields with correct types
-- [ ] `to_agent_definition()` returns dict with keys: description, prompt, tools, model
-- [ ] `to_output_format()` returns JSON schema dict when output_schema is set
-- [ ] `to_output_format()` returns `None` when output_schema is `None`
-- [ ] `len(build_default_agent_configs())` equals 14
-- [ ] Retriever config has `tools=["WebSearch", "WebFetch"]` and output_schema=RetrieverOutput
-- [ ] A_init, A_merger, A_abl, A_coder, A_ensembler, A_debugger, A_test have `tools=["Bash", "Edit", "Write", "Read"]` (REQ-OR-008)
-- [ ] A_summarize, A_extractor, A_planner, A_ens_planner, A_leakage, A_data have `tools=["Read"]` (REQ-OR-008)
-- [ ] A_extractor has output_schema=ExtractorOutput; A_leakage has output_schema=LeakageDetectionOutput; A_data has output_schema=None (REQ-SF-025; `DataContaminationResult` is used by contamination check variant of A_test per REQ-FN-026/048)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `AgentConfig` has all 7 fields with correct types
+- [x] `to_agent_definition()` returns dict with keys: description, prompt, tools, model
+- [x] `to_output_format()` returns JSON schema dict when output_schema is set
+- [x] `to_output_format()` returns `None` when output_schema is `None`
+- [x] `len(build_default_agent_configs())` equals 14
+- [x] Retriever config has `tools=["WebSearch", "WebFetch"]` and output_schema=RetrieverOutput
+- [x] A_init, A_merger, A_abl, A_coder, A_ensembler, A_debugger, A_test have `tools=["Bash", "Edit", "Write", "Read"]` (REQ-OR-008)
+- [x] A_summarize, A_extractor, A_planner, A_ens_planner, A_leakage, A_data have `tools=["Read"]` (REQ-OR-008)
+- [x] A_extractor has output_schema=ExtractorOutput; A_leakage has output_schema=LeakageDetectionOutput; A_data has output_schema=None (REQ-SF-025; `DataContaminationResult` is used by contamination check variant of A_test per REQ-FN-026/048)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

@@ -620,3 +620,154 @@ class FinalResult(BaseModel):
     submission_path: str
     total_duration_seconds: float
     total_cost_usd: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# Agent Config & SDK Integration Types (REQ-DM-036 through REQ-DM-040)
+# ---------------------------------------------------------------------------
+
+
+class AgentConfig(BaseModel):
+    """SDK configuration for a single MLE-STAR agent (REQ-DM-036).
+
+    Maps an ``AgentType`` to the parameters needed to register it with the
+    Claude Agent SDK as an ``AgentDefinition``.
+
+    Attributes:
+        agent_type: MLE-STAR agent identity.
+        description: Value for ``AgentDefinition.description``.
+        system_prompt: Custom system prompt (None = use template).
+        tools: Allowed SDK tools for this agent.
+        model: SDK model selection (``"sonnet"``, ``"opus"``, etc.).
+        output_schema: Pydantic model class for structured output.
+        max_turns: Maximum agent turns.
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    agent_type: AgentType
+    description: str
+    system_prompt: str | None = None
+    tools: list[str] | None = None
+    model: str | None = None
+    output_schema: type[BaseModel] | None = None
+    max_turns: int | None = None
+
+    def to_agent_definition(self) -> dict[str, Any]:
+        """Return a dict suitable for ``ClaudeAgentOptions.agents`` (REQ-DM-037).
+
+        Returns:
+            Dict with keys ``description``, ``prompt``, ``tools``, ``model``.
+        """
+        return {
+            "description": self.description,
+            "prompt": self.system_prompt or "",
+            "tools": self.tools,
+            "model": self.model,
+        }
+
+    def to_output_format(self) -> dict[str, Any] | None:
+        """Return SDK ``output_format`` dict or None (REQ-DM-038).
+
+        Returns:
+            ``{"type": "json_schema", "schema": ...}`` when ``output_schema``
+            is set, otherwise ``None``.
+        """
+        if self.output_schema is None:
+            return None
+        return {
+            "type": "json_schema",
+            "schema": self.output_schema.model_json_schema(),
+        }
+
+
+# Tools shared by execution-capable agents (REQ-OR-008).
+_EXECUTION_TOOLS: list[str] = ["Bash", "Edit", "Write", "Read"]
+# Tools for read-only / analysis-only agents (REQ-OR-008).
+_READ_ONLY_TOOLS: list[str] = ["Read"]
+
+
+def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
+    """Return pre-configured ``AgentConfig`` instances for all 14 agents (REQ-DM-040).
+
+    Tool assignments follow REQ-OR-008. Output schemas are set per
+    REQ-OR-006 and REQ-SF-025.
+
+    Returns:
+        A fresh dict mapping every ``AgentType`` to its default config.
+    """
+    return {
+        AgentType.RETRIEVER: AgentConfig(
+            agent_type=AgentType.RETRIEVER,
+            description="Retrieves ML models and example code from the web.",
+            tools=["WebSearch", "WebFetch"],
+            output_schema=RetrieverOutput,
+        ),
+        AgentType.INIT: AgentConfig(
+            agent_type=AgentType.INIT,
+            description="Generates initial solution scripts from retrieved models.",
+            tools=_EXECUTION_TOOLS,
+        ),
+        AgentType.MERGER: AgentConfig(
+            agent_type=AgentType.MERGER,
+            description="Merges candidate solutions into a single best script.",
+            tools=_EXECUTION_TOOLS,
+        ),
+        AgentType.ABLATION: AgentConfig(
+            agent_type=AgentType.ABLATION,
+            description="Performs ablation analysis on solution components.",
+            tools=_EXECUTION_TOOLS,
+        ),
+        AgentType.SUMMARIZE: AgentConfig(
+            agent_type=AgentType.SUMMARIZE,
+            description="Summarizes ablation results into concise analysis.",
+            tools=_READ_ONLY_TOOLS,
+        ),
+        AgentType.EXTRACTOR: AgentConfig(
+            agent_type=AgentType.EXTRACTOR,
+            description="Extracts targeted code blocks with refinement plans.",
+            tools=_READ_ONLY_TOOLS,
+            output_schema=ExtractorOutput,
+        ),
+        AgentType.PLANNER: AgentConfig(
+            agent_type=AgentType.PLANNER,
+            description="Creates refinement plans for targeted code blocks.",
+            tools=_READ_ONLY_TOOLS,
+        ),
+        AgentType.CODER: AgentConfig(
+            agent_type=AgentType.CODER,
+            description="Implements code refinements based on plans.",
+            tools=_EXECUTION_TOOLS,
+        ),
+        AgentType.ENS_PLANNER: AgentConfig(
+            agent_type=AgentType.ENS_PLANNER,
+            description="Plans ensemble strategies from multiple solutions.",
+            tools=_READ_ONLY_TOOLS,
+        ),
+        AgentType.ENSEMBLER: AgentConfig(
+            agent_type=AgentType.ENSEMBLER,
+            description="Implements ensemble strategies combining solutions.",
+            tools=_EXECUTION_TOOLS,
+        ),
+        AgentType.DEBUGGER: AgentConfig(
+            agent_type=AgentType.DEBUGGER,
+            description="Debugs failing solution scripts using error tracebacks.",
+            tools=_EXECUTION_TOOLS,
+        ),
+        AgentType.LEAKAGE: AgentConfig(
+            agent_type=AgentType.LEAKAGE,
+            description="Detects and corrects data leakage in solutions.",
+            tools=_READ_ONLY_TOOLS,
+            output_schema=LeakageDetectionOutput,
+        ),
+        AgentType.DATA: AgentConfig(
+            agent_type=AgentType.DATA,
+            description="Analyzes dataset characteristics and contamination.",
+            tools=_READ_ONLY_TOOLS,
+        ),
+        AgentType.TEST: AgentConfig(
+            agent_type=AgentType.TEST,
+            description="Generates test submissions and validates outputs.",
+            tools=_EXECUTION_TOOLS,
+        ),
+    }

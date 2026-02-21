@@ -69,10 +69,11 @@ src/mle_star/
     *.yaml
 tests/
   __init__.py
-  test_models_core.py     # Tests for core config models (Task 03)
-  test_models_results.py  # Tests for evaluation & phase result models (Task 06)
-  test_models_scoring.py  # Tests for score interface & comparisons (Task 07)
-  test_prompt_system.py   # Tests for PromptTemplate & PromptRegistry (Task 08)
+  test_models_core.py          # Tests for core config models (Task 03)
+  test_models_results.py       # Tests for evaluation & phase result models (Task 06)
+  test_models_scoring.py       # Tests for score interface & comparisons (Task 07)
+  test_models_agent_config.py  # Tests for AgentConfig & build_default_agent_configs (Task 09)
+  test_prompt_system.py        # Tests for PromptTemplate & PromptRegistry (Task 08)
 ```
 
 ---
