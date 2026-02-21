@@ -64,7 +64,7 @@ src/mle_star/
   cli.py               # CLI entry point (uv run mle_star)
   models.py            # Pydantic data models (enums, configs, schemas)
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
-  execution.py         # Execution harness: environment setup, working dir, GPU detection (Task 11+)
+  execution.py         # Execution harness: env setup, working dir, GPU, async script exec (Tasks 11-13)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -77,6 +77,7 @@ tests/
   test_prompt_system.py        # Tests for PromptTemplate & PromptRegistry (Task 08)
   test_execution_env.py        # Tests for working directory & environment setup (Task 11)
   test_execution_script_write.py # Tests for script writing & validation (Task 12)
+  test_execution_async.py        # Tests for async script execution (Task 13)
 ```
 
 ---
@@ -85,7 +86,8 @@ tests/
 
 <!-- Add learnings here as you work on the codebase -->
 
--
+- `asyncio.shield(communicate_task)` inside `asyncio.wait_for` preserves partial stdout/stderr on timeout — without shield, the communicate task is cancelled and buffered data is lost
+- `start_new_session=True` on subprocess creates a new process group, enabling `os.killpg` to clean up orphan child processes on timeout
 
 ---
 

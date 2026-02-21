@@ -2,26 +2,37 @@
 
 Provides functions for setting up the working directory structure,
 cleaning output directories, detecting GPU hardware, building
-subprocess environment variables for script execution, and writing
-validated solution scripts to disk.
+subprocess environment variables for script execution, writing
+validated solution scripts to disk, and running scripts as async
+subprocesses with timeout enforcement and output capture.
 
 Refs:
     SRS 02a — Execution Environment (REQ-EX-001 through REQ-EX-004).
-    SRS 02b — Script Operations (REQ-EX-005, REQ-EX-006).
-    SRS 02d — Constraints (REQ-EX-044).
-    IMPLEMENTATION_PLAN.md Tasks 11, 12.
+    SRS 02b — Script Operations (REQ-EX-005 through REQ-EX-010).
+    SRS 02d — Constraints (REQ-EX-037, REQ-EX-043, REQ-EX-044).
+    IMPLEMENTATION_PLAN.md Tasks 11, 12, 13.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
+import sys
+import time
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from mle_star.models import SolutionScript
+
+logger = logging.getLogger(__name__)
 
 
 def setup_working_directory(base_path: str) -> str:
@@ -184,3 +195,141 @@ def write_script(
     target = Path(working_dir) / filename
     target.write_text(solution.content, encoding="utf-8")
     return str(target.resolve())
+
+
+# ---------------------------------------------------------------------------
+# Async Script Execution (REQ-EX-007 through REQ-EX-010, REQ-EX-037)
+# ---------------------------------------------------------------------------
+
+_SIGKILL_GRACE_SECONDS = 5
+
+
+class ExecutionRawResult(BaseModel):
+    """Raw output captured from a subprocess script execution (REQ-EX-008).
+
+    Immutable container for the raw stdout, stderr, exit code, timing,
+    and timeout status of a single script execution.
+
+    Attributes:
+        stdout: Full standard output from the subprocess.
+        stderr: Full standard error from the subprocess.
+        exit_code: Process exit code (0 = success, -1 = timeout).
+        duration_seconds: Wall-clock execution time in seconds.
+        timed_out: Whether execution was killed due to timeout.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    stdout: str
+    stderr: str
+    exit_code: int
+    duration_seconds: float
+    timed_out: bool
+
+
+async def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
+    """Send SIGTERM to the process group, escalating to SIGKILL after grace period.
+
+    Uses ``os.killpg`` to terminate the entire process group, ensuring
+    orphan child processes are also cleaned up (REQ-EX-037).
+
+    Args:
+        proc: The asyncio subprocess to kill.
+    """
+    pid = proc.pid
+    if pid is None:
+        return
+
+    try:
+        pgid = os.getpgid(pid)
+    except (OSError, ProcessLookupError):
+        return
+
+    # SIGTERM the entire process group
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except (OSError, ProcessLookupError):
+        return
+
+    # Wait for graceful shutdown, then escalate to SIGKILL
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=_SIGKILL_GRACE_SECONDS)
+    except TimeoutError:
+        with contextlib.suppress(OSError, ProcessLookupError):
+            os.killpg(pgid, signal.SIGKILL)
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
+
+
+async def execute_script(
+    script_path: str,
+    working_dir: str,
+    timeout_seconds: int,
+    env: dict[str, str] | None = None,
+) -> ExecutionRawResult:
+    """Execute a Python script as an async subprocess (REQ-EX-007).
+
+    Runs ``python {script_path}`` with ``cwd`` set to *working_dir*,
+    captures stdout and stderr separately, records wall-clock duration,
+    and enforces timeout via SIGTERM then SIGKILL (REQ-EX-009).
+
+    Each invocation creates a new subprocess with its own process group
+    for clean timeout termination (REQ-EX-010, REQ-EX-037).
+
+    Args:
+        script_path: Absolute path to the Python script to execute.
+        working_dir: Working directory for the subprocess.
+        timeout_seconds: Maximum seconds before the script is killed.
+        env: Environment variables for the subprocess, or ``None`` to
+            inherit the current environment.
+
+    Returns:
+        An ``ExecutionRawResult`` containing captured output, exit code,
+        duration, and timeout status.
+    """
+    start = time.monotonic()
+
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable,
+        script_path,
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+        start_new_session=True,  # New process group for killpg (REQ-EX-037)
+    )
+
+    timed_out = False
+    # Shield communicate() so it isn't cancelled on timeout — we still
+    # need it to collect partial output after the process is killed.
+    communicate_task = asyncio.ensure_future(proc.communicate())
+    try:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            asyncio.shield(communicate_task),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        timed_out = True
+        await _kill_process_group(proc)
+        # Process is now dead; communicate() will finish collecting
+        # whatever was already buffered in the pipes.
+        stdout_bytes, stderr_bytes = await communicate_task
+
+    duration = time.monotonic() - start
+
+    # Decode as UTF-8 with replacement for non-UTF-8 bytes (REQ-EX-043)
+    stdout_str = stdout_bytes.decode("utf-8", errors="replace")
+    stderr_str = stderr_bytes.decode("utf-8", errors="replace")
+
+    if timed_out:
+        exit_code = -1
+    else:
+        exit_code = proc.returncode if proc.returncode is not None else -1
+
+    return ExecutionRawResult(
+        stdout=stdout_str,
+        stderr=stderr_str,
+        exit_code=exit_code,
+        duration_seconds=duration,
+        timed_out=timed_out,
+    )

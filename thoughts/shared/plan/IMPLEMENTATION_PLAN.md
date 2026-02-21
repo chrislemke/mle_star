@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 32      | 0           | 12   |
+| P1       | 31      | 0           | 13   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -336,7 +336,7 @@ Implement `write_script(solution, working_dir, filename)` that writes a `Solutio
 ---
 
 ## [P1] 13. Async script execution
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -345,15 +345,15 @@ Implement `execute_script(script_path, working_dir, timeout_seconds, env)` as an
 **Spec:** SRS 02 | **Reqs:** REQ-EX-007 to REQ-EX-010 | **Depends on:** Task 12
 
 ### Acceptance Criteria
-- [ ] `execute_script()` is async and runs scripts via subprocess
-- [ ] `ExecutionRawResult` captures stdout, stderr, exit_code, duration_seconds, timed_out
-- [ ] Script exceeding timeout: SIGTERM, then SIGKILL after 5s grace (REQ-EX-009)
-- [ ] Timed-out result has `timed_out=True` and `exit_code=-1`
-- [ ] Partial stdout/stderr preserved on timeout
-- [ ] Subprocess inherits only provided environment variables
-- [ ] Non-zero exit codes do not raise exceptions (captured in result)
-- [ ] Orphan child process cleanup via `os.killpg` on process group after timeout (REQ-EX-037)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `execute_script()` is async and runs scripts via subprocess
+- [x] `ExecutionRawResult` captures stdout, stderr, exit_code, duration_seconds, timed_out
+- [x] Script exceeding timeout: SIGTERM, then SIGKILL after 5s grace (REQ-EX-009)
+- [x] Timed-out result has `timed_out=True` and `exit_code=-1`
+- [x] Partial stdout/stderr preserved on timeout
+- [x] Subprocess inherits only provided environment variables
+- [x] Non-zero exit codes do not raise exceptions (captured in result)
+- [x] Orphan child process cleanup via `os.killpg` on process group after timeout (REQ-EX-037)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
