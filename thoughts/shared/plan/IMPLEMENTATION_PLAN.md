@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 40      | 0           | 0    |
+| P1       | 43      | 0           | 0    |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -107,6 +107,7 @@ Create YAML prompt template files containing the prompt text for each of the 14 
 - [ ] Each template specifies: `agent_type`, `figure_ref`, `template`, `variables`
 - [ ] All `{variable}` placeholders in templates match the `variables` list
 - [ ] Total of 18 prompt templates across the YAML files (11 base + 2 leakage variants + 1 test base + 3 test variants + 1 data = 18)
+- [ ] `src/mle_star/prompts/__init__.py` exists to make prompts a proper Python package (see also Task 52)
 
 ---
 
@@ -1122,6 +1123,64 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 
 ---
 
+### Layer 6 — Integration and CLI
+
+---
+
+## [P1] 50. CLI entry point integration
+**Status:** pending
+**Priority:** P1
+
+### Description
+Update `src/mle_star/cli.py` to wire the CLI entry point to `run_pipeline_sync()`. The existing skeleton prints "Hello from mle_star!" but does not invoke any pipeline logic. The CLI should: parse a task description (from a YAML/JSON file path or inline arguments), construct a `TaskDescription` and optional `PipelineConfig`, call `run_pipeline_sync()`, and print/save the `FinalResult`. Use `argparse` for argument parsing. This is the user-facing interface to the pipeline and is required for `uv run mle_star` to function as documented.
+
+**Depends on:** Task 42 (orchestrator entry point), Task 03 (config models)
+
+### Acceptance Criteria
+- [ ] `uv run mle_star --task <path_to_task.yaml>` loads task description and runs pipeline
+- [ ] `--config <path_to_config.yaml>` optional flag for custom PipelineConfig
+- [ ] `--help` prints usage information
+- [ ] Exit code 0 on success, non-zero on PipelineError
+- [ ] Errors printed to stderr with useful diagnostics
+- [ ] Tests pass with ≥90% coverage; mypy clean
+
+---
+
+## [P1] 51. Shared test infrastructure
+**Status:** pending
+**Priority:** P1
+
+### Description
+Create shared test fixtures, factories, and mock objects in `tests/conftest.py` for use by all test modules. Includes: mock `ClaudeSDKClient` (returns configurable agent responses), factory functions for `SolutionScript`, `TaskDescription`, `PipelineConfig`, `EvaluationResult` (with sensible defaults), mock `PromptRegistry` that returns template stubs, temporary directory fixtures for working directory tests, and async test helpers. Every task from Layer 2 onward needs to mock the SDK client; centralizing this prevents duplication and ensures consistency.
+
+**Depends on:** Task 03 (config models), Task 04 (solution models), Task 05 (agent types)
+
+### Acceptance Criteria
+- [ ] `conftest.py` provides `mock_client` fixture returning a mock `ClaudeSDKClient` with configurable responses
+- [ ] Factory functions: `make_solution()`, `make_task()`, `make_config()`, `make_eval_result()` with sensible defaults
+- [ ] `mock_registry` fixture returning a stub `PromptRegistry`
+- [ ] `tmp_working_dir` fixture providing a temporary directory with standard layout
+- [ ] All fixtures are session-scoped or function-scoped as appropriate
+- [ ] mypy clean
+
+---
+
+## [P1] 52. Prompts package initialization
+**Status:** pending
+**Priority:** P1
+
+### Description
+Create `src/mle_star/prompts/__init__.py` to make the prompts directory a proper Python package. This is required for `importlib.resources` or `pkgutil` to locate the YAML prompt template files at runtime. Without it, `PromptRegistry` (Task 08) cannot reliably discover and load template files from the installed package.
+
+**Depends on:** None (package structure)
+
+### Acceptance Criteria
+- [ ] `src/mle_star/prompts/__init__.py` exists (can be empty or contain package docstring)
+- [ ] `importlib.resources.files("mle_star.prompts")` resolves correctly
+- [ ] mypy clean
+
+---
+
 ## Requirement Coverage
 
 | Spec | Module | Requirements | P1 Tasks | P2 Tasks | Total |
@@ -1135,12 +1194,36 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 | 07 — Phase 3 Ensemble | `phase3.py` | REQ-P3-001 to 049 (49) | 35–36 (2) | 37 (1) | 3 |
 | 08 — Finalization | `finalization.py` | REQ-FN-001 to 048 (48) | 38–40 (3) | 41 (1) | 4 |
 | 09 — Orchestrator | `orchestrator.py` | REQ-OR-001 to 057 (57) | 42–48 (7) | 49 (1) | 8 |
-| — — Project Setup | `pyproject.toml`, `prompts/` | — | 01–02 (2) | — | 2 |
-| **Total** | | **436** | **40** | **8** | **48** |
+| — — Project Setup | `pyproject.toml`, `prompts/` | — | 01–02, 52 (3) | — | 3 |
+| — — Test Infrastructure | `tests/conftest.py` | — | 51 (1) | — | 1 |
+| — — CLI Integration | `cli.py` | — | 50 (1) | — | 1 |
+| **Total** | | **436** | **43** | **8** | **51** |
 
 ---
 
 ## Changelog
+
+### 2026-02-21 (v12)
+
+Re-analysis of all 36 spec files, full implementation plan (v11), and codebase against requirements. Codebase still empty (skeleton CLI only) — all tasks remain pending.
+
+**Summary table fix:**
+1. **P1 task count was wrong**: Summary table said 40 P1 tasks but actual count was 41 (tasks 01-49 = 49 tasks, of which 41 are P1 and 8 are P2). The Requirement Coverage table also said "Total: 48" but should have been 49. Both corrected.
+
+**New tasks added (3):**
+1. **Task 50 — CLI entry point integration (P1)**: The existing `src/mle_star/cli.py` skeleton prints "Hello from mle_star!" but no task wired it to `run_pipeline_sync()`. Without this, `uv run mle_star` does nothing useful. Task 50 adds argparse-based CLI with task YAML loading, optional config override, and FinalResult output. Depends on Task 42 (orchestrator) and Task 03 (config models).
+2. **Task 51 — Shared test infrastructure (P1)**: Every task from Layer 2 onward needs to mock the SDK client, create test `SolutionScript`/`TaskDescription`/`PipelineConfig` instances, and set up temporary working directories. Without shared fixtures, each test module would independently reimplement these mocks. Task 51 centralizes this in `tests/conftest.py`. Depends on Tasks 03-05 (model layer).
+3. **Task 52 — Prompts package initialization (P1)**: Task 02 creates YAML files in `src/mle_star/prompts/` but the directory needs an `__init__.py` to be a proper Python package. Without it, `importlib.resources.files("mle_star.prompts")` fails at runtime and `PromptRegistry` (Task 08) cannot discover template files. Also added a cross-reference in Task 02's acceptance criteria.
+
+**Updated counts:** 43 P1 + 8 P2 = 51 total tasks covering 436 requirements.
+
+**Verified correct (no change needed):**
+- All 436 requirements from specs 01-09 still covered
+- Task priorities and dependencies for tasks 01-49 unchanged
+- All previously documented cross-cutting constraints remain accurate
+- Pre-commit hook constraints from v11 remain applicable
+
+---
 
 ### 2026-02-21 (v11)
 
