@@ -64,6 +64,7 @@ src/mle_star/
   cli.py               # CLI entry point (uv run mle_star)
   models.py            # Pydantic data models (enums, configs, schemas)
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
+  execution.py         # Execution harness: environment setup, working dir, GPU detection (Task 11+)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -74,6 +75,7 @@ tests/
   test_models_scoring.py       # Tests for score interface & comparisons (Task 07)
   test_models_agent_config.py  # Tests for AgentConfig & build_default_agent_configs (Task 09)
   test_prompt_system.py        # Tests for PromptTemplate & PromptRegistry (Task 08)
+  test_execution_env.py        # Tests for working directory & environment setup (Task 11)
 ```
 
 ---

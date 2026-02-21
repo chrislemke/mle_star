@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 34      | 0           | 10   |
+| P1       | 33      | 0           | 11   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -300,7 +300,7 @@ Implement `RefinementAttempt` (plan, score, code_block, was_improvement), `Ensem
 ---
 
 ## [P1] 11. Working directory and environment setup
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -309,11 +309,11 @@ Implement environment setup functions in `src/mle_star/execution.py`: `setup_wor
 **Spec:** SRS 02 | **Reqs:** REQ-EX-001 to REQ-EX-004 | **Depends on:** Spec 01
 
 ### Acceptance Criteria
-- [ ] `setup_working_directory()` creates required directory structure
-- [ ] `clean_output_directory()` removes previous output files
-- [ ] `detect_gpu_info()` returns dict with GPU information (or empty if none); graceful fallback on no CUDA
-- [ ] `build_execution_env()` returns dict with PYTHONUNBUFFERED=1, PYTHONHASHSEED=0, CUDA_VISIBLE_DEVICES
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `setup_working_directory()` creates required directory structure
+- [x] `clean_output_directory()` removes previous output files
+- [x] `detect_gpu_info()` returns dict with GPU information (or empty if none); graceful fallback on no CUDA
+- [x] `build_execution_env()` returns dict with PYTHONUNBUFFERED=1, PYTHONHASHSEED=0, CUDA_VISIBLE_DEVICES
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
