@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 22      | 0           | 22   |
+| P1       | 21      | 0           | 23   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -598,7 +598,7 @@ Implement `run_phase2_inner_loop(client, solution, code_block, initial_plan, bes
 ---
 
 ## [P1] 25. Inner loop safety integration and error handling
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -607,15 +607,15 @@ Integrate safety checks into the inner loop: call `check_and_fix_leakage()` befo
 **Spec:** SRS 06 | **Reqs:** REQ-P2I-030 to REQ-P2I-038 | **Depends on:** Task 24
 
 ### Acceptance Criteria
-- [ ] `check_and_fix_leakage()` called before every evaluation (REQ-SF-022)
-- [ ] `evaluate_with_retry()` used with `make_debug_callback()` for retries
-- [ ] Coder failure: records RefinementAttempt(score=None, code_block="", was_improvement=False), skips eval
-- [ ] Replace_block ValueError: records RefinementAttempt(score=None, code_block=c_t_k, was_improvement=False)
-- [ ] Planner failure: records RefinementAttempt(plan="[planner failed]", score=None, code_block="", was_improvement=False)
-- [ ] Failed attempts still included in accumulated_plans/scores for A_planner (REQ-P2I-035)
-- [ ] None score never triggers best-score update (REQ-P2I-027)
-- [ ] `InnerLoopResult` preserves input solution when no improvement found (REQ-P2I-038)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `check_and_fix_leakage()` called before every evaluation (REQ-SF-022)
+- [x] `evaluate_with_retry()` used with `make_debug_callback()` for retries
+- [x] Coder failure: records RefinementAttempt(score=None, code_block="", was_improvement=False), skips eval
+- [x] Replace_block ValueError: records RefinementAttempt(score=None, code_block=c_t_k, was_improvement=False)
+- [x] Planner failure: records RefinementAttempt(plan="[planner failed]", score=None, code_block="", was_improvement=False)
+- [x] Failed attempts still included in accumulated_plans/scores for A_planner (REQ-P2I-035)
+- [x] None score never triggers best-score update (REQ-P2I-027)
+- [x] `InnerLoopResult` preserves input solution when no improvement found (REQ-P2I-038)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

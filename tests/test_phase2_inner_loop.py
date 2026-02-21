@@ -127,9 +127,15 @@ class TestRunPhase2InnerLoopIsAsync:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(
                 f"{_MODULE}.is_improvement_or_equal",
@@ -184,9 +190,15 @@ class TestK0UsesInitialPlan:
                 return_value="plan",
             ) as mock_planner,
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -225,9 +237,15 @@ class TestK0UsesInitialPlan:
                 new_callable=AsyncMock,
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -266,9 +284,15 @@ class TestK0UsesInitialPlan:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -317,9 +341,15 @@ class TestKGe1CallsPlanner:
                 return_value="new plan",
             ) as mock_planner,
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -359,9 +389,15 @@ class TestKGe1CallsPlanner:
                 return_value="new plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -407,11 +443,13 @@ class TestPlannerReceivesFullHistory:
         eval_scores = [0.85, 0.87, 0.90]
         eval_index = 0
 
-        async def mock_eval(*args: Any, **kwargs: Any) -> EvaluationResult:
+        async def mock_eval(
+            *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
             nonlocal eval_index
             score = eval_scores[eval_index]
             eval_index += 1
-            return _make_eval_result(score)
+            return (_make_solution(), _make_eval_result(score))
 
         with (
             patch(
@@ -420,7 +458,13 @@ class TestPlannerReceivesFullHistory:
                 return_value="improved",
             ),
             patch(f"{_MODULE}.invoke_planner", side_effect=capture_planner),
-            patch(f"{_MODULE}.evaluate_solution", side_effect=mock_eval),
+            patch(
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=mock_eval),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
@@ -475,11 +519,13 @@ class TestPlannerReceivesFullHistory:
         ]
         eval_index = 0
 
-        async def mock_eval(*args: Any, **kwargs: Any) -> EvaluationResult:
+        async def mock_eval(
+            *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
             nonlocal eval_index
             r = eval_results[eval_index]
             eval_index += 1
-            return r
+            return (_make_solution(), r)
 
         with (
             patch(
@@ -488,7 +534,13 @@ class TestPlannerReceivesFullHistory:
                 return_value="improved",
             ),
             patch(f"{_MODULE}.invoke_planner", side_effect=capture_planner),
-            patch(f"{_MODULE}.evaluate_solution", side_effect=mock_eval),
+            patch(
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=mock_eval),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
@@ -541,9 +593,15 @@ class TestCoderAlwaysGetsOriginalCodeBlock:
                 return_value="new plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -608,9 +666,15 @@ class TestReplaceBlockOnOriginalSolution:
                 return_value="new plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -662,9 +726,15 @@ class TestBestScoreInitialization:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.75),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.75)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -709,9 +779,15 @@ class TestBestUpdateOnImprovementOrEqual:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.80),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.80)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -749,9 +825,15 @@ class TestBestUpdateOnImprovementOrEqual:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.90),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.90)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=True),
@@ -787,9 +869,15 @@ class TestBestUpdateOnImprovementOrEqual:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.70),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.70)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=True),
@@ -835,9 +923,15 @@ class TestNoneScoreNoUpdate:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(None),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(None)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -877,9 +971,15 @@ class TestNoneScoreNoUpdate:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(None),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(None)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -915,9 +1015,15 @@ class TestNoneScoreNoUpdate:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(None),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(None)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False) as mock_cmp,
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -962,9 +1068,15 @@ class TestRefinementAttemptFields:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.90),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.90)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=True),
@@ -1003,7 +1115,13 @@ class TestRefinementAttemptFields:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
             ) as mock_eval,
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
@@ -1023,7 +1141,7 @@ class TestRefinementAttemptFields:
         assert attempt.code_block == ""
         assert attempt.score is None
         assert attempt.was_improvement is False
-        # evaluate_solution should NOT be called when coder fails
+        # evaluate_with_retry should NOT be called when coder fails
         mock_eval.assert_not_called()
 
     async def test_replace_block_failure_attempt_fields(self) -> None:
@@ -1045,7 +1163,13 @@ class TestRefinementAttemptFields:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
             ) as mock_eval,
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
@@ -1099,9 +1223,15 @@ class TestAttemptsListStructure:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -1144,9 +1274,15 @@ class TestAttemptsListStructure:
             ),
             patch(f"{_MODULE}.invoke_planner", side_effect=mock_planner),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -1193,9 +1329,15 @@ class TestImprovedFlagUsesStrictImprovement:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.90),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.90)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=True),
@@ -1230,9 +1372,15 @@ class TestImprovedFlagUsesStrictImprovement:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.80),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.80)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -1272,9 +1420,15 @@ class TestImprovedFlagUsesStrictImprovement:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.70),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.70)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -1323,9 +1477,15 @@ class TestPreservesInputOnNoImprovement:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.70),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.70)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -1373,9 +1533,15 @@ class TestK1SingleIteration:
                 new_callable=AsyncMock,
             ) as mock_planner,
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=True),
@@ -1427,7 +1593,13 @@ class TestAllCoderFailures:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
             ) as mock_eval,
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
@@ -1447,7 +1619,7 @@ class TestAllCoderFailures:
         assert result.best_solution.content == solution.content
         assert result.improved is False
         assert len(result.attempts) == 3
-        # evaluate_solution never called when coder fails
+        # evaluate_with_retry never called when coder fails
         mock_eval.assert_not_called()
         for attempt in result.attempts:
             assert attempt.code_block == ""
@@ -1475,7 +1647,13 @@ class TestAllCoderFailures:
                 new_callable=AsyncMock,
                 return_value="plan",
             ) as mock_planner,
-            patch(f"{_MODULE}.evaluate_solution", new_callable=AsyncMock),
+            patch(
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(f"{_MODULE}.evaluate_with_retry", new_callable=AsyncMock),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
@@ -1524,11 +1702,13 @@ class TestMixedSuccessFailure:
         eval_results = [_make_eval_result(0.85), _make_eval_result(0.90)]
         eval_index = 0
 
-        async def mock_eval(*args: Any, **kwargs: Any) -> EvaluationResult:
+        async def mock_eval(
+            *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
             nonlocal eval_index
             r = eval_results[eval_index]
             eval_index += 1
-            return r
+            return (_make_solution(), r)
 
         improvement_or_equal_results = [True, True]  # For k=0 and k=2
         ioer_index = 0
@@ -1555,7 +1735,13 @@ class TestMixedSuccessFailure:
                 new_callable=AsyncMock,
                 return_value="plan",
             ),
-            patch(f"{_MODULE}.evaluate_solution", side_effect=mock_eval),
+            patch(
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=mock_eval),
             patch(
                 f"{_MODULE}.is_improvement_or_equal",
                 side_effect=mock_improvement_or_equal,
@@ -1625,9 +1811,15 @@ class TestPlannerFailure:
                 return_value=None,
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ) as mock_eval,
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -1646,21 +1838,21 @@ class TestPlannerFailure:
         assert result.attempts[1].plan == "[planner failed]"
         assert result.attempts[1].score is None
         assert result.attempts[1].was_improvement is False
-        # evaluate_solution called once for k=0 but not for k=1
+        # evaluate_with_retry called once for k=0 but not for k=1
         assert mock_eval.call_count == 1
 
 
 # ===========================================================================
-# evaluate_solution is called (not evaluate_with_retry)
+# evaluate_with_retry is called (with check_and_fix_leakage and make_debug_callback)
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestUsesEvaluateSolutionDirectly:
-    """Task 24 calls evaluate_solution directly, NOT evaluate_with_retry."""
+class TestUsesEvaluateWithRetry:
+    """Inner loop calls evaluate_with_retry with debug callback."""
 
-    async def test_evaluate_solution_called(self) -> None:
-        """evaluate_solution is called for each successful coder+replace iteration."""
+    async def test_evaluate_with_retry_called(self) -> None:
+        """evaluate_with_retry is called for each successful coder+replace iteration."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -1681,9 +1873,15 @@ class TestUsesEvaluateSolutionDirectly:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ) as mock_eval,
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -1745,9 +1943,15 @@ class TestParametrizedKValues:
                 return_value="plan",
             ) as mock_planner,
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -1793,9 +1997,15 @@ class TestBestSolutionTracking:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.90),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c, cb: (sol, _make_eval_result(0.90)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=True),
@@ -1840,11 +2050,13 @@ class TestBestSolutionTracking:
         ]
         eval_index = 0
 
-        async def mock_eval(*args: Any, **kwargs: Any) -> EvaluationResult:
+        async def mock_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
             nonlocal eval_index
             r = eval_results[eval_index]
             eval_index += 1
-            return r
+            return (sol, r)
 
         # k=0: improvement, k=1: no improvement, k=2: improvement
         ioer_results = [True, False, True]
@@ -1872,7 +2084,13 @@ class TestBestSolutionTracking:
                 new_callable=AsyncMock,
                 return_value="plan",
             ),
-            patch(f"{_MODULE}.evaluate_solution", side_effect=mock_eval),
+            patch(
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=mock_eval),
             patch(f"{_MODULE}.is_improvement_or_equal", side_effect=mock_ioer),
             patch(f"{_MODULE}.is_improvement", side_effect=mock_ir),
         ):
@@ -1892,16 +2110,16 @@ class TestBestSolutionTracking:
 
 
 # ===========================================================================
-# evaluate_solution receives the replaced solution
+# check_and_fix_leakage and evaluate_with_retry receive the replaced solution
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestEvaluateSolutionReceivesReplacedSolution:
-    """evaluate_solution is called with the solution after replace_block."""
+class TestLeakageAndEvalReceiveReplacedSolution:
+    """check_and_fix_leakage receives the replaced solution; evaluate_with_retry receives its output."""
 
-    async def test_eval_receives_modified_solution(self) -> None:
-        """evaluate_solution receives the solution with the new code block."""
+    async def test_leakage_check_receives_replaced_solution(self) -> None:
+        """check_and_fix_leakage receives the solution after replace_block."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -1910,11 +2128,18 @@ class TestEvaluateSolutionReceivesReplacedSolution:
         task = _make_task()
         config = _make_config(inner_loop_steps=1)
 
+        leakage_solutions: list[Any] = []
         eval_solutions: list[Any] = []
 
-        async def capture_eval(sol: Any, *args: Any, **kwargs: Any) -> EvaluationResult:
+        async def capture_leakage(sol: Any, t: Any, c: Any) -> SolutionScript:
+            leakage_solutions.append(sol)
+            return sol
+
+        async def capture_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
             eval_solutions.append(sol)
-            return _make_eval_result(0.85)
+            return (sol, _make_eval_result(0.85))
 
         with (
             patch(
@@ -1923,7 +2148,9 @@ class TestEvaluateSolutionReceivesReplacedSolution:
                 return_value="NEW_CODE",
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
-            patch(f"{_MODULE}.evaluate_solution", side_effect=capture_eval),
+            patch(f"{_MODULE}.check_and_fix_leakage", side_effect=capture_leakage),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=capture_eval),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
@@ -1937,6 +2164,12 @@ class TestEvaluateSolutionReceivesReplacedSolution:
                 config=config,
             )
 
+        # check_and_fix_leakage receives the replaced solution
+        assert len(leakage_solutions) == 1
+        assert "NEW_CODE" in leakage_solutions[0].content
+        assert "TARGET_BLOCK" not in leakage_solutions[0].content
+
+        # evaluate_with_retry receives whatever check_and_fix_leakage returned
         assert len(eval_solutions) == 1
         assert "NEW_CODE" in eval_solutions[0].content
         assert "TARGET_BLOCK" not in eval_solutions[0].content
@@ -1969,9 +2202,15 @@ class TestIsImprovementOrEqualArguments:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.90),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.90)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=True) as mock_cmp,
             patch(f"{_MODULE}.is_improvement", return_value=True),
@@ -2024,9 +2263,15 @@ class TestInnerLoopPropertyBased:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -2069,9 +2314,15 @@ class TestInnerLoopPropertyBased:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -2112,9 +2363,15 @@ class TestInnerLoopPropertyBased:
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.50),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.50)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -2136,7 +2393,7 @@ class TestInnerLoopPropertyBased:
     )
     @settings(max_examples=10)
     async def test_all_coder_failures_never_calls_eval(self, k: int) -> None:
-        """When all coder calls return None, evaluate_solution is never called."""
+        """When all coder calls return None, evaluate_with_retry is never called."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2157,7 +2414,13 @@ class TestInnerLoopPropertyBased:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
             ) as mock_eval,
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
@@ -2179,16 +2442,16 @@ class TestInnerLoopPropertyBased:
 
 
 # ===========================================================================
-# Does NOT call check_and_fix_leakage (Task 25 concern)
+# Calls check_and_fix_leakage on each successful iteration
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestDoesNotCallLeakageCheck:
-    """Task 24 does NOT call check_and_fix_leakage (that is Task 25)."""
+class TestCallsLeakageCheck:
+    """Inner loop calls check_and_fix_leakage before every evaluation."""
 
-    async def test_no_leakage_check_invoked(self) -> None:
-        """check_and_fix_leakage is not called during the inner loop."""
+    async def test_leakage_check_called_per_successful_iteration(self) -> None:
+        """check_and_fix_leakage is called once per successful coder+replace iteration."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2209,16 +2472,19 @@ class TestDoesNotCallLeakageCheck:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ) as mock_leakage,
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
-            # If check_and_fix_leakage were imported and used, this patch would
-            # be needed. We verify it is not called by checking it does not exist
-            # as a call target in the function.
             await run_phase2_inner_loop(
                 client=client,
                 solution=solution,
@@ -2229,8 +2495,8 @@ class TestDoesNotCallLeakageCheck:
                 config=config,
             )
 
-        # No assertion needed -- if the function tries to call check_and_fix_leakage
-        # without it being patched, the test will fail with an import/attribute error
+        # check_and_fix_leakage called once per successful iteration (K=2)
+        assert mock_leakage.call_count == 2
 
 
 # ===========================================================================
@@ -2271,9 +2537,15 @@ class TestAccumulatedHistoryIncludesFailedPlans:
             ),
             patch(f"{_MODULE}.invoke_planner", side_effect=mock_planner),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -2331,9 +2603,15 @@ class TestCoderClientArgument:
                 return_value="plan",
             ),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -2385,9 +2663,15 @@ class TestPlannerClientArgument:
             ),
             patch(f"{_MODULE}.invoke_planner", side_effect=capture_planner),
             patch(
-                f"{_MODULE}.evaluate_solution",
+                f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=_make_eval_result(0.85),
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -2407,16 +2691,16 @@ class TestPlannerClientArgument:
 
 
 # ===========================================================================
-# evaluate_solution receives task and config
+# evaluate_with_retry receives task, config, and debug callback
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestEvaluateSolutionArguments:
-    """evaluate_solution receives the modified solution, task, and config."""
+class TestEvaluateWithRetryArguments:
+    """evaluate_with_retry receives the modified solution, task, config, and debug callback."""
 
-    async def test_eval_receives_task_and_config(self) -> None:
-        """evaluate_solution is called with (modified_solution, task, config)."""
+    async def test_eval_receives_task_config_and_callback(self) -> None:
+        """evaluate_with_retry is called with (modified_solution, task, config, debug_callback)."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2426,10 +2710,13 @@ class TestEvaluateSolutionArguments:
         config = _make_config(inner_loop_steps=1)
 
         eval_args: list[tuple[Any, ...]] = []
+        mock_callback = AsyncMock()
 
-        async def capture_eval(*args: Any, **kwargs: Any) -> EvaluationResult:
+        async def capture_eval(
+            *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
             eval_args.append(args)
-            return _make_eval_result(0.85)
+            return (_make_solution(), _make_eval_result(0.85))
 
         with (
             patch(
@@ -2438,7 +2725,13 @@ class TestEvaluateSolutionArguments:
                 return_value="improved",
             ),
             patch(f"{_MODULE}.invoke_planner", new_callable=AsyncMock),
-            patch(f"{_MODULE}.evaluate_solution", side_effect=capture_eval),
+            patch(
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=mock_callback),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=capture_eval),
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
@@ -2453,7 +2746,8 @@ class TestEvaluateSolutionArguments:
             )
 
         assert len(eval_args) == 1
-        # args: (solution, task, config)
+        # args: (solution, task, config, debug_callback)
         assert isinstance(eval_args[0][0], SolutionScript)
         assert eval_args[0][1] is task
         assert eval_args[0][2] is config
+        assert eval_args[0][3] is mock_callback

@@ -14,8 +14,8 @@ and tracks the best score using >= semantics.
 
 Refs:
     SRS 06a — Phase 2 Inner Agents (REQ-P2I-001 through REQ-P2I-015).
-    SRS 06b — Phase 2 Inner Orchestration (REQ-P2I-016 through REQ-P2I-029).
-    IMPLEMENTATION_PLAN.md Tasks 23, 24.
+    SRS 06b — Phase 2 Inner Orchestration (REQ-P2I-016 through REQ-P2I-038).
+    IMPLEMENTATION_PLAN.md Tasks 23, 24, 25.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from mle_star.execution import evaluate_solution
+from mle_star.execution import evaluate_with_retry
 from mle_star.models import (
     AgentType,
     CodeBlock,
@@ -34,7 +34,11 @@ from mle_star.models import (
     TaskDescription,
 )
 from mle_star.prompts import PromptRegistry
-from mle_star.safety import extract_code_block
+from mle_star.safety import (
+    check_and_fix_leakage,
+    extract_code_block,
+    make_debug_callback,
+)
 from mle_star.scoring import is_improvement, is_improvement_or_equal
 
 logger = logging.getLogger(__name__)
@@ -186,7 +190,10 @@ async def run_phase2_inner_loop(
 
     A_coder always receives the **original** ``code_block.content`` (REQ-P2I-021).
     ``replace_block`` is always called against the **original** ``solution``
-    (REQ-P2I-022/023).  Best score is updated using ``is_improvement_or_equal``
+    (REQ-P2I-022/023).  Before each evaluation, ``check_and_fix_leakage`` is
+    called on the candidate (REQ-P2I-030/REQ-SF-022).  Evaluation uses
+    ``evaluate_with_retry`` with ``make_debug_callback`` for error recovery
+    (REQ-P2I-031).  Best score is updated using ``is_improvement_or_equal``
     (>= semantics, REQ-P2I-026).  ``InnerLoopResult.improved`` uses strict
     ``is_improvement`` (REQ-P2I-036).
 
@@ -285,9 +292,15 @@ async def run_phase2_inner_loop(
             continue
 
         # ------------------------------------------------------------------
-        # Step 4: Evaluate the candidate solution.
+        # Step 4: Leakage check then evaluate with debug retry.
         # ------------------------------------------------------------------
-        eval_result = await evaluate_solution(candidate, task, config)
+        # REQ-P2I-030: check_and_fix_leakage before every evaluation.
+        candidate = await check_and_fix_leakage(candidate, task, client)
+        # REQ-P2I-031: evaluate_with_retry with debug callback.
+        debug_callback = make_debug_callback(task, config, client)
+        candidate, eval_result = await evaluate_with_retry(
+            candidate, task, config, debug_callback
+        )
         score = eval_result.score
 
         # ------------------------------------------------------------------
