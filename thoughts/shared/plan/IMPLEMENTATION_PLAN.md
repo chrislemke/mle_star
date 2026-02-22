@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 4       | 0           | 40   |
+| P1       | 0       | 0           | 44   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -1137,7 +1137,7 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 ---
 
 ## [P1] 50. CLI entry point integration
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -1146,12 +1146,12 @@ Update `src/mle_star/cli.py` to wire the CLI entry point to `run_pipeline_sync()
 **Depends on:** Task 42 (orchestrator entry point), Task 03 (config models)
 
 ### Acceptance Criteria
-- [ ] `uv run mle_star --task <path_to_task.yaml>` loads task description and runs pipeline
-- [ ] `--config <path_to_config.yaml>` optional flag for custom PipelineConfig
-- [ ] `--help` prints usage information
-- [ ] Exit code 0 on success, non-zero on PipelineError
-- [ ] Errors printed to stderr with useful diagnostics
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `uv run mle_star --task <path_to_task.yaml>` loads task description and runs pipeline
+- [x] `--config <path_to_config.yaml>` optional flag for custom PipelineConfig
+- [x] `--help` prints usage information
+- [x] Exit code 0 on success, non-zero on PipelineError
+- [x] Errors printed to stderr with useful diagnostics
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
