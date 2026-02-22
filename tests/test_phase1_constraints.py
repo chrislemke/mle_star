@@ -141,9 +141,7 @@ def _setup_standard_mocks(
             for (sol, res) in eval_results
             if not res.is_error and res.score is not None
         ]
-        ranked_pairs = sorted(
-            successful, key=lambda p: p[1].score or 0.0, reverse=True
-        )
+        ranked_pairs = sorted(successful, key=lambda p: p[1].score or 0.0, reverse=True)
     mock_rank = MagicMock(return_value=ranked_pairs)
     mock_improve = MagicMock(return_value=True)
 
@@ -214,8 +212,7 @@ class TestCandidateGenerationSequential:
             for i in range(3)
         ]
         eval_results = [
-            (candidates[i], _make_eval_result(score=0.80 + i * 0.05))
-            for i in range(3)
+            (candidates[i], _make_eval_result(score=0.80 + i * 0.05)) for i in range(3)
         ]
         ranked = list(reversed(eval_results))
 
@@ -314,7 +311,9 @@ class TestPhase1OverheadBudget:
             await run_phase1(task, config, client)
         elapsed = time.monotonic() - start
 
-        assert elapsed < 5.0, f"Orchestration overhead {elapsed:.2f}s exceeded 5s budget"
+        assert elapsed < 5.0, (
+            f"Orchestration overhead {elapsed:.2f}s exceeded 5s budget"
+        )
 
 
 # ===========================================================================
@@ -367,12 +366,10 @@ class TestPhase1StartLogging:
 
         models = [_make_model(f"m{i}") for i in range(5)]
         candidates = [
-            _make_solution(content=f"code_{i}", source_model=f"m{i}")
-            for i in range(5)
+            _make_solution(content=f"code_{i}", source_model=f"m{i}") for i in range(5)
         ]
         eval_results = [
-            (candidates[i], _make_eval_result(score=0.80 + i * 0.02))
-            for i in range(5)
+            (candidates[i], _make_eval_result(score=0.80 + i * 0.02)) for i in range(5)
         ]
         ranked = list(reversed(eval_results))
 
@@ -742,9 +739,7 @@ class TestAllCandidatesFailedLogging:
 
         # Check for ERROR-level log or the RuntimeError message
         # The error is currently raised, which may also be logged
-        warning_and_above = [
-            r for r in caplog.records if r.levelno >= logging.WARNING
-        ]
+        warning_and_above = [r for r in caplog.records if r.levelno >= logging.WARNING]
         # At minimum, the failing candidates should have produced warnings
         assert len(warning_and_above) >= 1
         # Ideally an ERROR log should mention all candidates failed and M value
@@ -1285,12 +1280,10 @@ class TestPhase1CompleteLogging:
 
         models = [_make_model(f"m{i}") for i in range(3)]
         candidates = [
-            _make_solution(content=f"code_{i}", source_model=f"m{i}")
-            for i in range(3)
+            _make_solution(content=f"code_{i}", source_model=f"m{i}") for i in range(3)
         ]
         eval_results = [
-            (candidates[i], _make_eval_result(score=0.80 + i * 0.05))
-            for i in range(3)
+            (candidates[i], _make_eval_result(score=0.80 + i * 0.05)) for i in range(3)
         ]
         ranked = list(reversed(eval_results))
 
@@ -1318,8 +1311,7 @@ class TestPhase1CompleteLogging:
         info_msgs = [r for r in caplog.records if r.levelno == logging.INFO]
         all_info_text = " ".join(r.message for r in info_msgs)
         assert (
-            "merg" in all_info_text.lower()
-            or "2" in all_info_text  # 2 merges
+            "merg" in all_info_text.lower() or "2" in all_info_text  # 2 merges
         )
 
 
@@ -1599,9 +1591,7 @@ class TestLeakageThreeIntegrationPoints:
 
         leakage_calls: list[str] = []
 
-        async def _track_leakage(
-            s: SolutionScript, _t: Any, _c: Any
-        ) -> SolutionScript:
+        async def _track_leakage(s: SolutionScript, _t: Any, _c: Any) -> SolutionScript:
             leakage_calls.append(s.content)
             return s
 
@@ -2008,9 +1998,7 @@ class TestPhase1LoggingProperties:
         num_models=st.integers(min_value=1, max_value=5),
     )
     @settings(max_examples=10, deadline=10000)
-    async def test_phase1_always_logs_start_and_complete(
-        self, num_models: int
-    ) -> None:
+    async def test_phase1_always_logs_start_and_complete(self, num_models: int) -> None:
         """Phase 1 always logs start and complete events regardless of M value."""
         import logging as _logging
 
@@ -2059,9 +2047,7 @@ class TestPhase1LoggingProperties:
         ),
     )
     @settings(max_examples=10, deadline=10000)
-    async def test_phase1_complete_score_matches_result(
-        self, score: float
-    ) -> None:
+    async def test_phase1_complete_score_matches_result(self, score: float) -> None:
         """Phase 1 result score is always consistent regardless of score value."""
         from mle_star.phase1 import run_phase1
 

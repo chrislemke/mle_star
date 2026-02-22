@@ -942,13 +942,16 @@ class TestHookProperties:
         await hook(_make_post_tool_use_input(), None, _DEFAULT_HOOK_CONTEXT)
 
         threshold = max(0.10 * time_limit, 300.0)
-        if remaining < threshold:
+        if remaining <= threshold:
+            # Use <= because clock drift between deadline computation and
+            # hook invocation means the hook may observe remaining < threshold
+            # even when the test computed remaining == threshold exactly.
             assert finalize_flag.is_set(), (
-                f"Flag should be set: remaining={remaining:.1f} < threshold={threshold:.1f}"
+                f"Flag should be set: remaining={remaining:.1f} <= threshold={threshold:.1f}"
             )
         else:
             assert not finalize_flag.is_set(), (
-                f"Flag should NOT be set: remaining={remaining:.1f} >= threshold={threshold:.1f}"
+                f"Flag should NOT be set: remaining={remaining:.1f} > threshold={threshold:.1f}"
             )
 
     @given(

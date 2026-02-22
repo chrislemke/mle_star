@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Skill Initializer — Creates a complete Claude Code skill folder structure.
+"""Skill Initializer — Creates a complete Claude Code skill folder structure.
 
 Usage:
     init_skill.py <skill-name> --path <target-directory> [--type skill|command|agent] [--minimal]
@@ -19,10 +18,9 @@ The script creates the full folder structure in one step:
 """
 
 import argparse
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
-
 
 # ── Validation ────────────────────────────────────────────────────────────────
 
@@ -32,11 +30,14 @@ MAX_NAME_LENGTH = 64
 
 
 def validate_name(name: str) -> list[str]:
+    """Validate a skill name for format and reserved word constraints."""
     errors = []
     if len(name) > MAX_NAME_LENGTH:
         errors.append(f"Name exceeds {MAX_NAME_LENGTH} chars (got {len(name)})")
     if not NAME_PATTERN.match(name):
-        errors.append("Name must be lowercase letters, digits, and hyphens only (kebab-case)")
+        errors.append(
+            "Name must be lowercase letters, digits, and hyphens only (kebab-case)"
+        )
     for word in RESERVED_WORDS:
         if word in name.lower():
             errors.append(f'Name must not contain reserved word "{word}"')
@@ -45,7 +46,9 @@ def validate_name(name: str) -> list[str]:
 
 # ── Templates ─────────────────────────────────────────────────────────────────
 
+
 def skill_template(name: str, title: str) -> str:
+    """Return the SKILL.md template for a skill-type scaffold."""
     return f"""---
 name: {name}
 description: >-
@@ -82,6 +85,7 @@ Delete any empty resource directories — not every skill needs all of them.
 
 
 def command_template(name: str, title: str) -> str:
+    """Return the SKILL.md template for a command-type scaffold."""
     return f"""---
 name: {name}
 description: >-
@@ -101,6 +105,7 @@ description: >-
 
 
 def agent_template(name: str, title: str) -> str:
+    """Return the SKILL.md template for an agent-type scaffold."""
     return f"""---
 name: {name}
 description: >-
@@ -176,11 +181,16 @@ This file is only loaded into context when Claude needs it.]
 
 # ── Scaffolding ───────────────────────────────────────────────────────────────
 
+
 def title_from_name(name: str) -> str:
+    """Convert a kebab-case name to a title-case display name."""
     return " ".join(word.capitalize() for word in name.split("-"))
 
 
-def create_skill(name: str, path: Path, skill_type: str = "skill", minimal: bool = False) -> Path | None:
+def create_skill(
+    name: str, path: Path, skill_type: str = "skill", minimal: bool = False
+) -> Path | None:
+    """Scaffold a new skill, command, or agent at the given path."""
     title = title_from_name(name)
 
     # Determine target directory and file
@@ -216,7 +226,7 @@ def create_skill(name: str, path: Path, skill_type: str = "skill", minimal: bool
 
         # SKILL.md
         (skill_dir / "SKILL.md").write_text(skill_template(name, title))
-        print(f"   ├── SKILL.md")
+        print("   ├── SKILL.md")
 
         # scripts/
         scripts_dir = skill_dir / "scripts"
@@ -230,22 +240,22 @@ def create_skill(name: str, path: Path, skill_type: str = "skill", minimal: bool
         refs_dir = skill_dir / "references"
         refs_dir.mkdir()
         (refs_dir / "reference.md").write_text(EXAMPLE_REFERENCE.format(title=title))
-        print(f"   ├── references/reference.md")
+        print("   ├── references/reference.md")
 
         # assets/ (only if not minimal)
         if not minimal:
             (skill_dir / "assets").mkdir()
-            print(f"   └── assets/")
+            print("   └── assets/")
         else:
-            print(f"   └── (minimal mode: no assets/)")
+            print("   └── (minimal mode: no assets/)")
 
         print(f"\n✅ Skill '{name}' scaffolded at {skill_dir}")
-        print(f"\nNext steps:")
-        print(f"  1. Edit SKILL.md — fill in the [TODO] sections")
-        print(f"  2. Write a specific description with trigger phrases")
-        print(f"  3. Add scripts or references as needed")
-        print(f"  4. Delete empty resource directories")
-        print(f"  5. Test with realistic prompts")
+        print("\nNext steps:")
+        print("  1. Edit SKILL.md — fill in the [TODO] sections")
+        print("  2. Write a specific description with trigger phrases")
+        print("  3. Add scripts or references as needed")
+        print("  4. Delete empty resource directories")
+        print("  5. Test with realistic prompts")
         return skill_dir
 
     except Exception as e:
@@ -255,12 +265,16 @@ def create_skill(name: str, path: Path, skill_type: str = "skill", minimal: bool
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def main():
+    """CLI entry point for the skill initializer."""
     parser = argparse.ArgumentParser(
         description="Scaffold a new Claude Code skill, command, or agent."
     )
     parser.add_argument("name", help="Skill name in kebab-case (e.g. processing-pdfs)")
-    parser.add_argument("--path", required=True, help="Target directory (e.g. .claude/skills)")
+    parser.add_argument(
+        "--path", required=True, help="Target directory (e.g. .claude/skills)"
+    )
     parser.add_argument(
         "--type",
         choices=["skill", "command", "agent"],

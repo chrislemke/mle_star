@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Skill Validator — Checks a Claude Code skill for structural correctness.
+"""Skill Validator — Checks a Claude Code skill for structural correctness.
 
 Usage:
     validate_skill.py <path-to-skill-folder>
@@ -16,10 +15,9 @@ Checks:
   - No deeply nested file references
 """
 
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
-
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -33,21 +31,28 @@ WINDOWS_PATH = re.compile(r"[a-zA-Z_]+\\[a-zA-Z_]+")
 
 
 class ValidationResult:
+    """Accumulates validation errors and warnings."""
+
     def __init__(self):
+        """Initialize with empty error and warning lists."""
         self.errors: list[str] = []
         self.warnings: list[str] = []
 
     def error(self, msg: str):
+        """Record a validation error."""
         self.errors.append(msg)
 
     def warn(self, msg: str):
+        """Record a validation warning."""
         self.warnings.append(msg)
 
     @property
     def ok(self) -> bool:
+        """Return True if no errors were recorded."""
         return len(self.errors) == 0
 
     def report(self) -> str:
+        """Format errors and warnings as a human-readable report."""
         lines = []
         if self.errors:
             lines.append(f"\n❌ {len(self.errors)} error(s):")
@@ -65,6 +70,7 @@ class ValidationResult:
 
 
 # ── Parsing ───────────────────────────────────────────────────────────────────
+
 
 def parse_frontmatter(content: str) -> tuple[dict, str, int]:
     """Parse YAML frontmatter from SKILL.md content.
@@ -127,7 +133,9 @@ def parse_frontmatter(content: str) -> tuple[dict, str, int]:
 
 # ── Validators ────────────────────────────────────────────────────────────────
 
+
 def validate_skill(skill_path: Path) -> ValidationResult:
+    """Validate a skill directory for structural correctness."""
     result = ValidationResult()
 
     # Check SKILL.md exists
@@ -168,13 +176,17 @@ def validate_skill(skill_path: Path) -> ValidationResult:
         result.warn("Description still contains [TODO] placeholder")
     else:
         if len(desc) > MAX_DESC_LENGTH:
-            result.error(f"description exceeds {MAX_DESC_LENGTH} chars (got {len(desc)})")
+            result.error(
+                f"description exceeds {MAX_DESC_LENGTH} chars (got {len(desc)})"
+            )
         if "<" in desc and ">" in desc:
             result.error("description must not contain XML tags")
         desc_lower = desc.lower().strip()
         for phrase in FIRST_PERSON_STARTS:
             if desc_lower.startswith(phrase):
-                result.warn(f'description should use third person (starts with "{phrase}...")')
+                result.warn(
+                    f'description should use third person (starts with "{phrase}...")'
+                )
                 break
         if "use when" not in desc_lower and "use for" not in desc_lower:
             result.warn("description should include 'Use when...' trigger guidance")
@@ -225,6 +237,7 @@ def validate_skill(skill_path: Path) -> ValidationResult:
         for script in scripts_dir.iterdir():
             if script.suffix in (".py", ".sh", ".bash"):
                 import os
+
                 if not os.access(script, os.X_OK):
                     result.warn(f"scripts/{script.name} is not executable (chmod +x)")
 
@@ -233,7 +246,9 @@ def validate_skill(skill_path: Path) -> ValidationResult:
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def main():
+    """CLI entry point for the skill validator."""
     if len(sys.argv) < 2:
         print("Usage: validate_skill.py <path-to-skill-folder>")
         print("\nExample: validate_skill.py .claude/skills/my-skill")

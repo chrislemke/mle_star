@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Example utility script for writing-requirements.
+"""Example utility script for writing-requirements.
 
 Replace with actual implementation or delete if not needed.
 Scripts are preferred over asking Claude to generate code because they are
@@ -11,6 +10,7 @@ import sys
 
 
 def main():
+    """CLI entry point for the writing-requirements helper."""
     if len(sys.argv) < 2:
         print("Usage: writing-requirements_helper.py <input>")
         sys.exit(1)

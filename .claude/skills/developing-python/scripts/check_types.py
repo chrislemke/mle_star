@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Type-check a Python file or directory using mypy with strict settings.
+"""Type-check a Python file or directory using mypy with strict settings.
 
 Usage:
     check_types.py <path> [--config pyproject.toml]
@@ -8,12 +7,13 @@ Usage:
 Runs mypy in strict mode and reports results. Exits 0 if clean, 1 if errors found.
 """
 
+from pathlib import Path
 import subprocess
 import sys
-from pathlib import Path
 
 
 def main() -> None:
+    """Run mypy type checking on a file or directory."""
     if len(sys.argv) < 2:
         print("Usage: check_types.py <path> [--config <config-file>]")
         print("  <path>    File or directory to type-check")
@@ -33,7 +33,9 @@ def main() -> None:
             config_file = sys.argv[config_idx + 1]
 
     cmd = [
-        sys.executable, "-m", "mypy",
+        sys.executable,
+        "-m",
+        "mypy",
         "--strict",
         "--pretty",
         "--show-error-codes",

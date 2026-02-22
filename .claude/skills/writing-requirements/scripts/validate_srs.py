@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-SRS Validator — Checks an SRS document for ISO 29148 structural compliance.
+"""SRS Validator — Checks an SRS document for ISO 29148 structural compliance.
 
 Usage:
     validate_srs.py <path-to-srs.md> [--strict]
@@ -18,11 +17,10 @@ Exit codes: 0 = pass, 1 = fail (or warnings in --strict mode)
 """
 
 import argparse
-import re
-import sys
 from collections import Counter, defaultdict
 from pathlib import Path
-
+import re
+import sys
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -61,21 +59,28 @@ VERIFICATION_KEYWORDS = re.compile(
 
 
 class ValidationResult:
+    """Accumulates validation errors and warnings for SRS documents."""
+
     def __init__(self):
+        """Initialize with empty error and warning lists."""
         self.errors: list[str] = []
         self.warnings: list[str] = []
 
     def error(self, msg: str):
+        """Record a validation error."""
         self.errors.append(msg)
 
     def warn(self, msg: str):
+        """Record a validation warning."""
         self.warnings.append(msg)
 
     @property
     def ok(self) -> bool:
+        """Return True if no errors were recorded."""
         return len(self.errors) == 0
 
     def report(self) -> str:
+        """Format errors and warnings as a human-readable report."""
         lines = []
         if self.errors:
             lines.append(f"\n  {len(self.errors)} error(s):")
@@ -93,6 +98,7 @@ class ValidationResult:
 
 
 # ── Section Parsing ──────────────────────────────────────────────────────────
+
 
 def parse_sections(content: str) -> list[tuple[int, str, str, int]]:
     """Parse markdown headings and their content.
@@ -131,10 +137,10 @@ def parse_sections(content: str) -> list[tuple[int, str, str, int]]:
 
 # ── Validators ───────────────────────────────────────────────────────────────
 
+
 def check_sections(sections: list[tuple[int, str, str, int]], result: ValidationResult):
     """Check for required and recommended sections."""
     section_titles_lower = [title.lower() for _, title, _, _ in sections]
-    all_text = " ".join(section_titles_lower)
 
     # Required sections
     for req in REQUIRED_SECTIONS:
@@ -147,7 +153,7 @@ def check_sections(sections: list[tuple[int, str, str, int]], result: Validation
             result.warn(f"Missing recommended section: '{rec}'")
 
     # Empty sections
-    for level, title, body, line_num in sections:
+    for _level, title, body, line_num in sections:
         # Skip table-of-contents and appendix placeholders
         if "table of contents" in title.lower():
             continue
@@ -235,7 +241,7 @@ def check_shall_statements(
 
     # For each requirement ID, check surrounding lines for "shall"
     unique_ids = set()
-    for full_id, category, line_num in ids:
+    for full_id, _category, line_num in ids:
         if full_id in unique_ids:
             continue
         unique_ids.add(full_id)
@@ -248,7 +254,9 @@ def check_shall_statements(
         if "shall" in context:
             has_shall += 1
         else:
-            result.warn(f"{full_id} (line {line_num}): No 'shall' statement found nearby")
+            result.warn(
+                f"{full_id} (line {line_num}): No 'shall' statement found nearby"
+            )
 
     return has_shall
 
@@ -310,6 +318,7 @@ def check_verification(
 
 
 # ── Validation ───────────────────────────────────────────────────────────────
+
 
 def validate_srs(filepath: Path) -> tuple[ValidationResult, dict]:
     """Validate an SRS document.
@@ -380,17 +389,16 @@ def validate_srs(filepath: Path) -> tuple[ValidationResult, dict]:
 
 # ── Output ───────────────────────────────────────────────────────────────────
 
+
 def print_report(filepath: Path, result: ValidationResult, stats: dict):
     """Print formatted validation report."""
     print(f"SRS Validation Report: {filepath.name}")
     print("=" * 50)
 
     # Sections
-    print(f"\nSections:")
+    print("\nSections:")
     print(f"  Found: {stats['sections_found']} sections")
-    required_missing = [
-        e for e in result.errors if "Missing required section" in e
-    ]
+    required_missing = [e for e in result.errors if "Missing required section" in e]
     if required_missing:
         print(f"  Missing required: {len(required_missing)}")
     else:
@@ -398,12 +406,11 @@ def print_report(filepath: Path, result: ValidationResult, stats: dict):
 
     # Requirements
     total = stats["total_reqs"]
-    print(f"\nRequirements:")
+    print("\nRequirements:")
     print(f"  Total: {total}")
     if stats["by_category"]:
         cats = "  |  ".join(
-            f"{cat}: {count}"
-            for cat, count in sorted(stats["by_category"].items())
+            f"{cat}: {count}" for cat, count in sorted(stats["by_category"].items())
         )
         print(f"  {cats}")
 
@@ -415,9 +422,11 @@ def print_report(filepath: Path, result: ValidationResult, stats: dict):
         shall_pct = stats["shall_count"] / total * 100
         prio_pct = stats["priority_count"] / total * 100
         verif_pct = stats["verification_count"] / total * 100
-        print(f"\nQuality:")
+        print("\nQuality:")
         print(f"  Shall-statements: {stats['shall_count']}/{total} ({shall_pct:.1f}%)")
-        print(f"  Priority assigned: {stats['priority_count']}/{total} ({prio_pct:.1f}%)")
+        print(
+            f"  Priority assigned: {stats['priority_count']}/{total} ({prio_pct:.1f}%)"
+        )
         print(
             f"  Verification criteria: {stats['verification_count']}/{total} ({verif_pct:.1f}%)"
         )
@@ -428,7 +437,7 @@ def print_report(filepath: Path, result: ValidationResult, stats: dict):
     error_count = len(result.errors)
     warn_count = len(result.warnings)
     if result.ok and not result.warnings:
-        print(f"\nResult: PASS")
+        print("\nResult: PASS")
     elif result.ok:
         print(f"\nResult: PASS ({warn_count} warning(s))")
     else:
@@ -437,7 +446,9 @@ def print_report(filepath: Path, result: ValidationResult, stats: dict):
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
+
 def main():
+    """CLI entry point for the SRS validator."""
     parser = argparse.ArgumentParser(
         description="Validate an SRS document for ISO 29148 structural compliance."
     )
@@ -451,7 +462,7 @@ def main():
 
     filepath = Path(args.srs_file).resolve()
 
-    if not filepath.suffix == ".md":
+    if filepath.suffix != ".md":
         print(f"Note: File does not have .md extension: {filepath.name}")
 
     result, stats = validate_srs(filepath)

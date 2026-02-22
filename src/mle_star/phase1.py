@@ -462,9 +462,7 @@ async def _apply_safety_check(
     Returns:
         Updated ``(solution, score)`` tuple.
     """
-    logger.info(
-        "%s safety check start: content_length=%d", label, len(s_0.content)
-    )
+    logger.info("%s safety check start: content_length=%d", label, len(s_0.content))
     pre_check = s_0
     pre_score = h_best
     checked = await check_fn(s_0, task, client)
@@ -591,9 +589,7 @@ async def run_phase1(
     ranked = rank_solutions(
         acc.successful_solutions, acc.successful_results, task.metric_direction
     )
-    ranked_summary = [
-        (sol.source_model or "unknown", res.score) for sol, res in ranked
-    ]
+    ranked_summary = [(sol.source_model or "unknown", res.score) for sol, res in ranked]
     logger.info("Candidates sorted: ranked_order=%s", ranked_summary)
 
     # Steps 7-17 — Initialize best + merge loop (REQ-P1-024 to REQ-P1-028).
