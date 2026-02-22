@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 5       | 0           | 39   |
+| P1       | 4       | 0           | 40   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -1092,7 +1092,7 @@ Implement `FinalResult` construction from all phase outputs: field assembly, per
 ---
 
 ## [P1] 48. Configuration and environment
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -1101,14 +1101,14 @@ Implement configuration management: sensible defaults for all hyperparameters (R
 **Spec:** SRS 09 | **Reqs:** REQ-OR-044 to REQ-OR-050 | **Depends on:** Task 47
 
 ### Acceptance Criteria
-- [ ] All hyperparameters have sensible defaults from paper
-- [ ] `PipelineConfig` overrides applied correctly
-- [ ] `ANTHROPIC_API_KEY` read from environment; raise EnvironmentError if missing
-- [ ] `MLE_STAR_*` env vars override defaults but NOT explicit constructor args (REQ-OR-046)
-- [ ] Logging configured: logger "mle_star", configurable level, structured output, optional file handler
-- [ ] Phase boundary markers logged (e.g., "=== Phase 1: Initial Solution Generation ===")
-- [ ] `PipelineState` tracks: current_phase, elapsed_seconds, accumulated_cost_usd, phase2_path_statuses, best_score_so_far, agent_call_count
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] All hyperparameters have sensible defaults from paper
+- [x] `PipelineConfig` overrides applied correctly
+- [x] `ANTHROPIC_API_KEY` read from environment; raise EnvironmentError if missing
+- [x] `MLE_STAR_*` env vars override defaults but NOT explicit constructor args (REQ-OR-046)
+- [x] Logging configured: logger "mle_star", configurable level, structured output, optional file handler
+- [x] Phase boundary markers logged (e.g., "=== Phase 1: Initial Solution Generation ===")
+- [x] `PipelineState` tracks: current_phase, elapsed_seconds, accumulated_cost_usd, phase2_path_statuses, best_score_so_far, agent_call_count
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

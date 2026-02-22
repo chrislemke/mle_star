@@ -19,6 +19,7 @@ import asyncio
 import copy
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import threading
@@ -31,6 +32,7 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     HookMatcher,
 )
+from pydantic import BaseModel
 
 from mle_star.execution import detect_gpu_info, setup_working_directory
 from mle_star.finalization import run_finalization
@@ -85,6 +87,173 @@ class PipelineTimeoutError(PipelineError):
     Raised when the overall time budget expires before a usable solution
     has been produced. Inherits ``diagnostics`` from ``PipelineError``.
     """
+
+
+# ---------------------------------------------------------------------------
+# Pipeline state (REQ-OR-050)
+# ---------------------------------------------------------------------------
+
+
+class PipelineState(BaseModel):
+    """Mutable runtime state for pipeline introspection (REQ-OR-050).
+
+    Unlike other models in the codebase, this is **not** frozen so that
+    the orchestrator can update it as the pipeline progresses.
+
+    Attributes:
+        current_phase: Current pipeline phase name.
+        elapsed_seconds: Wall-clock seconds since pipeline start.
+        accumulated_cost_usd: Total cost accumulated so far.
+        phase2_path_statuses: Per-path status strings for Phase 2.
+        best_score_so_far: Best score achieved across all phases.
+        agent_call_count: Total number of agent calls made.
+    """
+
+    current_phase: str = "phase1"
+    elapsed_seconds: float = 0.0
+    accumulated_cost_usd: float = 0.0
+    phase2_path_statuses: list[str] = []
+    best_score_so_far: float | None = None
+    agent_call_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Environment variable support (REQ-OR-046)
+# ---------------------------------------------------------------------------
+
+_ENV_FIELD_MAP: dict[str, str] = {
+    "MLE_STAR_MODEL": "model",
+    "MLE_STAR_LOG_LEVEL": "log_level",
+    "MLE_STAR_MAX_BUDGET": "max_budget_usd",
+    "MLE_STAR_TIME_LIMIT": "time_limit_seconds",
+}
+"""Maps environment variable names to PipelineConfig field names."""
+
+
+def validate_api_key() -> None:
+    """Check that ``ANTHROPIC_API_KEY`` is set and non-empty (REQ-OR-046).
+
+    Raises:
+        EnvironmentError: If the key is missing, empty, or whitespace-only.
+    """
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key.strip():
+        msg = (
+            "ANTHROPIC_API_KEY environment variable is required but "
+            "not set or empty. Set it to your Anthropic API key."
+        )
+        raise OSError(msg)
+
+
+def apply_env_overrides(config: PipelineConfig) -> PipelineConfig:
+    """Apply ``MLE_STAR_*`` env var overrides to a config (REQ-OR-046).
+
+    Environment variables override **default** field values but do **not**
+    override values explicitly set in the ``PipelineConfig`` constructor.
+    A field is considered explicitly set when its value differs from the
+    ``PipelineConfig`` default for that field.
+
+    Invalid numeric values (non-parseable or violating validators) are
+    silently ignored.
+
+    Args:
+        config: The pipeline configuration to apply overrides to.
+
+    Returns:
+        A new ``PipelineConfig`` with env var overrides applied.
+    """
+    defaults = PipelineConfig()
+    overrides: dict[str, Any] = {}
+
+    for env_var, field_name in _ENV_FIELD_MAP.items():
+        env_value = os.environ.get(env_var)
+        if env_value is None:
+            continue
+
+        current = getattr(config, field_name)
+        default = getattr(defaults, field_name)
+        if current != default:
+            continue
+
+        parsed = _parse_env_value(field_name, env_value)
+        if parsed is not None:
+            overrides[field_name] = parsed
+
+    if not overrides:
+        return config
+
+    return config.model_copy(update=overrides)
+
+
+def _parse_env_value(field_name: str, raw: str) -> Any:
+    """Parse a raw env var string into the appropriate type for *field_name*.
+
+    Args:
+        field_name: The ``PipelineConfig`` field name.
+        raw: The raw environment variable string.
+
+    Returns:
+        The parsed value, or ``None`` if parsing fails or would violate
+        validators.
+    """
+    if field_name in ("model", "log_level"):
+        return raw
+
+    if field_name == "max_budget_usd":
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    if field_name == "time_limit_seconds":
+        try:
+            value = int(raw)
+        except ValueError:
+            return None
+        if value < 1:
+            return None
+        return value
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Logging configuration (REQ-OR-047)
+# ---------------------------------------------------------------------------
+
+_LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s — %(message)s"
+
+
+def configure_logging(config: PipelineConfig) -> None:
+    """Configure Python logging for the pipeline (REQ-OR-047).
+
+    Sets up the ``"mle_star"`` logger with a console handler and an
+    optional file handler. Idempotent — repeated calls do not duplicate
+    handlers.
+
+    Args:
+        config: Pipeline configuration providing ``log_level`` and
+            optional ``log_file``.
+    """
+    mle_logger = logging.getLogger("mle_star")
+    mle_logger.setLevel(getattr(logging, config.log_level.upper(), logging.INFO))
+
+    # Avoid duplicating handlers on repeated calls
+    if not any(isinstance(h, logging.StreamHandler) for h in mle_logger.handlers):
+        console = logging.StreamHandler()
+        console.setFormatter(logging.Formatter(_LOG_FORMAT))
+        mle_logger.addHandler(console)
+
+    if config.log_file is not None:
+        has_file = any(
+            isinstance(h, logging.FileHandler)
+            and getattr(h, "baseFilename", None) == str(Path(config.log_file).resolve())
+            for h in mle_logger.handlers
+        )
+        if not has_file:
+            file_handler = logging.FileHandler(config.log_file)
+            file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+            mle_logger.addHandler(file_handler)
 
 
 # ---------------------------------------------------------------------------
@@ -1063,10 +1232,18 @@ async def run_pipeline(
 
     Raises:
         ValueError: If inputs fail validation (REQ-OR-002).
+        EnvironmentError: If ``ANTHROPIC_API_KEY`` is not set (REQ-OR-046).
         PipelineError: If the pipeline encounters an unrecoverable error.
         PipelineTimeoutError: If Phase 1 does not complete in time.
     """
     resolved_config = _validate_inputs(task, config)
+
+    # REQ-OR-046: Validate API key and apply env var overrides
+    validate_api_key()
+    resolved_config = apply_env_overrides(resolved_config)
+
+    # REQ-OR-047: Configure logging
+    configure_logging(resolved_config)
 
     # REQ-OR-024: Compute deadline at pipeline start
     pipeline_start = time.monotonic()

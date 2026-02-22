@@ -111,6 +111,7 @@ tests/
   test_orchestrator_time_cost.py # Tests for time budgets, cost tracking, deadline enforcement, graceful shutdown (Task 45)
   test_orchestrator_results.py   # Tests for result assembly, error recovery, finalization fallback, phase summaries, lineage (Task 47)
   test_orchestrator_hooks.py     # Tests for SDK hooks: progress, cost, safety, timeout, error, agent tracking (Task 46)
+  test_orchestrator_config.py  # Tests for configuration, env vars, logging, PipelineState (Task 48)
   test_finalization_contamination.py # Tests for contamination check and run_finalization (Task 40)
 ```
 
@@ -149,11 +150,13 @@ tests/
 - Hook system pattern: 6 factory functions (`create_progress_hook`, `create_cost_hook`, `create_safety_hook`, `create_timeout_hook`, `create_error_hook`, `create_agent_tracking_hook`) create async closures over shared state. `build_hooks()` assembles them into `dict[str, list[HookMatcher]]` for `ClaudeAgentOptions.hooks`. Inner hooks use `Any` for input/context types instead of SDK TypedDicts to avoid mypy union narrowing issues (each hook only fires for its registered event type). `_DEFAULT_BLOCKED_PATTERNS` is module-level list of regex strings. Safety hook uses pre-compiled patterns and `_check_blocked_command()` / `_make_deny_result()` helpers to stay under xenon complexity B. `create_agent_tracking_hook` on SubagentStart populates `session_agent_map: dict[str, str]` so progress hook can resolve session_id to agent_type. Timeout threshold: `max(10% * time_limit, 300.0)`
 - Result assembly and error recovery pattern: `_make_failed_phase2_result(phase1_result)` creates synthetic Phase2Result with `step_history=[{"step": 0, "failed": True}]` for failed paths (REQ-OR-040). `_collect_phase2_results` now includes synthetic Phase2Results for failed paths — both output lists always have `len(raw_results)` entries. `_execute_phase3_or_skip` catches both `TimeoutError` and general `Exception` (REQ-OR-041). `_finalize_with_recovery` wraps `run_finalization` in try/except: success → `model_copy(update={...})` to set pipeline-level `total_duration_seconds` and `total_cost_usd`; failure → constructs FinalResult with `submission_path=""` (REQ-OR-043). `_log_phase_summary` logs structured JSON with per-phase costs and durations (REQ-OR-037/038). `_log_solution_lineage` traces solution evolution through phases (REQ-OR-039). `_execute_post_phase1` accepts keyword-only `pipeline_start` and `cost_tracker` args
 
+- Configuration and environment pattern: `validate_api_key()` checks `ANTHROPIC_API_KEY` (raises `OSError` if missing/empty/whitespace). `apply_env_overrides(config)` reads `MLE_STAR_MODEL`, `MLE_STAR_LOG_LEVEL`, `MLE_STAR_MAX_BUDGET`, `MLE_STAR_TIME_LIMIT` and applies them to config — but only overrides **default** values (if field value == PipelineConfig default, env var wins; if field was explicitly set differently, explicit wins). Uses `model_copy(update=...)` since PipelineConfig is frozen. Invalid numeric env vars silently ignored; time_limit < 1 silently ignored. `configure_logging(config)` sets up logger "mle_star" with console handler + optional file handler; idempotent (checks for existing handlers before adding). `PipelineState` is the only **non-frozen** Pydantic model besides `SolutionScript` — used for runtime introspection. `conftest.py` has an `autouse` fixture `_set_api_key_env` that sets a dummy `ANTHROPIC_API_KEY` for all tests
+
 ---
 
 ## Codebase Patterns
 
-- All Pydantic models use `ConfigDict(frozen=True)` for immutability (except `SolutionScript`)
+- All Pydantic models use `ConfigDict(frozen=True)` for immutability (except `SolutionScript` and `PipelineState`)
 - StrEnum for all string enums (TaskType, DataModality, MetricDirection, etc.)
 - Google-style docstrings on all public classes and functions
 - `field_validator` for simple field constraints, `model_validator` for cross-field validation
