@@ -70,6 +70,7 @@ src/mle_star/
   phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration with safety integration (Tasks 23, 24, 25)
   phase2_outer.py      # Phase 2 outer loop: ablation agent, summarize agent, extractor agent, code block validation, run_phase2_outer_loop orchestration (Tasks 31, 32, 33)
   phase3.py            # Phase 3 agents + orchestration: invoke_ens_planner, invoke_ensembler, run_phase3 (Tasks 35, 36)
+  finalization.py      # Finalization: remove_subsampling (Task 38)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -101,6 +102,7 @@ tests/
   test_phase2_outer_loop.py      # Tests for run_phase2_outer_loop orchestration (Task 33)
   test_phase3_agents.py          # Tests for Phase 3 ensemble planner and ensembler agents (Task 35)
   test_phase3_orchestration.py   # Tests for run_phase3 orchestration (Task 36)
+  test_finalization_subsampling.py # Tests for subsampling removal (Task 38)
 ```
 
 ---
@@ -127,6 +129,7 @@ tests/
 - Outer loop orchestration (`run_phase2_outer_loop`): decomposed into `_run_outer_step` helper + `_make_skipped_step` to stay under xenon complexity B. Step helper returns a dict with internal `_new_h_best` and `_new_best_solution` keys (popped by caller). Uses `is_improvement_or_equal` (>= semantics) for best-score update — NOT `InnerLoopResult.improved` (which uses strict >). Skipped iterations (extractor None or validation failure) produce `was_skipped=True` records. Accumulates T_abl and C lists; each `CodeBlock` has `outer_step=t` set. `initial_score: float` is explicit parameter because `SolutionScript.score` is `float | None`
 - Phase 3 agent pattern: `invoke_ens_planner` returns raw stripped text (like A_planner), `invoke_ensembler` uses `extract_code_block()` (like A_coder/A_init/A_merger). Both validate `len(solutions) >= 2`. `_format_solutions()` numbers solutions as "# {n}th Python Solution" with fenced code blocks. `_format_ensemble_history()` mirrors `_format_plan_history()` from phase2_inner.py: `## Plan:` / `## Score:` labels, None → "N/A (evaluation failed)", empty list → empty string
 - Phase 3 orchestration (`run_phase3`): decomposed into `_run_ensemble_round` helper + `_select_best_input` fallback to stay under xenon complexity B. Single-solution skip returns immediately (REQ-P3-018). `make_debug_callback` called once at the start. Each round: plan → implement → `check_and_fix_leakage` → `evaluate_with_retry`. Passes `list(accumulated_plans)` (copies) to planner for snapshot semantics. Best selection uses `is_improvement_or_equal` (>= semantics, LAST tie wins per REQ-P3-025). Fallback `_select_best_input` uses direct max/min (NOT `is_improvement_or_equal`) for correct behavior when mocked. Failed planner: `"[ens_planner failed]"` plan, None score, empty solution. Failed ensembler: plan preserved, None score, empty solution, no leakage/eval call
+- Finalization subsampling removal pattern: `remove_subsampling(client, solution, task)` uses two A_test agent calls with different variants — `subsampling_extract` then `subsampling_remove`. Both use `AgentType.TEST` with `PromptRegistry` variant selection. Extraction parsed via `extract_code_block()`; result verified as non-empty substring of solution. Graceful degradation: outer try/except returns original on any failure. `replace_block` ValueError caught separately with warning log
 
 ---
 

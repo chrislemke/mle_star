@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 14      | 0           | 30   |
+| P1       | 13      | 0           | 31   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -885,7 +885,7 @@ Implement remaining Phase 3 requirements: performance (orchestration overhead), 
 ---
 
 ## [P1] 38. Subsampling removal
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -894,11 +894,11 @@ Implement subsampling removal pipeline in `src/mle_star/finalization.py`. Uses t
 **Spec:** SRS 08 | **Reqs:** REQ-FN-001 to REQ-FN-009 | **Depends on:** Spec 01, Spec 02, Spec 03
 
 ### Acceptance Criteria
-- [ ] Extraction uses A_test with `variant="subsampling_extract"` (Figure 26)
-- [ ] Removal uses A_test with `variant="subsampling_remove"` (Figure 27)
-- [ ] `remove_subsampling(client, solution, task)` applies fix via `replace_block()`
-- [ ] No-subsampling detected (empty block or not substring) → returns original solution unchanged
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Extraction uses A_test with `variant="subsampling_extract"` (Figure 26)
+- [x] Removal uses A_test with `variant="subsampling_remove"` (Figure 27)
+- [x] `remove_subsampling(client, solution, task)` applies fix via `replace_block()`
+- [x] No-subsampling detected (empty block or not substring) → returns original solution unchanged
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
