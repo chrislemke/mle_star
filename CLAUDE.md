@@ -70,7 +70,7 @@ src/mle_star/
   phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration with safety integration (Tasks 23, 24, 25)
   phase2_outer.py      # Phase 2 outer loop: ablation agent, summarize agent, extractor agent, code block validation, run_phase2_outer_loop orchestration (Tasks 31, 32, 33)
   phase3.py            # Phase 3 agents + orchestration: invoke_ens_planner, invoke_ensembler, run_phase3 (Tasks 35, 36)
-  finalization.py      # Finalization: remove_subsampling, generate_test_submission (Tasks 38, 39)
+  finalization.py      # Finalization: remove_subsampling, generate_test_submission, check_contamination, run_finalization (Tasks 38, 39, 40)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -104,6 +104,7 @@ tests/
   test_phase3_orchestration.py   # Tests for run_phase3 orchestration (Task 36)
   test_finalization_subsampling.py # Tests for subsampling removal (Task 38)
   test_finalization_test_submission.py # Tests for test submission agent (Task 39)
+  test_finalization_contamination.py # Tests for contamination check and run_finalization (Task 40)
 ```
 
 ---
@@ -132,6 +133,8 @@ tests/
 - Phase 3 orchestration (`run_phase3`): decomposed into `_run_ensemble_round` helper + `_select_best_input` fallback to stay under xenon complexity B. Single-solution skip returns immediately (REQ-P3-018). `make_debug_callback` called once at the start. Each round: plan → implement → `check_and_fix_leakage` → `evaluate_with_retry`. Passes `list(accumulated_plans)` (copies) to planner for snapshot semantics. Best selection uses `is_improvement_or_equal` (>= semantics, LAST tie wins per REQ-P3-025). Fallback `_select_best_input` uses direct max/min (NOT `is_improvement_or_equal`) for correct behavior when mocked. Failed planner: `"[ens_planner failed]"` plan, None score, empty solution. Failed ensembler: plan preserved, None score, empty solution, no leakage/eval call
 - Finalization subsampling removal pattern: `remove_subsampling(client, solution, task)` uses two A_test agent calls with different variants — `subsampling_extract` then `subsampling_remove`. Both use `AgentType.TEST` with `PromptRegistry` variant selection. Extraction parsed via `extract_code_block()`; result verified as non-empty substring of solution. Graceful degradation: outer try/except returns original on any failure. `replace_block` ValueError caught separately with warning log
 - Test submission agent pattern: `generate_test_submission(client, task, solution)` uses A_test agent with default variant (no variant specified). Renders template with `task_description` and `final_solution` variables. Response parsed via `extract_code_block()`. Returns new `SolutionScript(phase=FINAL, is_executable=True)`. Empty extraction logs warning and returns empty-content SolutionScript (triggering debug retry in `run_finalization`). Exceptions propagate to caller (unlike `remove_subsampling` which catches them) — `run_finalization` handles fallback (REQ-FN-025)
+- Contamination check pattern: `check_contamination(client, solution, reference_discussions)` uses A_test with `variant="contamination_check"` and `output_format={"type": "json_schema", "schema": DataContaminationResult.model_json_schema()}`. Skips when `reference_discussions` is None/empty (returns None). For each ref: renders template with `reference_discussion` + `final_solution`, sends with `output_format`, parses via `DataContaminationResult.model_validate_json()`. Aggregation: ANY "Same" → overall "Same"; ALL "Novel" → overall "Novel". Graceful degradation: outer try/except returns None on any failure (REQ-FN-041)
+- Finalization orchestration (`run_finalization`): decomposed into main function + `_apply_fallback` helper to stay under xenon complexity B. Pipeline: `remove_subsampling` → `generate_test_submission` → `check_and_fix_leakage` → `evaluate_with_retry(make_debug_callback)` → `verify_submission` / `get_submission_info` → `_apply_fallback` → `check_contamination` → `FinalResult`. Fallback triggers on `eval_result.is_error or not submission_verified` — returns original `solution` param with `submission_path=""`. Duration tracked with `time.monotonic()`. `total_cost_usd` always `None` (tracked by orchestrator, not finalization)
 
 ---
 

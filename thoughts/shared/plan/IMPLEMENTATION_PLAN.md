@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 12      | 0           | 32   |
+| P1       | 11      | 0           | 33   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -924,7 +924,7 @@ Implement A_test agent (Figure 25) and `generate_test_submission(client, task, s
 ---
 
 ## [P1] 40. Contamination check and run_finalization
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -933,13 +933,13 @@ Implement `check_contamination(client, solution, reference_discussions)` (async)
 **Spec:** SRS 08 | **Reqs:** REQ-FN-026 to REQ-FN-036 | **Depends on:** Tasks 38, 39
 
 ### Acceptance Criteria
-- [ ] `check_contamination()` returns `DataContaminationResult` or `None` (when no references)
-- [ ] Multiple references: ANY "Same" → overall "Same" verdict
-- [ ] `run_finalization(client, solution, task, config, phase1_result, phase2_results, phase3_result, reference_discussions=None)` signature matches REQ-FN-034 (with `client` added)
-- [ ] `run_finalization()` executes full pipeline: remove subsampling → test submission → leakage check → execute with retry → verify → fallback → contamination → FinalResult
-- [ ] `FinalResult` correctly assembled with all phase results per REQ-FN-036
-- [ ] Contamination check skipped when no reference discussions provided
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `check_contamination()` returns `DataContaminationResult` or `None` (when no references)
+- [x] Multiple references: ANY "Same" → overall "Same" verdict
+- [x] `run_finalization(client, solution, task, config, phase1_result, phase2_results, phase3_result, reference_discussions=None)` signature matches REQ-FN-034 (with `client` added)
+- [x] `run_finalization()` executes full pipeline: remove subsampling → test submission → leakage check → execute with retry → verify → fallback → contamination → FinalResult
+- [x] `FinalResult` correctly assembled with all phase results per REQ-FN-036
+- [x] Contamination check skipped when no reference discussions provided
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
