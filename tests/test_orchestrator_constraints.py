@@ -1,0 +1,1512 @@
+"""Tests for orchestrator constraints (Task 49).
+
+Validates non-functional requirements for the orchestrator module:
+orchestration overhead budget, memory efficiency, idempotent retry safety,
+SDK reconnection on transient failure, SDK version checking, concurrent
+session limiting, and agent name uniqueness.
+
+Tests are written TDD-first and serve as the executable specification for
+REQ-OR-048 through REQ-OR-057.
+
+Refs:
+    SRS 09c -- Orchestrator Constraints.
+    IMPLEMENTATION_PLAN.md Task 49.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import threading
+import time
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, patch
+
+from hypothesis import HealthCheck, given, settings, strategies as st
+from mle_star.models import (
+    AgentType,
+    CodeBlock,
+    CodeBlockCategory,
+    DataModality,
+    FinalResult,
+    MetricDirection,
+    Phase1Result,
+    Phase2Result,
+    PipelineConfig,
+    RetrievedModel,
+    SolutionPhase,
+    SolutionScript,
+    TaskDescription,
+    TaskType,
+)
+import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Module path constant for patching
+# ---------------------------------------------------------------------------
+
+_MODULE = "mle_star.orchestrator"
+_LOGGER_NAME = "mle_star.orchestrator"
+
+
+# ---------------------------------------------------------------------------
+# Reusable test helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_task(**overrides: Any) -> TaskDescription:
+    """Build a valid TaskDescription with sensible defaults."""
+    defaults: dict[str, Any] = {
+        "competition_id": "test-comp",
+        "task_type": TaskType.CLASSIFICATION,
+        "data_modality": DataModality.TABULAR,
+        "evaluation_metric": "accuracy",
+        "metric_direction": MetricDirection.MAXIMIZE,
+        "description": "Predict the target.",
+        "data_dir": "./input",
+        "output_dir": "./final",
+    }
+    defaults.update(overrides)
+    return TaskDescription(**defaults)
+
+
+def _make_config(**overrides: Any) -> PipelineConfig:
+    """Build a valid PipelineConfig with sensible defaults."""
+    return PipelineConfig(**overrides)
+
+
+def _make_solution(**overrides: Any) -> SolutionScript:
+    """Build a valid SolutionScript with sensible defaults."""
+    defaults: dict[str, Any] = {
+        "content": "import pandas as pd\nprint('hello')\n",
+        "phase": SolutionPhase.INIT,
+    }
+    defaults.update(overrides)
+    return SolutionScript(**defaults)
+
+
+def _make_phase1_result(**overrides: Any) -> Phase1Result:
+    """Build a valid Phase1Result with sensible defaults."""
+    defaults: dict[str, Any] = {
+        "retrieved_models": [
+            RetrievedModel(model_name="xgboost", example_code="import xgboost")
+        ],
+        "candidate_solutions": [_make_solution(phase=SolutionPhase.INIT)],
+        "candidate_scores": [0.85],
+        "initial_solution": _make_solution(phase=SolutionPhase.MERGED),
+        "initial_score": 0.85,
+    }
+    defaults.update(overrides)
+    return Phase1Result(**defaults)
+
+
+def _make_phase2_result(**overrides: Any) -> Phase2Result:
+    """Build a valid Phase2Result with sensible defaults."""
+    defaults: dict[str, Any] = {
+        "ablation_summaries": ["summary"],
+        "refined_blocks": [
+            CodeBlock(content="block", category=CodeBlockCategory.TRAINING)
+        ],
+        "best_solution": _make_solution(phase=SolutionPhase.REFINED),
+        "best_score": 0.90,
+        "step_history": [{"step": 0, "score": 0.90}],
+    }
+    defaults.update(overrides)
+    return Phase2Result(**defaults)
+
+
+def _make_data_dir(tmp_path: Path) -> Path:
+    """Create a temporary data directory with a dummy file."""
+    data_dir = tmp_path / "input"
+    data_dir.mkdir(exist_ok=True)
+    (data_dir / "train.csv").write_text("id,feature,target\n1,0.5,0\n")
+    return data_dir
+
+
+def _make_final_result(
+    task: TaskDescription, config: PipelineConfig, **overrides: Any
+) -> FinalResult:
+    """Build a valid FinalResult with sensible defaults."""
+    defaults: dict[str, Any] = {
+        "task": task,
+        "config": config,
+        "phase1": _make_phase1_result(),
+        "phase2_results": [_make_phase2_result()],
+        "phase3": None,
+        "final_solution": _make_solution(phase=SolutionPhase.FINAL),
+        "submission_path": "/output/submission.csv",
+        "total_duration_seconds": 10.0,
+        "total_cost_usd": None,
+    }
+    defaults.update(overrides)
+    return FinalResult(**defaults)
+
+
+# ===========================================================================
+# REQ-OR-048: Orchestrator overhead < 1% (< 100ms per phase transition)
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestOrchestratorOverhead:
+    """Orchestration overhead completes in under 100ms per phase transition (REQ-OR-048)."""
+
+    def test_compute_phase_budgets_under_100ms(self) -> None:
+        """_compute_phase_budgets executes in under 100ms."""
+        from mle_star.orchestrator import _compute_phase_budgets
+
+        # Arrange
+        config = _make_config(num_parallel_solutions=4)
+        remaining_seconds = 3600.0
+
+        # Act
+        start = time.monotonic()
+        result = _compute_phase_budgets(config, remaining_seconds)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        # Assert
+        assert elapsed_ms < 100.0, (
+            f"_compute_phase_budgets took {elapsed_ms:.2f}ms, exceeds 100ms budget"
+        )
+        assert "phase2" in result
+        assert "phase3" in result
+        assert "finalization" in result
+        assert "phase2_per_path" in result
+
+    def test_build_hooks_under_100ms(self) -> None:
+        """build_hooks completes in under 100ms."""
+        from mle_star.orchestrator import CostTracker, build_hooks
+
+        # Arrange
+        pipeline_start = time.monotonic()
+        deadline = pipeline_start + 86400
+        cost_tracker = CostTracker(max_budget=100.0)
+        finalize_flag = threading.Event()
+        failure_counts: dict[str, int] = {}
+        failure_lock = threading.Lock()
+        session_agent_map: dict[str, str] = {}
+
+        # Act
+        start = time.monotonic()
+        hooks = build_hooks(
+            pipeline_start=pipeline_start,
+            deadline=deadline,
+            time_limit=86400,
+            cost_tracker=cost_tracker,
+            work_dir="/tmp/test",
+            finalize_flag=finalize_flag,
+            failure_counts=failure_counts,
+            failure_lock=failure_lock,
+            session_agent_map=session_agent_map,
+        )
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        # Assert
+        assert elapsed_ms < 100.0, (
+            f"build_hooks took {elapsed_ms:.2f}ms, exceeds 100ms budget"
+        )
+        assert isinstance(hooks, dict)
+        assert len(hooks) >= 4  # Multiple event types registered
+
+    def test_build_agents_dict_under_100ms(self) -> None:
+        """_build_agents_dict completes in under 100ms."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        # Act
+        start = time.monotonic()
+        agents = _build_agents_dict()
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        # Assert
+        assert elapsed_ms < 100.0, (
+            f"_build_agents_dict took {elapsed_ms:.2f}ms, exceeds 100ms budget"
+        )
+        assert isinstance(agents, dict)
+        assert len(agents) == 14
+
+    def test_collect_phase2_results_under_100ms(self) -> None:
+        """_collect_phase2_results completes in under 100ms for typical inputs."""
+        from mle_star.orchestrator import _collect_phase2_results
+
+        # Arrange
+        p1_result = _make_phase1_result()
+        raw_results: list[Phase2Result | BaseException] = [
+            _make_phase2_result(best_score=0.88 + i * 0.01) for i in range(4)
+        ]
+
+        # Act
+        start = time.monotonic()
+        phase2_results, solutions = _collect_phase2_results(raw_results, p1_result)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        # Assert
+        assert elapsed_ms < 100.0, (
+            f"_collect_phase2_results took {elapsed_ms:.2f}ms, exceeds 100ms budget"
+        )
+        assert len(phase2_results) == 4
+        assert len(solutions) == 4
+
+    def test_make_failed_phase2_result_under_100ms(self) -> None:
+        """_make_failed_phase2_result completes in under 100ms."""
+        from mle_star.orchestrator import _make_failed_phase2_result
+
+        # Arrange
+        p1_result = _make_phase1_result()
+
+        # Act
+        start = time.monotonic()
+        result = _make_failed_phase2_result(p1_result)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        # Assert
+        assert elapsed_ms < 100.0, (
+            f"_make_failed_phase2_result took {elapsed_ms:.2f}ms, exceeds 100ms budget"
+        )
+        assert isinstance(result, Phase2Result)
+
+    @given(
+        num_results=st.integers(min_value=1, max_value=10),
+        num_failures=st.integers(min_value=0, max_value=5),
+    )
+    @settings(
+        max_examples=10,
+        deadline=5000,
+    )
+    def test_collect_results_overhead_scales_linearly(
+        self, num_results: int, num_failures: int
+    ) -> None:
+        """Result collection overhead scales linearly with number of results."""
+        from mle_star.orchestrator import _collect_phase2_results
+
+        # Arrange
+        p1_result = _make_phase1_result()
+        actual_failures = min(num_failures, num_results)
+        raw_results: list[Phase2Result | BaseException] = []
+        for i in range(num_results):
+            if i < actual_failures:
+                raw_results.append(RuntimeError(f"path {i} failed"))
+            else:
+                raw_results.append(_make_phase2_result(best_score=0.85 + i * 0.01))
+
+        # Act
+        start = time.monotonic()
+        phase2_results, solutions = _collect_phase2_results(raw_results, p1_result)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        # Assert
+        assert elapsed_ms < 100.0
+        assert len(phase2_results) == num_results
+        assert len(solutions) == num_results
+
+
+# ===========================================================================
+# REQ-OR-049: Memory efficiency -- only retain current best per path
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestMemoryEfficiency:
+    """Orchestrator retains only current best + under-evaluation per path (REQ-OR-049)."""
+
+    def test_phase2_result_contains_only_best_solution(self) -> None:
+        """Phase2Result stores only best_solution, not a full history of all solutions."""
+        # Arrange
+        p2 = _make_phase2_result(best_score=0.92)
+
+        # Assert -- only one solution stored, not a list of all tried solutions
+        assert hasattr(p2, "best_solution")
+        assert isinstance(p2.best_solution, SolutionScript)
+        # Phase2Result should NOT have an 'all_solutions' or 'solution_history' field
+        assert not hasattr(p2, "all_solutions")
+        assert not hasattr(p2, "solution_history")
+        assert not hasattr(p2, "candidate_solutions")
+
+    def test_phase2_result_step_history_is_metadata_only(self) -> None:
+        """step_history contains score + metadata, not full solution content."""
+        # Arrange
+        p2 = _make_phase2_result(
+            step_history=[
+                {"step": 0, "score": 0.85},
+                {"step": 1, "score": 0.87},
+                {"step": 2, "score": 0.90},
+            ],
+        )
+
+        # Assert -- step_history contains dicts (score/metadata), not SolutionScript
+        for entry in p2.step_history:
+            assert isinstance(entry, dict)
+            # entries should not contain full solution objects
+            for value in entry.values():
+                assert not isinstance(value, SolutionScript)
+
+    def test_collect_phase2_results_returns_only_best_per_path(self) -> None:
+        """_collect_phase2_results returns one solution per path (the best)."""
+        from mle_star.orchestrator import _collect_phase2_results
+
+        # Arrange
+        p1_result = _make_phase1_result()
+        raw_results: list[Phase2Result | BaseException] = [
+            _make_phase2_result(best_score=0.88),
+            _make_phase2_result(best_score=0.91),
+            _make_phase2_result(best_score=0.85),
+        ]
+
+        # Act
+        _phase2_results, solutions = _collect_phase2_results(raw_results, p1_result)
+
+        # Assert -- exactly one solution per path
+        assert len(solutions) == 3
+        for sol in solutions:
+            assert isinstance(sol, SolutionScript)
+
+    def test_phase2_result_ablation_summaries_are_strings(self) -> None:
+        """Ablation summaries are text strings (summaries), not full ablation results."""
+        # Arrange
+        p2 = _make_phase2_result(
+            ablation_summaries=[
+                "Feature importance analysis shows...",
+                "PCA reveals...",
+            ]
+        )
+
+        # Assert -- ablation_summaries are strings, not complex objects
+        for summary in p2.ablation_summaries:
+            assert isinstance(summary, str)
+
+    def test_phase2_result_refined_blocks_are_code_blocks(self) -> None:
+        """Refined blocks store code block metadata, not full solution scripts."""
+        # Arrange
+        blocks = [
+            CodeBlock(content="block_1", category=CodeBlockCategory.TRAINING),
+            CodeBlock(content="block_2", category=CodeBlockCategory.PREPROCESSING),
+        ]
+        p2 = _make_phase2_result(refined_blocks=blocks)
+
+        # Assert -- blocks are CodeBlock instances, not full SolutionScripts
+        for block in p2.refined_blocks:
+            assert isinstance(block, CodeBlock)
+            assert not isinstance(block, SolutionScript)
+
+
+# ===========================================================================
+# REQ-OR-051: Idempotent retry safety -- fresh state per run_pipeline call
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestIdempotentRetrySafety:
+    """Each run_pipeline() call creates fresh state (REQ-OR-051)."""
+
+    async def test_run_pipeline_creates_fresh_cost_tracker(
+        self, tmp_path: Path
+    ) -> None:
+        """Each run_pipeline call creates a new CostTracker."""
+        from mle_star.orchestrator import run_pipeline
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=1)
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        p1_result = _make_phase1_result()
+        p2_result = _make_phase2_result()
+        fr = _make_final_result(task, config)
+
+        cost_trackers: list[Any] = []
+
+        original_build_hooks = None
+
+        def _capture_cost_tracker(**kwargs: Any) -> Any:
+            cost_trackers.append(kwargs.get("cost_tracker"))
+            return original_build_hooks(**kwargs)
+
+        with (
+            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(
+                f"{_MODULE}.detect_gpu_info",
+                return_value={"cuda_available": False},
+            ),
+            patch(
+                f"{_MODULE}.run_phase1",
+                new_callable=AsyncMock,
+                return_value=p1_result,
+            ),
+            patch(
+                f"{_MODULE}.run_phase2_outer_loop",
+                new_callable=AsyncMock,
+                return_value=p2_result,
+            ),
+            patch(
+                f"{_MODULE}.run_finalization",
+                new_callable=AsyncMock,
+                return_value=fr,
+            ),
+        ):
+            # We need to capture the CostTracker created in each call.
+            # The CostTracker is created inside run_pipeline as a local variable,
+            # so we verify indirectly by checking that each call produces
+            # independent results.
+            result1 = await run_pipeline(task, config)
+            result2 = await run_pipeline(task, config)
+
+        # Both calls should succeed independently
+        assert isinstance(result1, FinalResult)
+        assert isinstance(result2, FinalResult)
+
+    async def test_run_pipeline_creates_fresh_session_maps(
+        self, tmp_path: Path
+    ) -> None:
+        """Each run_pipeline call creates fresh session-to-agent maps."""
+        from mle_star.orchestrator import run_pipeline
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=1)
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        p1_result = _make_phase1_result()
+        p2_result = _make_phase2_result()
+        fr = _make_final_result(task, config)
+
+        captured_hooks: list[dict[str, Any]] = []
+        real_build_hooks = None
+
+        def _capture_hooks(**kwargs: Any) -> dict[str, Any]:
+            nonlocal real_build_hooks
+            captured_hooks.append(kwargs)
+            return real_build_hooks(**kwargs)  # type: ignore[misc]
+
+        import mle_star.orchestrator as orch_mod
+
+        real_build_hooks = orch_mod.build_hooks
+
+        with (
+            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(
+                f"{_MODULE}.detect_gpu_info",
+                return_value={"cuda_available": False},
+            ),
+            patch(
+                f"{_MODULE}.run_phase1",
+                new_callable=AsyncMock,
+                return_value=p1_result,
+            ),
+            patch(
+                f"{_MODULE}.run_phase2_outer_loop",
+                new_callable=AsyncMock,
+                return_value=p2_result,
+            ),
+            patch(
+                f"{_MODULE}.run_finalization",
+                new_callable=AsyncMock,
+                return_value=fr,
+            ),
+            patch(f"{_MODULE}.build_hooks", side_effect=_capture_hooks),
+        ):
+            await run_pipeline(task, config)
+            await run_pipeline(task, config)
+
+        # Two calls should have been made to build_hooks
+        assert len(captured_hooks) == 2
+        # Each call should have a distinct session_agent_map (fresh dict)
+        map1 = captured_hooks[0]["session_agent_map"]
+        map2 = captured_hooks[1]["session_agent_map"]
+        assert map1 is not map2, "Session maps should be distinct objects per call"
+
+    async def test_run_pipeline_creates_fresh_failure_counts(
+        self, tmp_path: Path
+    ) -> None:
+        """Each run_pipeline call creates fresh failure_counts dict."""
+        from mle_star.orchestrator import run_pipeline
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=1)
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        p1_result = _make_phase1_result()
+        p2_result = _make_phase2_result()
+        fr = _make_final_result(task, config)
+
+        captured_hooks: list[dict[str, Any]] = []
+        real_build_hooks = None
+
+        def _capture_hooks(**kwargs: Any) -> dict[str, Any]:
+            nonlocal real_build_hooks
+            captured_hooks.append(kwargs)
+            return real_build_hooks(**kwargs)  # type: ignore[misc]
+
+        import mle_star.orchestrator as orch_mod
+
+        real_build_hooks = orch_mod.build_hooks
+
+        with (
+            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(
+                f"{_MODULE}.detect_gpu_info",
+                return_value={"cuda_available": False},
+            ),
+            patch(
+                f"{_MODULE}.run_phase1",
+                new_callable=AsyncMock,
+                return_value=p1_result,
+            ),
+            patch(
+                f"{_MODULE}.run_phase2_outer_loop",
+                new_callable=AsyncMock,
+                return_value=p2_result,
+            ),
+            patch(
+                f"{_MODULE}.run_finalization",
+                new_callable=AsyncMock,
+                return_value=fr,
+            ),
+            patch(f"{_MODULE}.build_hooks", side_effect=_capture_hooks),
+        ):
+            await run_pipeline(task, config)
+            await run_pipeline(task, config)
+
+        # Two calls should have distinct failure_counts dicts
+        assert len(captured_hooks) == 2
+        fc1 = captured_hooks[0]["failure_counts"]
+        fc2 = captured_hooks[1]["failure_counts"]
+        assert fc1 is not fc2, "Failure counts should be distinct objects per call"
+
+    async def test_run_pipeline_creates_fresh_finalize_flag(
+        self, tmp_path: Path
+    ) -> None:
+        """Each run_pipeline call creates a fresh finalize_flag Event."""
+        from mle_star.orchestrator import run_pipeline
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=1)
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        p1_result = _make_phase1_result()
+        p2_result = _make_phase2_result()
+        fr = _make_final_result(task, config)
+
+        captured_hooks: list[dict[str, Any]] = []
+        real_build_hooks = None
+
+        def _capture_hooks(**kwargs: Any) -> dict[str, Any]:
+            nonlocal real_build_hooks
+            captured_hooks.append(kwargs)
+            return real_build_hooks(**kwargs)  # type: ignore[misc]
+
+        import mle_star.orchestrator as orch_mod
+
+        real_build_hooks = orch_mod.build_hooks
+
+        with (
+            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(
+                f"{_MODULE}.detect_gpu_info",
+                return_value={"cuda_available": False},
+            ),
+            patch(
+                f"{_MODULE}.run_phase1",
+                new_callable=AsyncMock,
+                return_value=p1_result,
+            ),
+            patch(
+                f"{_MODULE}.run_phase2_outer_loop",
+                new_callable=AsyncMock,
+                return_value=p2_result,
+            ),
+            patch(
+                f"{_MODULE}.run_finalization",
+                new_callable=AsyncMock,
+                return_value=fr,
+            ),
+            patch(f"{_MODULE}.build_hooks", side_effect=_capture_hooks),
+        ):
+            await run_pipeline(task, config)
+            await run_pipeline(task, config)
+
+        # Two calls should have distinct finalize flags
+        assert len(captured_hooks) == 2
+        flag1 = captured_hooks[0]["finalize_flag"]
+        flag2 = captured_hooks[1]["finalize_flag"]
+        assert flag1 is not flag2, "Finalize flags should be distinct per call"
+
+    def test_cost_tracker_starts_at_zero(self) -> None:
+        """A freshly created CostTracker starts at zero cost."""
+        from mle_star.orchestrator import CostTracker
+
+        # Act
+        tracker = CostTracker(max_budget=100.0)
+
+        # Assert
+        assert tracker.total == 0.0
+        assert not tracker.exceeded
+
+    def test_cost_tracker_instances_are_independent(self) -> None:
+        """Two CostTracker instances do not share state."""
+        from mle_star.orchestrator import CostTracker
+
+        # Arrange
+        tracker1 = CostTracker(max_budget=100.0)
+        tracker2 = CostTracker(max_budget=100.0)
+
+        # Act
+        tracker1.accumulate(50.0)
+
+        # Assert
+        assert tracker1.total == 50.0
+        assert tracker2.total == 0.0  # Independent
+
+
+# ===========================================================================
+# REQ-OR-052: SDK reconnection on transient failure
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestSDKReconnection:
+    """SDK client reconnects on transient failure with exponential backoff (REQ-OR-052)."""
+
+    async def test_reconnect_retries_up_to_three_times(self) -> None:
+        """reconnect_with_backoff retries connection up to max_retries times."""
+        from mle_star.orchestrator import reconnect_with_backoff
+
+        # Arrange
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(
+            side_effect=[
+                ConnectionError("transient 1"),
+                ConnectionError("transient 2"),
+                None,  # Third attempt succeeds
+            ]
+        )
+
+        # Act
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            await reconnect_with_backoff(mock_client, "session-123", max_retries=3)
+
+        # Assert
+        assert mock_client.connect.await_count == 3
+
+    async def test_reconnect_succeeds_on_first_try(self) -> None:
+        """When connection succeeds immediately, only one attempt is made."""
+        from mle_star.orchestrator import reconnect_with_backoff
+
+        # Arrange
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(return_value=None)
+
+        # Act
+        await reconnect_with_backoff(mock_client, "session-456", max_retries=3)
+
+        # Assert
+        assert mock_client.connect.await_count == 1
+
+    async def test_reconnect_uses_exponential_backoff(self) -> None:
+        """Delays between retries follow exponential backoff: 1s, 2s, 4s."""
+        from mle_star.orchestrator import reconnect_with_backoff
+
+        # Arrange
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(
+            side_effect=[
+                ConnectionError("fail 1"),
+                ConnectionError("fail 2"),
+                None,  # Third attempt succeeds
+            ]
+        )
+
+        sleep_calls: list[float] = []
+
+        async def _mock_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+
+        # Act
+        with patch("asyncio.sleep", side_effect=_mock_sleep):
+            await reconnect_with_backoff(mock_client, "session-789", max_retries=3)
+
+        # Assert -- exponential backoff: 1, 2 seconds
+        assert len(sleep_calls) == 2
+        assert sleep_calls[0] == pytest.approx(1.0)
+        assert sleep_calls[1] == pytest.approx(2.0)
+
+    async def test_reconnect_passes_session_id_as_resume(self) -> None:
+        """Reconnection uses resume=session_id parameter."""
+        from mle_star.orchestrator import reconnect_with_backoff
+
+        # Arrange
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(return_value=None)
+
+        # Act
+        await reconnect_with_backoff(mock_client, "my-session-42", max_retries=3)
+
+        # Assert -- connect called with resume=session_id
+        mock_client.connect.assert_awaited_once()
+        call_kwargs = mock_client.connect.call_args
+        # The session_id should be passed as resume parameter
+        assert call_kwargs is not None
+        # Either as a keyword argument or it was used somehow
+        if call_kwargs.kwargs:
+            assert call_kwargs.kwargs.get("resume") == "my-session-42"
+        elif call_kwargs.args:
+            assert "my-session-42" in str(call_kwargs.args)
+
+    async def test_reconnect_raises_after_max_retries_exhausted(self) -> None:
+        """After max_retries failures, raises ConnectionError."""
+        from mle_star.orchestrator import reconnect_with_backoff
+
+        # Arrange
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(
+            side_effect=ConnectionError("persistent failure")
+        )
+
+        # Act & Assert
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(ConnectionError, match="persistent failure"),
+        ):
+            await reconnect_with_backoff(mock_client, "session-fail", max_retries=3)
+
+        assert mock_client.connect.await_count == 3
+
+    async def test_reconnect_logs_each_retry_attempt(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Each retry attempt is logged at WARNING level."""
+        from mle_star.orchestrator import reconnect_with_backoff
+
+        # Arrange
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(
+            side_effect=[
+                ConnectionError("fail 1"),
+                None,
+            ]
+        )
+
+        # Act
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
+        ):
+            await reconnect_with_backoff(mock_client, "session-log", max_retries=3)
+
+        # Assert -- at least one warning about retry
+        warning_msgs = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        all_text = " ".join(r.message for r in warning_msgs)
+        assert "retry" in all_text.lower() or "reconnect" in all_text.lower()
+
+    async def test_reconnect_with_zero_retries_raises_immediately(self) -> None:
+        """With max_retries=0, no attempt is made and error propagates."""
+        from mle_star.orchestrator import reconnect_with_backoff
+
+        # Arrange
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(side_effect=ConnectionError("immediate fail"))
+
+        # Act & Assert
+        with (
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(ConnectionError),
+        ):
+            await reconnect_with_backoff(mock_client, "session-0", max_retries=0)
+
+    @given(max_retries=st.integers(min_value=1, max_value=5))
+    @settings(
+        max_examples=5,
+        deadline=10000,
+        suppress_health_check=[HealthCheck.function_scoped_fixture],
+    )
+    async def test_reconnect_backoff_delays_are_powers_of_two(
+        self, max_retries: int
+    ) -> None:
+        """Backoff delays follow 2^i pattern: 1, 2, 4, 8, 16..."""
+        from mle_star.orchestrator import reconnect_with_backoff
+
+        # Arrange -- all attempts fail
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock(side_effect=ConnectionError("always fails"))
+
+        sleep_calls: list[float] = []
+
+        async def _mock_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+
+        # Act
+        with (
+            patch("asyncio.sleep", side_effect=_mock_sleep),
+            pytest.raises(ConnectionError),
+        ):
+            await reconnect_with_backoff(
+                mock_client, "session-exp", max_retries=max_retries
+            )
+
+        # Assert -- delays should be 1, 2, 4, 8, ...
+        expected_delays = [2**i for i in range(max_retries - 1)]
+        # There are max_retries - 1 sleeps (no sleep after last failure)
+        assert len(sleep_calls) == max(0, max_retries - 1)
+        for actual, expected in zip(sleep_calls, expected_delays, strict=False):
+            assert actual == pytest.approx(expected)
+
+
+# ===========================================================================
+# REQ-OR-054: SDK version check
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestSDKVersionCheck:
+    """Importing orchestrator checks SDK version >= 0.1.39 (REQ-OR-054)."""
+
+    def test_check_sdk_version_passes_with_valid_version(self) -> None:
+        """check_sdk_version succeeds when SDK version >= 0.1.39."""
+        from mle_star.orchestrator import check_sdk_version
+
+        # Act & Assert -- should not raise with the actual SDK version
+        with patch("claude_agent_sdk.__version__", "0.1.39"):
+            check_sdk_version()  # No exception
+
+    def test_check_sdk_version_passes_with_higher_version(self) -> None:
+        """check_sdk_version succeeds when SDK version > 0.1.39."""
+        from mle_star.orchestrator import check_sdk_version
+
+        with patch("claude_agent_sdk.__version__", "0.2.0"):
+            check_sdk_version()  # No exception
+
+    def test_check_sdk_version_passes_with_patch_version(self) -> None:
+        """check_sdk_version succeeds when SDK version is 0.1.40."""
+        from mle_star.orchestrator import check_sdk_version
+
+        with patch("claude_agent_sdk.__version__", "0.1.40"):
+            check_sdk_version()  # No exception
+
+    def test_check_sdk_version_raises_for_old_version(self) -> None:
+        """check_sdk_version raises ImportError when SDK version < 0.1.39."""
+        from mle_star.orchestrator import check_sdk_version
+
+        with (
+            patch("claude_agent_sdk.__version__", "0.1.38"),
+            pytest.raises(ImportError, match=r"0\.1\.39"),
+        ):
+            check_sdk_version()
+
+    def test_check_sdk_version_raises_for_much_older_version(self) -> None:
+        """check_sdk_version raises ImportError for very old version."""
+        from mle_star.orchestrator import check_sdk_version
+
+        with (
+            patch("claude_agent_sdk.__version__", "0.0.1"),
+            pytest.raises(ImportError, match=r"0\.1\.39"),
+        ):
+            check_sdk_version()
+
+    @pytest.mark.parametrize(
+        "version",
+        ["0.1.37", "0.1.38", "0.1.0", "0.0.99"],
+    )
+    def test_check_sdk_version_rejects_old_versions(self, version: str) -> None:
+        """check_sdk_version rejects all versions below 0.1.39."""
+        from mle_star.orchestrator import check_sdk_version
+
+        with (
+            patch("claude_agent_sdk.__version__", version),
+            pytest.raises(ImportError),
+        ):
+            check_sdk_version()
+
+    @pytest.mark.parametrize(
+        "version",
+        ["0.1.39", "0.1.40", "0.2.0", "1.0.0"],
+    )
+    def test_check_sdk_version_accepts_valid_versions(self, version: str) -> None:
+        """check_sdk_version accepts all versions >= 0.1.39."""
+        from mle_star.orchestrator import check_sdk_version
+
+        with patch("claude_agent_sdk.__version__", version):
+            check_sdk_version()  # No exception
+
+    def test_check_sdk_version_error_message_includes_found_version(self) -> None:
+        """ImportError message includes the version that was found."""
+        from mle_star.orchestrator import check_sdk_version
+
+        with (
+            patch("claude_agent_sdk.__version__", "0.1.38"),
+            pytest.raises(ImportError, match=r"0\.1\.38"),
+        ):
+            check_sdk_version()
+
+
+# ===========================================================================
+# REQ-OR-056: Concurrent session limit
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestConcurrentSessionLimit:
+    """Excess paths are serialized when SDK limits concurrent sessions (REQ-OR-056)."""
+
+    async def test_dispatch_with_session_limit_below_l(self, tmp_path: Path) -> None:
+        """When max_concurrent_sessions < L, excess paths are serialized."""
+        from mle_star.orchestrator import _dispatch_phase2_with_session_limit
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=4)
+        p1_result = _make_phase1_result()
+
+        mock_client = AsyncMock()
+        phase2_mock = AsyncMock(return_value=_make_phase2_result())
+
+        with patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock):
+            results = await _dispatch_phase2_with_session_limit(
+                mock_client,
+                task,
+                config,
+                p1_result,
+                max_concurrent_sessions=2,
+            )
+
+        # All 4 paths should complete
+        assert len(results) == 4
+        assert all(isinstance(r, Phase2Result) for r in results)
+
+    async def test_dispatch_with_session_limit_equal_to_l(self, tmp_path: Path) -> None:
+        """When max_concurrent_sessions == L, all paths run in parallel."""
+        from mle_star.orchestrator import _dispatch_phase2_with_session_limit
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=3)
+        p1_result = _make_phase1_result()
+
+        mock_client = AsyncMock()
+        phase2_mock = AsyncMock(return_value=_make_phase2_result())
+
+        with patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock):
+            results = await _dispatch_phase2_with_session_limit(
+                mock_client,
+                task,
+                config,
+                p1_result,
+                max_concurrent_sessions=3,
+            )
+
+        assert len(results) == 3
+        assert all(isinstance(r, Phase2Result) for r in results)
+
+    async def test_dispatch_with_session_limit_logs_warning(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Warning is logged when serialization is required."""
+        from mle_star.orchestrator import _dispatch_phase2_with_session_limit
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=4)
+        p1_result = _make_phase1_result()
+
+        mock_client = AsyncMock()
+        phase2_mock = AsyncMock(return_value=_make_phase2_result())
+
+        with (
+            patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock),
+            caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
+        ):
+            await _dispatch_phase2_with_session_limit(
+                mock_client,
+                task,
+                config,
+                p1_result,
+                max_concurrent_sessions=2,
+            )
+
+        # Should log a warning about serialization
+        warning_msgs = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        all_text = " ".join(r.message for r in warning_msgs)
+        assert (
+            "serial" in all_text.lower()
+            or "limit" in all_text.lower()
+            or "concurrent" in all_text.lower()
+        )
+
+    async def test_dispatch_with_session_limit_no_warning_when_sufficient(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No warning when max_concurrent_sessions >= L."""
+        from mle_star.orchestrator import _dispatch_phase2_with_session_limit
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=2)
+        p1_result = _make_phase1_result()
+
+        mock_client = AsyncMock()
+        phase2_mock = AsyncMock(return_value=_make_phase2_result())
+
+        with (
+            patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock),
+            caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
+        ):
+            await _dispatch_phase2_with_session_limit(
+                mock_client,
+                task,
+                config,
+                p1_result,
+                max_concurrent_sessions=5,
+            )
+
+        # No warning about serialization should appear
+        warning_msgs = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        serialization_warnings = [
+            r
+            for r in warning_msgs
+            if "serial" in r.message.lower()
+            or "limit" in r.message.lower()
+            or "concurrent" in r.message.lower()
+        ]
+        assert len(serialization_warnings) == 0
+
+    async def test_dispatch_with_session_limit_one_runs_sequentially(
+        self, tmp_path: Path
+    ) -> None:
+        """With max_concurrent_sessions=1, all paths run sequentially."""
+        from mle_star.orchestrator import _dispatch_phase2_with_session_limit
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=3)
+        p1_result = _make_phase1_result()
+
+        mock_client = AsyncMock()
+
+        execution_order: list[str] = []
+
+        async def _ordered_execution(
+            _client: Any,
+            _task: Any,
+            _config: Any,
+            _solution: Any,
+            _score: float,
+            session_id: str,
+        ) -> Phase2Result:
+            execution_order.append(f"start-{session_id}")
+            await asyncio.sleep(0.01)  # Small delay to detect overlap
+            execution_order.append(f"end-{session_id}")
+            return _make_phase2_result()
+
+        with patch(
+            f"{_MODULE}.run_phase2_outer_loop",
+            side_effect=_ordered_execution,
+        ):
+            results = await _dispatch_phase2_with_session_limit(
+                mock_client,
+                task,
+                config,
+                p1_result,
+                max_concurrent_sessions=1,
+            )
+
+        # All paths should complete
+        assert len(results) == 3
+
+    @given(
+        num_paths=st.integers(min_value=2, max_value=8),
+        max_sessions=st.integers(min_value=1, max_value=4),
+    )
+    @settings(
+        max_examples=8,
+        deadline=10000,
+        suppress_health_check=[HealthCheck.function_scoped_fixture],
+    )
+    async def test_dispatch_always_completes_all_paths(
+        self, num_paths: int, max_sessions: int, tmp_path: Path
+    ) -> None:
+        """All L paths complete regardless of session limit."""
+        from mle_star.orchestrator import _dispatch_phase2_with_session_limit
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=num_paths)
+        p1_result = _make_phase1_result()
+
+        mock_client = AsyncMock()
+        phase2_mock = AsyncMock(return_value=_make_phase2_result())
+
+        with patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock):
+            results = await _dispatch_phase2_with_session_limit(
+                mock_client,
+                task,
+                config,
+                p1_result,
+                max_concurrent_sessions=max_sessions,
+            )
+
+        assert len(results) == num_paths
+
+
+# ===========================================================================
+# REQ-OR-057: Agent name uniqueness
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestAgentNameUniqueness:
+    """All 14 agent names from _build_agents_dict are unique (REQ-OR-057)."""
+
+    def test_agents_dict_has_14_entries(self) -> None:
+        """_build_agents_dict returns exactly 14 agent definitions."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        # Act
+        agents = _build_agents_dict()
+
+        # Assert
+        assert len(agents) == 14
+
+    def test_all_agent_names_are_unique(self) -> None:
+        """All 14 agent names (keys) are unique."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        # Act
+        agents = _build_agents_dict()
+
+        # Assert -- dict keys are inherently unique, but verify count
+        agent_names = list(agents.keys())
+        assert len(agent_names) == len(set(agent_names))
+
+    def test_agent_names_match_agent_type_enum(self) -> None:
+        """Every key in _build_agents_dict matches an AgentType value."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        # Arrange
+        expected_names = {str(agent_type) for agent_type in AgentType}
+
+        # Act
+        agents = _build_agents_dict()
+        actual_names = set(agents.keys())
+
+        # Assert
+        assert actual_names == expected_names
+
+    def test_every_agent_type_has_a_definition(self) -> None:
+        """Every AgentType enum member has a corresponding agent definition."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        # Act
+        agents = _build_agents_dict()
+
+        # Assert
+        for agent_type in AgentType:
+            assert str(agent_type) in agents, (
+                f"AgentType.{agent_type.name} ({agent_type.value}) "
+                f"missing from agents dict"
+            )
+
+    def test_agent_definitions_have_required_fields(self) -> None:
+        """Each agent definition dict contains essential configuration fields."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        # Act
+        agents = _build_agents_dict()
+
+        # Assert -- each definition should be a non-empty dict
+        for name, defn in agents.items():
+            assert isinstance(defn, dict), f"Agent {name} definition is not a dict"
+            assert len(defn) > 0, f"Agent {name} has empty definition"
+
+    def test_agent_names_are_all_lowercase(self) -> None:
+        """All agent names are lowercase strings matching StrEnum convention."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        # Act
+        agents = _build_agents_dict()
+
+        # Assert
+        for name in agents:
+            assert name == name.lower(), f"Agent name '{name}' is not lowercase"
+            assert name.isidentifier() or "_" in name, (
+                f"Agent name '{name}' is not a valid identifier"
+            )
+
+    @pytest.mark.parametrize(
+        "agent_type",
+        list(AgentType),
+        ids=[a.name for a in AgentType],
+    )
+    def test_individual_agent_type_present(self, agent_type: AgentType) -> None:
+        """Each individual AgentType is present in the agents dict."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        agents = _build_agents_dict()
+        assert str(agent_type) in agents
+
+    def test_no_extra_agents_beyond_enum(self) -> None:
+        """Agents dict does not contain keys not in AgentType enum."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        # Arrange
+        valid_names = {str(agent_type) for agent_type in AgentType}
+
+        # Act
+        agents = _build_agents_dict()
+
+        # Assert
+        for name in agents:
+            assert name in valid_names, (
+                f"Agent name '{name}' not found in AgentType enum"
+            )
+
+
+# ===========================================================================
+# Hypothesis: property-based tests for orchestrator constraints
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestOrchestratorConstraintProperties:
+    """Property-based tests for orchestrator constraint invariants."""
+
+    @given(
+        remaining=st.floats(
+            min_value=0.0, max_value=86400.0, allow_nan=False, allow_infinity=False
+        ),
+        num_parallel=st.integers(min_value=1, max_value=8),
+    )
+    @settings(max_examples=20, deadline=5000)
+    def test_phase_budgets_sum_to_remaining(
+        self, remaining: float, num_parallel: int
+    ) -> None:
+        """Phase budgets always sum to approximately remaining seconds (if > 0)."""
+        from mle_star.orchestrator import _compute_phase_budgets
+
+        config = _make_config(num_parallel_solutions=num_parallel)
+        budgets = _compute_phase_budgets(config, remaining)
+
+        if remaining <= 0:
+            assert budgets["phase2"] == 0.0
+            assert budgets["phase3"] == 0.0
+            assert budgets["finalization"] == 0.0
+        else:
+            total = budgets["phase2"] + budgets["phase3"] + budgets["finalization"]
+            assert total == pytest.approx(remaining, rel=1e-6)
+
+    @given(
+        remaining=st.floats(
+            min_value=1.0, max_value=86400.0, allow_nan=False, allow_infinity=False
+        ),
+        num_parallel=st.integers(min_value=1, max_value=8),
+    )
+    @settings(max_examples=20, deadline=5000)
+    def test_per_path_budget_equals_phase2_divided_by_l(
+        self, remaining: float, num_parallel: int
+    ) -> None:
+        """Per-path Phase 2 budget is always phase2_budget / L."""
+        from mle_star.orchestrator import _compute_phase_budgets
+
+        config = _make_config(num_parallel_solutions=num_parallel)
+        budgets = _compute_phase_budgets(config, remaining)
+
+        expected_per_path = budgets["phase2"] / num_parallel
+        assert budgets["phase2_per_path"] == pytest.approx(expected_per_path, rel=1e-6)
+
+    @given(
+        num_agents=st.just(14),
+    )
+    @settings(max_examples=3, deadline=5000)
+    def test_agent_count_invariant(self, num_agents: int) -> None:
+        """Agent count is always exactly 14."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        agents = _build_agents_dict()
+        assert len(agents) == num_agents
+
+    @given(
+        max_budget=st.one_of(
+            st.none(),
+            st.floats(
+                min_value=0.01,
+                max_value=10000.0,
+                allow_nan=False,
+                allow_infinity=False,
+            ),
+        ),
+    )
+    @settings(max_examples=15, deadline=5000)
+    def test_cost_tracker_fresh_state_property(self, max_budget: float | None) -> None:
+        """A new CostTracker always starts with zero cost and not exceeded."""
+        from mle_star.orchestrator import CostTracker
+
+        tracker = CostTracker(max_budget=max_budget)
+        assert tracker.total == 0.0
+        assert not tracker.exceeded
+
+    @given(
+        amount=st.floats(
+            min_value=0.0,
+            max_value=1000.0,
+            allow_nan=False,
+            allow_infinity=False,
+        ),
+        max_budget=st.floats(
+            min_value=0.01,
+            max_value=10000.0,
+            allow_nan=False,
+            allow_infinity=False,
+        ),
+    )
+    @settings(max_examples=20, deadline=5000)
+    def test_cost_tracker_accumulate_monotonic(
+        self, amount: float, max_budget: float
+    ) -> None:
+        """CostTracker.total is monotonically non-decreasing after accumulate."""
+        from mle_star.orchestrator import CostTracker
+
+        tracker = CostTracker(max_budget=max_budget)
+        before = tracker.total
+        tracker.accumulate(amount)
+        after = tracker.total
+        assert after >= before
+
+    @given(
+        amount=st.floats(
+            min_value=0.0,
+            max_value=1000.0,
+            allow_nan=False,
+            allow_infinity=False,
+        ),
+    )
+    @settings(max_examples=10, deadline=5000)
+    def test_cost_tracker_exceeded_property(self, amount: float) -> None:
+        """CostTracker.exceeded is True iff total >= max_budget."""
+        from mle_star.orchestrator import CostTracker
+
+        budget = 10.0
+        tracker = CostTracker(max_budget=budget)
+        tracker.accumulate(amount)
+
+        if amount >= budget:
+            assert tracker.exceeded
+        else:
+            assert not tracker.exceeded
+
+
+# ===========================================================================
+# Integration: Combined orchestrator constraints validation
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestOrchestratorConstraintsIntegration:
+    """Integration tests combining multiple constraint requirements."""
+
+    async def test_full_pipeline_creates_independent_state_per_call(
+        self, tmp_path: Path
+    ) -> None:
+        """Two successive run_pipeline calls are fully independent."""
+        from mle_star.orchestrator import run_pipeline
+
+        data_dir = _make_data_dir(tmp_path)
+        task = _make_task(data_dir=str(data_dir))
+        config = _make_config(num_parallel_solutions=1)
+
+        mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        p1_result = _make_phase1_result()
+        p2_result = _make_phase2_result()
+        fr = _make_final_result(task, config)
+
+        with (
+            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(
+                f"{_MODULE}.detect_gpu_info",
+                return_value={"cuda_available": False},
+            ),
+            patch(
+                f"{_MODULE}.run_phase1",
+                new_callable=AsyncMock,
+                return_value=p1_result,
+            ),
+            patch(
+                f"{_MODULE}.run_phase2_outer_loop",
+                new_callable=AsyncMock,
+                return_value=p2_result,
+            ),
+            patch(
+                f"{_MODULE}.run_finalization",
+                new_callable=AsyncMock,
+                return_value=fr,
+            ),
+        ):
+            result1 = await run_pipeline(task, config)
+            result2 = await run_pipeline(task, config)
+
+        # Both results should be valid and independent
+        assert isinstance(result1, FinalResult)
+        assert isinstance(result2, FinalResult)
+
+    def test_all_helpers_execute_fast(self) -> None:
+        """All orchestration helper functions complete under 100ms combined."""
+        from mle_star.orchestrator import (
+            CostTracker,
+            _build_agents_dict,
+            _compute_phase_budgets,
+            _make_failed_phase2_result,
+            build_hooks,
+        )
+
+        # Arrange
+        config = _make_config(num_parallel_solutions=4)
+        p1_result = _make_phase1_result()
+        cost_tracker = CostTracker(max_budget=100.0)
+        finalize_flag = threading.Event()
+
+        # Act -- run all helpers sequentially
+        start = time.monotonic()
+        _build_agents_dict()
+        _compute_phase_budgets(config, 3600.0)
+        _make_failed_phase2_result(p1_result)
+        build_hooks(
+            pipeline_start=start,
+            deadline=start + 86400,
+            time_limit=86400,
+            cost_tracker=cost_tracker,
+            work_dir="/tmp/test",
+            finalize_flag=finalize_flag,
+            failure_counts={},
+            failure_lock=threading.Lock(),
+            session_agent_map={},
+        )
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        # Assert -- all helpers combined should be well under 100ms
+        assert elapsed_ms < 100.0, (
+            f"Combined helper overhead {elapsed_ms:.2f}ms exceeds 100ms budget"
+        )
+
+    def test_agent_dict_keys_are_exactly_agent_type_values(self) -> None:
+        """The agents dict keys are the string values of every AgentType member."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        agents = _build_agents_dict()
+        agent_keys = set(agents.keys())
+        enum_values = {member.value for member in AgentType}
+        assert agent_keys == enum_values

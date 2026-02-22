@@ -53,6 +53,42 @@ from mle_star.phase3 import run_phase3
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# SDK version check (REQ-OR-054)
+# ---------------------------------------------------------------------------
+
+_MIN_SDK_VERSION = "0.1.39"
+
+
+def check_sdk_version() -> None:
+    """Verify that ``claude-agent-sdk`` meets the minimum version (REQ-OR-054).
+
+    Reads ``claude_agent_sdk.__version__`` and compares it against the
+    minimum required version (0.1.39). Raises ``ImportError`` with a clear
+    message if the installed version is too old.
+
+    Raises:
+        ImportError: If the SDK version is below 0.1.39.
+    """
+    import claude_agent_sdk as sdk
+
+    installed = getattr(sdk, "__version__", "0.0.0")
+    if _parse_version_tuple(installed) < _parse_version_tuple(_MIN_SDK_VERSION):
+        msg = f"claude-agent-sdk >= {_MIN_SDK_VERSION} required, but found {installed}"
+        raise ImportError(msg)
+
+
+def _parse_version_tuple(version: str) -> tuple[int, ...]:
+    """Parse a dotted version string into a tuple of ints for comparison.
+
+    Args:
+        version: A version string like ``"0.1.39"``.
+
+    Returns:
+        Tuple of integer components, e.g. ``(0, 1, 39)``.
+    """
+    return tuple(int(part) for part in version.split("."))
+
 
 # ---------------------------------------------------------------------------
 # Custom exceptions (REQ-OR-042, REQ-OR-030)
@@ -393,6 +429,57 @@ def _register_mcp_servers(client: ClaudeSDKClient) -> None:
     Args:
         client: The SDK client to register servers on.
     """
+
+
+# ---------------------------------------------------------------------------
+# SDK reconnection (REQ-OR-052)
+# ---------------------------------------------------------------------------
+
+
+async def reconnect_with_backoff(
+    client: Any,
+    session_id: str,
+    *,
+    max_retries: int = 3,
+) -> None:
+    """Reconnect the SDK client with exponential backoff (REQ-OR-052).
+
+    Attempts to reconnect up to *max_retries* times using
+    ``client.connect(resume=session_id)``. Delays between retries
+    follow a ``2^i`` pattern (1 s, 2 s, 4 s, ...).
+
+    The ``resume`` keyword is passed through to ``connect()``; the actual
+    mechanism for session resumption depends on the SDK client interface.
+
+    Args:
+        client: The SDK client to reconnect.
+        session_id: Session ID to resume.
+        max_retries: Maximum number of connection attempts. Defaults to 3.
+
+    Raises:
+        ConnectionError: If all retry attempts are exhausted.
+    """
+    last_error: BaseException | None = None
+    for attempt in range(max_retries):
+        try:
+            await client.connect(resume=session_id)
+            return
+        except ConnectionError as exc:
+            last_error = exc
+            if attempt < max_retries - 1:
+                delay = 2**attempt
+                logger.warning(
+                    "SDK reconnect attempt %d/%d failed; retrying in %ds",
+                    attempt + 1,
+                    max_retries,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+
+    if last_error is not None:
+        raise last_error
+    msg = "reconnect_with_backoff called with max_retries=0"
+    raise ConnectionError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -1026,6 +1113,57 @@ async def _dispatch_phase2(
             results.append(exc)
 
     return results
+
+
+async def _dispatch_phase2_with_session_limit(
+    client: ClaudeSDKClient,
+    task: TaskDescription,
+    config: PipelineConfig,
+    phase1_result: Phase1Result,
+    max_concurrent_sessions: int,
+) -> list[Phase2Result | BaseException]:
+    """Dispatch Phase 2 paths with a concurrency limit (REQ-OR-056).
+
+    When ``max_concurrent_sessions < L``, excess paths are serialized
+    (limited by an ``asyncio.Semaphore``) and a warning is logged.
+
+    Args:
+        client: SDK client for agent invocations.
+        task: Task description.
+        config: Pipeline configuration (L = ``num_parallel_solutions``).
+        phase1_result: Phase 1 output providing the initial solution.
+        max_concurrent_sessions: Maximum number of simultaneously
+            running Phase 2 paths.
+
+    Returns:
+        List of L results, each either a ``Phase2Result`` or an exception.
+    """
+    num_paths = config.num_parallel_solutions
+
+    if max_concurrent_sessions < num_paths:
+        logger.warning(
+            "Concurrent session limit (%d) below L=%d; "
+            "serializing excess Phase 2 paths",
+            max_concurrent_sessions,
+            num_paths,
+        )
+
+    _create_path_work_directories(task, num_paths)
+    sem = asyncio.Semaphore(max_concurrent_sessions)
+
+    async def _limited_path(idx: int) -> Phase2Result:
+        async with sem:
+            return await run_phase2_outer_loop(
+                client,
+                task,
+                config,
+                copy.deepcopy(phase1_result.initial_solution),
+                phase1_result.initial_score,
+                session_id=f"path-{idx}",
+            )
+
+    coros = [_limited_path(i) for i in range(num_paths)]
+    return await asyncio.gather(*coros, return_exceptions=True)
 
 
 def _make_failed_phase2_result(phase1_result: Phase1Result) -> Phase2Result:

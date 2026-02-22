@@ -9,7 +9,7 @@
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
 | P1       | 0       | 0           | 44   |
-| P2       | 1       | 0           | 7    |
+| P2       | 0       | 0           | 8    |
 | P3       | 0       | 0           | 0    |
 
 ---
@@ -1113,7 +1113,7 @@ Implement configuration management: sensible defaults for all hyperparameters (R
 ---
 
 ## [P2] 49. Orchestrator constraints
-**Status:** pending
+**Status:** done
 **Priority:** P2
 
 ### Description
@@ -1122,13 +1122,13 @@ Implement remaining orchestrator requirements: performance (overhead < 1% of tot
 **Spec:** SRS 09 | **Reqs:** REQ-OR-048 to REQ-OR-057 | **Depends on:** Tasks 42–48
 
 ### Acceptance Criteria
-- [ ] Orchestrator overhead < 1% of total pipeline time (REQ-OR-048)
-- [ ] Memory: only current best + under-evaluation solutions retained per path (REQ-OR-049)
-- [ ] Each `run_pipeline()` call creates fresh state (REQ-OR-051)
-- [ ] SDK reconnection: 3 retries, exponential backoff (1s, 2s, 4s), using `resume=session_id` (REQ-OR-052)
-- [ ] Concurrent session limits respected; excess paths serialized with warning (REQ-OR-056)
-- [ ] Agent names unique, matching `AgentType` enum values (REQ-OR-057)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Orchestrator overhead < 1% of total pipeline time (REQ-OR-048)
+- [x] Memory: only current best + under-evaluation solutions retained per path (REQ-OR-049)
+- [x] Each `run_pipeline()` call creates fresh state (REQ-OR-051)
+- [x] SDK reconnection: 3 retries, exponential backoff (1s, 2s, 4s), using `resume=session_id` (REQ-OR-052)
+- [x] Concurrent session limits respected; excess paths serialized with warning (REQ-OR-056)
+- [x] Agent names unique, matching `AgentType` enum values (REQ-OR-057)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
