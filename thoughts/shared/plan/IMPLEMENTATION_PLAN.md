@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 9       | 0           | 35   |
+| P1       | 8       | 0           | 36   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -965,7 +965,7 @@ Implement remaining finalization requirements: performance (overhead < 5s exclud
 ---
 
 ## [P1] 42. Pipeline entry point and SDK client setup
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -974,16 +974,16 @@ Implement `run_pipeline(task, config)` (async) as the main entry point in `src/m
 **Spec:** SRS 09 | **Reqs:** REQ-OR-001 to REQ-OR-011, REQ-OR-042, REQ-OR-053 | **Depends on:** All Layer 0–4 tasks
 
 ### Acceptance Criteria
-- [ ] `run_pipeline()` is async, accepts `TaskDescription` and optional `PipelineConfig`
-- [ ] `run_pipeline_sync()` synchronous wrapper via `asyncio.run()` (REQ-OR-053)
-- [ ] Input validation: raises ValueError for invalid task/config, missing data_dir, empty data_dir (REQ-OR-002)
-- [ ] SDK client created with model, permission_mode, max_budget_usd, agents (14), hooks
-- [ ] System prompt includes Kaggle grandmaster persona + task description + metric + GPU info (REQ-OR-007)
-- [ ] MCP server registration attempted; failure logged as warning (REQ-OR-010)
-- [ ] Client disconnected on completion even on error (try/finally) (REQ-OR-011)
-- [ ] `PipelineError` defined with `diagnostics` attribute (REQ-OR-042)
-- [ ] `PipelineTimeoutError` defined for Phase 1 incomplete timeouts (REQ-OR-030)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `run_pipeline()` is async, accepts `TaskDescription` and optional `PipelineConfig`
+- [x] `run_pipeline_sync()` synchronous wrapper via `asyncio.run()` (REQ-OR-053)
+- [x] Input validation: raises ValueError for invalid task/config, missing data_dir, empty data_dir (REQ-OR-002)
+- [x] SDK client created with model, permission_mode, max_budget_usd, agents (14), hooks
+- [x] System prompt includes Kaggle grandmaster persona + task description + metric + GPU info (REQ-OR-007)
+- [x] MCP server registration attempted; failure logged as warning (REQ-OR-010)
+- [x] Client disconnected on completion even on error (try/finally) (REQ-OR-011)
+- [x] `PipelineError` defined with `diagnostics` attribute (REQ-OR-042)
+- [x] `PipelineTimeoutError` defined for Phase 1 incomplete timeouts (REQ-OR-030)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

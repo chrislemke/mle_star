@@ -62,6 +62,7 @@ uv run mle_star
 src/mle_star/
   __init__.py          # Package init
   cli.py               # CLI entry point (uv run mle_star)
+  orchestrator.py      # Pipeline entry point: run_pipeline, SDK client setup, PipelineError/PipelineTimeoutError (Task 42)
   models.py            # Pydantic data models (enums, configs, schemas)
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
   execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline, subsampling utilities, submission verification, batch evaluation, solution ranking (Tasks 11-17)
@@ -104,6 +105,7 @@ tests/
   test_phase3_orchestration.py   # Tests for run_phase3 orchestration (Task 36)
   test_finalization_subsampling.py # Tests for subsampling removal (Task 38)
   test_finalization_test_submission.py # Tests for test submission agent (Task 39)
+  test_orchestrator_entry.py     # Tests for pipeline entry point and SDK client setup (Task 42)
   test_finalization_contamination.py # Tests for contamination check and run_finalization (Task 40)
 ```
 
@@ -135,6 +137,7 @@ tests/
 - Test submission agent pattern: `generate_test_submission(client, task, solution)` uses A_test agent with default variant (no variant specified). Renders template with `task_description` and `final_solution` variables. Response parsed via `extract_code_block()`. Returns new `SolutionScript(phase=FINAL, is_executable=True)`. Empty extraction logs warning and returns empty-content SolutionScript (triggering debug retry in `run_finalization`). Exceptions propagate to caller (unlike `remove_subsampling` which catches them) — `run_finalization` handles fallback (REQ-FN-025)
 - Contamination check pattern: `check_contamination(client, solution, reference_discussions)` uses A_test with `variant="contamination_check"` and `output_format={"type": "json_schema", "schema": DataContaminationResult.model_json_schema()}`. Skips when `reference_discussions` is None/empty (returns None). For each ref: renders template with `reference_discussion` + `final_solution`, sends with `output_format`, parses via `DataContaminationResult.model_validate_json()`. Aggregation: ANY "Same" → overall "Same"; ALL "Novel" → overall "Novel". Graceful degradation: outer try/except returns None on any failure (REQ-FN-041)
 - Finalization orchestration (`run_finalization`): decomposed into main function + `_apply_fallback` helper to stay under xenon complexity B. Pipeline: `remove_subsampling` → `generate_test_submission` → `check_and_fix_leakage` → `evaluate_with_retry(make_debug_callback)` → `verify_submission` / `get_submission_info` → `_apply_fallback` → `check_contamination` → `FinalResult`. Fallback triggers on `eval_result.is_error or not submission_verified` — returns original `solution` param with `submission_path=""`. Duration tracked with `time.monotonic()`. `total_cost_usd` always `None` (tracked by orchestrator, not finalization)
+- Orchestrator entry pattern: `_validate_inputs()` runs before SDK client creation (no client on validation failure). `ClaudeSDKClient(ClaudeAgentOptions(...))` with `connect()`/`disconnect()` in try/finally. `_build_agents_dict()` converts all 14 `AgentConfig` via `to_agent_definition()` keyed by `str(AgentType)`. `_build_system_prompt()` assembles Kaggle grandmaster persona + task context + GPU info. `_register_mcp_servers()` wrapped in try/except with warning log on failure. `run_phase1` signature is `(task, config, client)` — task first, not client first. `PipelineError(message, *, diagnostics=dict)` and `PipelineTimeoutError` subclass it
 
 ---
 
