@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 13      | 0           | 31   |
+| P1       | 12      | 0           | 32   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -903,7 +903,7 @@ Implement subsampling removal pipeline in `src/mle_star/finalization.py`. Uses t
 ---
 
 ## [P1] 39. Test submission agent
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -912,14 +912,14 @@ Implement A_test agent (Figure 25) and `generate_test_submission(client, task, s
 **Spec:** SRS 08 | **Reqs:** REQ-FN-010 to REQ-FN-025 | **Depends on:** Task 38
 
 ### Acceptance Criteria
-- [ ] `generate_test_submission(client, task, solution)` invokes A_test agent via SDK client with minimal-modification instruction
-- [ ] `clean_output_directory()` called before test script execution to clear `./final/` (REQ-FN-020)
-- [ ] Test script executed with FULL timeout (REQ-FN-021)
-- [ ] `verify_submission()` then `get_submission_info()` used to validate output
-- [ ] `evaluate_with_retry()` used for error recovery with leakage check (REQ-SF-022)
-- [ ] Fallback to validation solution on exhausted retries (REQ-FN-025)
-- [ ] Submission uses full training data (no subsampling)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `generate_test_submission(client, task, solution)` invokes A_test agent via SDK client with minimal-modification instruction
+- [x] `clean_output_directory()` called before test script execution to clear `./final/` (REQ-FN-020)
+- [x] Test script executed with FULL timeout (REQ-FN-021)
+- [x] `verify_submission()` then `get_submission_info()` used to validate output
+- [x] `evaluate_with_retry()` used for error recovery with leakage check (REQ-SF-022)
+- [x] Fallback to validation solution on exhausted retries (REQ-FN-025)
+- [x] Submission uses full training data (no subsampling)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

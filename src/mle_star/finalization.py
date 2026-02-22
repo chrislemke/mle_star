@@ -1,14 +1,14 @@
-"""Finalization: subsampling removal pipeline.
+"""Finalization: subsampling removal and test submission generation.
 
-Implements the subsampling removal step that runs after the main pipeline
-phases complete.  Uses two sequential A_test agent invocations (extraction
-then removal) to identify and strip subsampling code from the final solution
-so the model trains on the full dataset.
+Implements the subsampling removal step and the A_test agent invocation
+that runs after the main pipeline phases complete.  Uses agent invocations
+to strip subsampling code and generate a test submission script.
 
 Refs:
     SRS 08a — Finalization Subsampling (REQ-FN-001 through REQ-FN-009).
-    SRS 08d — Finalization Constraints (REQ-FN-039, REQ-FN-044).
-    IMPLEMENTATION_PLAN.md Task 38.
+    SRS 08b — Finalization Test Submission (REQ-FN-010 through REQ-FN-025).
+    SRS 08d — Finalization Constraints (REQ-FN-039, REQ-FN-040, REQ-FN-044).
+    IMPLEMENTATION_PLAN.md Tasks 38, 39.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from mle_star.models import AgentType, SolutionScript, TaskDescription
+from mle_star.models import AgentType, SolutionPhase, SolutionScript, TaskDescription
 from mle_star.prompts import PromptRegistry
 from mle_star.safety import extract_code_block
 
@@ -134,3 +134,73 @@ async def _remove_subsampling_impl(
             "in solution; returning original"
         )
         return solution
+
+
+async def generate_test_submission(
+    client: Any,
+    task: TaskDescription,
+    solution: SolutionScript,
+) -> SolutionScript:
+    """Invoke A_test to transform a validation solution into a test submission (REQ-FN-019).
+
+    Renders the A_test prompt template (Figure 25) with the task description
+    and final solution, sends it to the A_test agent, and parses the response
+    into a new ``SolutionScript`` with ``phase=SolutionPhase.FINAL``.
+
+    The A_test agent is instructed to minimally modify the solution to load
+    test data, predict for all test samples, and write
+    ``./final/submission.csv`` (REQ-FN-014 through REQ-FN-018).
+
+    Exceptions from the SDK client propagate to the caller; the calling
+    orchestration code (``run_finalization``) is responsible for fallback
+    handling (REQ-FN-025).
+
+    Args:
+        client: SDK client for agent invocation.
+        task: Task description providing competition context.
+        solution: The solution with subsampling removed.
+
+    Returns:
+        A new ``SolutionScript`` with ``phase=SolutionPhase.FINAL`` and
+        ``is_executable=True``.  Content is the extracted code from the
+        agent response, or empty string on empty extraction (REQ-FN-040).
+    """
+    registry = PromptRegistry()
+    template = registry.get(AgentType.TEST)
+
+    prompt = template.render(
+        task_description=task.description,
+        final_solution=solution.content,
+    )
+
+    logger.info(
+        "Invoking A_test for test submission: competition=%s, solution_len=%d",
+        task.competition_id,
+        len(solution.content),
+    )
+
+    response: str = await client.send_message(
+        agent_type=str(AgentType.TEST),
+        message=prompt,
+    )
+
+    code = extract_code_block(response)
+
+    if not code.strip():
+        logger.warning(
+            "A_test returned empty code block; response[:200]=%r",
+            response[:200],
+        )
+        return SolutionScript(
+            content="",
+            phase=SolutionPhase.FINAL,
+            is_executable=True,
+        )
+
+    logger.info("A_test generated test submission script: len=%d", len(code))
+
+    return SolutionScript(
+        content=code,
+        phase=SolutionPhase.FINAL,
+        is_executable=True,
+    )
