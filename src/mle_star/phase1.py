@@ -20,6 +20,7 @@ Refs:
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from mle_star.execution import evaluate_with_retry, rank_solutions
@@ -303,8 +304,15 @@ async def _generate_and_evaluate_candidates(
         A ``_CandidateResults`` accumulator with all outcomes.
     """
     acc = _CandidateResults()
+    num_models = len(models)
 
-    for model in models:
+    for i, model in enumerate(models):
+        logger.info(
+            "Candidate generation start: %d/%d, model=%s",
+            i + 1,
+            num_models,
+            model.model_name,
+        )
         candidate = await generate_candidate(task, model, config, client)
 
         if candidate is None:
@@ -320,6 +328,12 @@ async def _generate_and_evaluate_candidates(
             acc.scores.append(None)
             continue
 
+        logger.info(
+            "Candidate generation complete: model=%s, code_length=%d",
+            model.model_name,
+            len(candidate.content),
+        )
+
         candidate = await check_and_fix_leakage(candidate, task, client)
         candidate, result = await evaluate_with_retry(candidate, task, config, debug_cb)
 
@@ -333,6 +347,12 @@ async def _generate_and_evaluate_candidates(
             acc.scores.append(None)
             continue
 
+        logger.info(
+            "Candidate evaluation result: model=%s, score=%s, duration=%.2fs",
+            model.model_name,
+            result.score,
+            result.duration_seconds,
+        )
         candidate.score = result.score
         acc.solutions.append(candidate)
         acc.scores.append(result.score)
@@ -348,7 +368,7 @@ async def _run_merge_loop(
     config: PipelineConfig,
     client: Any,
     debug_cb: Any,
-) -> tuple[SolutionScript, float]:
+) -> tuple[SolutionScript, float, int]:
     """Execute the merge loop over sorted candidates (REQ-P1-025 to REQ-P1-028).
 
     Starting from the best-ranked candidate, iteratively merges each
@@ -363,14 +383,23 @@ async def _run_merge_loop(
         debug_cb: Debug callback for evaluate_with_retry.
 
     Returns:
-        A ``(best_solution, best_score)`` tuple after the merge loop.
+        A ``(best_solution, best_score, merge_count)`` tuple after the
+        merge loop.
     """
     s_0, best_result = ranked[0]
     assert best_result.score is not None
     h_best = best_result.score
     s_0.score = h_best
+    merge_count = 0
 
-    for ranked_sol, _ranked_res in ranked[1:]:
+    for merge_idx, (ranked_sol, _ranked_res) in enumerate(ranked[1:], start=1):
+        ref_model = ranked_sol.source_model or "unknown"
+        logger.info(
+            "Merge attempt start: index=%d, base_score=%s, reference=%s",
+            merge_idx,
+            h_best,
+            ref_model,
+        )
         merged = await merge_solutions(s_0, ranked_sol, config, client)
         if merged is None:
             logger.warning("Merge returned None; breaking merge loop")
@@ -384,13 +413,24 @@ async def _run_merge_loop(
             break
 
         if is_improvement_or_equal(merge_result.score, h_best, task.metric_direction):
+            logger.info(
+                "Merge attempt result: score=%s, accepted (improved from %s)",
+                merge_result.score,
+                h_best,
+            )
             s_0 = merged
             h_best = merge_result.score
             s_0.score = h_best
+            merge_count += 1
         else:
+            logger.info(
+                "Merge attempt result: score=%s, rejected (no improvement over %s)",
+                merge_result.score,
+                h_best,
+            )
             break
 
-    return s_0, h_best
+    return s_0, h_best, merge_count
 
 
 async def _apply_safety_check(
@@ -422,11 +462,16 @@ async def _apply_safety_check(
     Returns:
         Updated ``(solution, score)`` tuple.
     """
+    logger.info(
+        "%s safety check start: content_length=%d", label, len(s_0.content)
+    )
     pre_check = s_0
     pre_score = h_best
     checked = await check_fn(s_0, task, client)
 
-    if checked is not pre_check:
+    modified = checked is not pre_check
+    if modified:
+        logger.info("%s safety check result: solution modified", label)
         checked, result = await evaluate_with_retry(checked, task, config, debug_cb)
         if result.is_error or result.score is None:
             logger.warning(
@@ -440,6 +485,8 @@ async def _apply_safety_check(
             s_0 = checked
             h_best = result.score
             s_0.score = h_best
+    else:
+        logger.info("%s safety check result: solution unchanged", label)
     return s_0, h_best
 
 
@@ -507,10 +554,23 @@ async def run_phase1(
     Raises:
         RuntimeError: If all M candidates fail to produce a valid score.
     """
+    phase1_start = time.monotonic()
+    logger.info(
+        "Phase 1 start: competition_id=%s, M=%d",
+        task.competition_id,
+        config.num_retrieved_models,
+    )
+
     debug_cb = make_debug_callback(task, config, client)
 
     # Step 1 — Retrieve M models (REQ-P1-019).
     models = await retrieve_models(task, config, client)
+    model_names = [m.model_name for m in models]
+    logger.info(
+        "Retrieval complete: count=%d, models=%s",
+        len(models),
+        model_names,
+    )
 
     # Steps 2-5 — Generate and evaluate M candidates (REQ-P1-020).
     acc = await _generate_and_evaluate_candidates(
@@ -519,6 +579,11 @@ async def run_phase1(
 
     # REQ-P1-022 — All candidates failed.
     if not acc.successful_solutions:
+        logger.error(
+            "All candidates failed: M=%d, models=%s",
+            len(models),
+            model_names,
+        )
         msg = f"Phase 1 failed: all {len(models)} candidates produced execution errors"
         raise RuntimeError(msg)
 
@@ -526,13 +591,27 @@ async def run_phase1(
     ranked = rank_solutions(
         acc.successful_solutions, acc.successful_results, task.metric_direction
     )
+    ranked_summary = [
+        (sol.source_model or "unknown", res.score) for sol, res in ranked
+    ]
+    logger.info("Candidates sorted: ranked_order=%s", ranked_summary)
 
     # Steps 7-17 — Initialize best + merge loop (REQ-P1-024 to REQ-P1-028).
-    s_0, h_best = await _run_merge_loop(ranked, task, config, client, debug_cb)
+    s_0, h_best, merge_count = await _run_merge_loop(
+        ranked, task, config, client, debug_cb
+    )
 
     # Post-merge safety checks (REQ-P1-030 to REQ-P1-033).
     s_0, h_best = await _apply_post_merge_safety(
         s_0, h_best, task, config, client, debug_cb
+    )
+
+    duration = time.monotonic() - phase1_start
+    logger.info(
+        "Phase 1 complete: final_score=%s, duration=%.2fs, merges=%d",
+        h_best,
+        duration,
+        merge_count,
     )
 
     # Construct Phase1Result.

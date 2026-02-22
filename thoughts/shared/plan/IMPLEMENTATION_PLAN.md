@@ -9,7 +9,7 @@
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
 | P1       | 0       | 0           | 44   |
-| P2       | 5       | 0           | 3    |
+| P2       | 4       | 0           | 4    |
 | P3       | 0       | 0           | 0    |
 
 ---
@@ -704,7 +704,7 @@ Add post-merge safety checks to `run_phase1`: invoke `check_data_usage()` EXACTL
 ---
 
 ## [P2] 30. Phase 1 constraints
-**Status:** pending
+**Status:** done
 **Priority:** P2
 
 ### Description
@@ -713,11 +713,11 @@ Implement remaining Phase 1 requirements: candidate independence (parallel gener
 **Spec:** SRS 04 | **Reqs:** REQ-P1-034 to REQ-P1-045 | **Depends on:** Tasks 27–29
 
 ### Acceptance Criteria
-- [ ] Structured logging for each Phase 1 step
-- [ ] Merge loop executes sequentially (not parallel)
-- [ ] Leakage check at 3 integration points: each candidate, each merge result, final s_0
-- [ ] Algorithm 1 steps match paper specification
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Structured logging for each Phase 1 step
+- [x] Merge loop executes sequentially (not parallel)
+- [x] Leakage check at 3 integration points: each candidate, each merge result, final s_0
+- [x] Algorithm 1 steps match paper specification
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
