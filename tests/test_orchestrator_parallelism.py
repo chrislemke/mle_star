@@ -435,7 +435,7 @@ class TestCancelledPathsHandledAsFailures:
     """Cancelled paths are treated as failed paths in result collection (REQ-OR-022)."""
 
     def test_cancelled_error_substitutes_phase1_solution(self) -> None:
-        """CancelledError in results triggers Phase 1 fallback."""
+        """CancelledError in results triggers Phase 1 fallback via synthetic result."""
         from mle_star.orchestrator import _collect_phase2_results
 
         p1_solution = _make_solution(content="p1_fallback", phase=SolutionPhase.MERGED)
@@ -449,9 +449,11 @@ class TestCancelledPathsHandledAsFailures:
 
         phase2_results, solutions = _collect_phase2_results(raw_results, p1_result)
 
-        # Only one successful result
-        assert len(phase2_results) == 1
-        assert phase2_results[0] is p2_success
+        # Both paths produce a Phase2Result (synthetic for cancelled + original)
+        assert len(phase2_results) == 2
+        # First is synthetic (failed), second is original success
+        assert phase2_results[0].step_history[0]["failed"] is True
+        assert phase2_results[1] is p2_success
 
         # Two solutions: fallback for cancelled + success
         assert len(solutions) == 2
@@ -472,7 +474,9 @@ class TestCancelledPathsHandledAsFailures:
 
         phase2_results, solutions = _collect_phase2_results(raw_results, p1_result)
 
-        assert len(phase2_results) == 0
+        # Both paths produce synthetic Phase2Results
+        assert len(phase2_results) == 2
+        assert all(r.step_history[0]["failed"] is True for r in phase2_results)
         assert len(solutions) == 2
         assert all(s.content == "p1_code" for s in solutions)
 
@@ -492,7 +496,8 @@ class TestCancelledPathsHandledAsFailures:
 
         phase2_results, solutions = _collect_phase2_results(raw_results, p1_result)
 
-        assert len(phase2_results) == 1
+        # All three paths produce Phase2Results (2 synthetic + 1 original)
+        assert len(phase2_results) == 3
         assert len(solutions) == 3
         assert solutions[0].content == "p1_code"  # RuntimeError fallback
         assert solutions[1].content == "p1_code"  # CancelledError fallback

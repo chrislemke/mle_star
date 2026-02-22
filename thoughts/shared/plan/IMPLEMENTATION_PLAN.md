@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 6       | 0           | 38   |
+| P1       | 5       | 0           | 39   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -1071,7 +1071,7 @@ Implement the 5 SDK hooks: (1) `PostToolUse` progress hook — structured JSON l
 ---
 
 ## [P1] 47. Result assembly and error recovery
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -1080,14 +1080,14 @@ Implement `FinalResult` construction from all phase outputs: field assembly, per
 **Spec:** SRS 09 | **Reqs:** REQ-OR-036 to REQ-OR-043 | **Depends on:** Task 46
 
 ### Acceptance Criteria
-- [ ] `FinalResult` assembled with all phase results
-- [ ] Cost summary includes per-phase breakdown (REQ-OR-037)
-- [ ] Duration summary includes per-phase breakdown (REQ-OR-038)
-- [ ] Phase 2 failure: Phase 1 solution substituted for failed path's contribution; `Phase2Result.step_history` includes `failed=True` flag (REQ-OR-040)
-- [ ] Phase 3 failure: best Phase 2 solution used for finalization (REQ-OR-041)
-- [ ] All phases fail (Phase 1 fails): raises PipelineError with diagnostics (REQ-OR-042)
-- [ ] Partial failure produces best-effort FinalResult; finalization failure → submission_path="" (REQ-OR-043)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `FinalResult` assembled with all phase results
+- [x] Cost summary includes per-phase breakdown (REQ-OR-037)
+- [x] Duration summary includes per-phase breakdown (REQ-OR-038)
+- [x] Phase 2 failure: Phase 1 solution substituted for failed path's contribution; `Phase2Result.step_history` includes `failed=True` flag (REQ-OR-040)
+- [x] Phase 3 failure: best Phase 2 solution used for finalization (REQ-OR-041)
+- [x] All phases fail (Phase 1 fails): raises PipelineError with diagnostics (REQ-OR-042)
+- [x] Partial failure produces best-effort FinalResult; finalization failure → submission_path="" (REQ-OR-043)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

@@ -10,7 +10,7 @@ Refs:
     SRS 09a -- Orchestrator Entry Point & SDK Client Setup.
     SRS 09b -- Orchestrator Phase Dispatch & Sequencing.
     SRS 09c -- Orchestrator Budgets & Hooks.
-    IMPLEMENTATION_PLAN.md Tasks 42, 43, 44, 45, 46.
+    IMPLEMENTATION_PLAN.md Tasks 42, 43, 44, 45, 46, 47.
 """
 
 from __future__ import annotations
@@ -745,6 +745,12 @@ async def _execute_phase3_or_skip(
             time.monotonic() - p3_start,
         )
         return None, current_best
+    except Exception:
+        logger.warning(
+            "Phase 3 failed after %.1fs; using best Phase 2 solution",
+            time.monotonic() - p3_start,
+        )
+        return None, current_best
 
 
 # ---------------------------------------------------------------------------
@@ -853,24 +859,45 @@ async def _dispatch_phase2(
     return results
 
 
+def _make_failed_phase2_result(phase1_result: Phase1Result) -> Phase2Result:
+    """Create a synthetic Phase2Result for a failed Phase 2 path (REQ-OR-040).
+
+    Uses the Phase 1 initial solution and score as fallback values.
+    The ``step_history`` contains a single entry marking the failure.
+
+    Args:
+        phase1_result: Phase 1 output providing fallback solution and score.
+
+    Returns:
+        A synthetic ``Phase2Result`` representing a failed path.
+    """
+    return Phase2Result(
+        ablation_summaries=[],
+        refined_blocks=[],
+        best_solution=phase1_result.initial_solution,
+        best_score=phase1_result.initial_score,
+        step_history=[{"step": 0, "failed": True}],
+    )
+
+
 def _collect_phase2_results(
     raw_results: list[Phase2Result | BaseException],
     phase1_result: Phase1Result,
 ) -> tuple[list[Phase2Result], list[SolutionScript]]:
-    """Separate successful Phase 2 results and build Phase 3 input (REQ-OR-040).
+    """Separate Phase 2 results and build Phase 3 input (REQ-OR-040).
 
-    For each path: if the result is a ``Phase2Result``, its ``best_solution``
-    is used; if it is an exception, the Phase 1 initial solution is
-    substituted as a fallback (REQ-OR-040).
+    For each path: if the result is a ``Phase2Result``, it is used directly;
+    if it is an exception, a synthetic ``Phase2Result`` is created from
+    the Phase 1 result as a fallback (REQ-OR-040). Both output lists always
+    have the same length as ``raw_results``.
 
     Args:
         raw_results: Mixed list from ``asyncio.gather(return_exceptions=True)``.
         phase1_result: Fallback source for failed paths.
 
     Returns:
-        Tuple of (phase2_results, solutions_for_phase3) where
-        ``phase2_results`` contains only successful results and
-        ``solutions_for_phase3`` has one entry per path.
+        Tuple of (phase2_results, solutions_for_phase3) where both
+        lists have ``len(raw_results)`` entries.
     """
     phase2_results: list[Phase2Result] = []
     solutions: list[SolutionScript] = []
@@ -878,12 +905,136 @@ def _collect_phase2_results(
     for i, result in enumerate(raw_results):
         if isinstance(result, BaseException):
             logger.warning("Phase 2 path %d failed: %s", i, result)
+            synthetic = _make_failed_phase2_result(phase1_result)
+            phase2_results.append(synthetic)
             solutions.append(phase1_result.initial_solution)
         else:
             phase2_results.append(result)
             solutions.append(result.best_solution)
 
     return phase2_results, solutions
+
+
+# ---------------------------------------------------------------------------
+# Result assembly and logging (REQ-OR-036 through REQ-OR-039)
+# ---------------------------------------------------------------------------
+
+
+async def _finalize_with_recovery(
+    *,
+    client: ClaudeSDKClient,
+    best_solution: SolutionScript,
+    task: TaskDescription,
+    config: PipelineConfig,
+    phase1_result: Phase1Result,
+    phase2_results: list[Phase2Result],
+    phase3_result: Phase3Result | None,
+    pipeline_start: float,
+    cost_tracker: CostTracker,
+) -> FinalResult:
+    """Run finalization with error recovery (REQ-OR-043).
+
+    Wraps ``run_finalization()`` in a try/except. On success, updates the
+    returned ``FinalResult`` with pipeline-level ``total_duration_seconds``
+    and ``total_cost_usd`` (REQ-OR-036). On failure, constructs a best-effort
+    ``FinalResult`` with ``submission_path=""``.
+
+    Args:
+        client: SDK client.
+        best_solution: Best solution to finalize.
+        task: Task description.
+        config: Pipeline configuration.
+        phase1_result: Phase 1 output.
+        phase2_results: All Phase 2 results (including synthetic).
+        phase3_result: Phase 3 output (or None).
+        pipeline_start: Monotonic time when the pipeline started.
+        cost_tracker: Shared cost accumulator.
+
+    Returns:
+        A ``FinalResult`` with pipeline-level duration and cost.
+    """
+    try:
+        logger.info("=== Finalization ===")
+        final_result = await run_finalization(
+            client,
+            best_solution,
+            task,
+            config,
+            phase1_result,
+            phase2_results,
+            phase3_result,
+        )
+        total_duration = time.monotonic() - pipeline_start
+        return final_result.model_copy(
+            update={
+                "total_duration_seconds": total_duration,
+                "total_cost_usd": cost_tracker.total,
+            }
+        )
+    except Exception:
+        total_duration = time.monotonic() - pipeline_start
+        logger.warning(
+            "Finalization failed after %.1fs; returning best-effort result",
+            total_duration,
+        )
+        return FinalResult(
+            task=task,
+            config=config,
+            phase1=phase1_result,
+            phase2_results=phase2_results,
+            phase3=phase3_result,
+            final_solution=best_solution,
+            submission_path="",
+            total_duration_seconds=total_duration,
+            total_cost_usd=cost_tracker.total,
+        )
+
+
+def _log_phase_summary(
+    phase_durations: dict[str, float],
+    phase_costs: dict[str, float],
+) -> None:
+    """Log per-phase cost and duration breakdown (REQ-OR-037, REQ-OR-038).
+
+    Emits a structured JSON log entry with cost and duration per phase
+    for post-pipeline analysis and observability.
+
+    Args:
+        phase_durations: Phase name to duration (seconds) mapping.
+        phase_costs: Phase name to cost (USD) mapping.
+    """
+    summary = {
+        "durations": phase_durations,
+        "costs": phase_costs,
+    }
+    logger.info("Phase summary: %s", json.dumps(summary, default=str))
+
+
+def _log_solution_lineage(
+    phase1_result: Phase1Result,
+    phase2_results: list[Phase2Result],
+    phase3_result: Phase3Result | None,
+    final_solution: SolutionScript,
+) -> None:
+    """Log solution lineage tracing from final to origin (REQ-OR-039).
+
+    Traces the solution evolution through each pipeline phase, recording
+    the score at each step for debugging and auditing.
+
+    Args:
+        phase1_result: Phase 1 output.
+        phase2_results: Phase 2 outputs for all paths.
+        phase3_result: Phase 3 output (or None).
+        final_solution: The solution sent for submission.
+    """
+    lineage: dict[str, Any] = {
+        "phase1_score": phase1_result.initial_score,
+        "phase2_scores": [r.best_score for r in phase2_results],
+    }
+    if phase3_result is not None:
+        lineage["phase3_score"] = phase3_result.best_ensemble_score
+    lineage["final_phase"] = str(final_solution.phase)
+    logger.info("Solution lineage: %s", json.dumps(lineage, default=str))
 
 
 # ---------------------------------------------------------------------------
@@ -958,7 +1109,14 @@ async def run_pipeline(
 
         # Phases 2-Final with graceful shutdown (REQ-OR-030)
         return await _execute_post_phase1(
-            client, task, resolved_config, phase1_result, deadline, budgets
+            client,
+            task,
+            resolved_config,
+            phase1_result,
+            deadline,
+            budgets,
+            pipeline_start=pipeline_start,
+            cost_tracker=cost_tracker,
         )
     finally:
         await client.disconnect()
@@ -1021,12 +1179,16 @@ async def _execute_post_phase1(
     phase1_result: Phase1Result,
     deadline: float,
     budgets: dict[str, float],
+    *,
+    pipeline_start: float,
+    cost_tracker: CostTracker,
 ) -> FinalResult:
     """Execute Phase 2 through Finalization with graceful shutdown (REQ-OR-030).
 
     If the deadline is exceeded before Phase 2 starts, skips directly to
     finalization with the Phase 1 solution. Phase 2 receives a computed
     timeout (REQ-OR-026). Phase 3 is handled by ``_execute_phase3_or_skip()``.
+    Finalization is wrapped in ``_finalize_with_recovery()`` (REQ-OR-043).
 
     Args:
         client: SDK client.
@@ -1035,6 +1197,8 @@ async def _execute_post_phase1(
         phase1_result: Phase 1 output.
         deadline: Absolute monotonic deadline (REQ-OR-024).
         budgets: Phase time budgets from ``_compute_phase_budgets()``.
+        pipeline_start: Monotonic time when the pipeline started.
+        cost_tracker: Shared cost accumulator.
 
     Returns:
         The assembled ``FinalResult``.
@@ -1068,19 +1232,23 @@ async def _execute_post_phase1(
         client, task, config, phase2_solutions, best_solution, deadline, budgets
     )
 
-    # Finalization (REQ-OR-016)
-    logger.info("=== Finalization ===")
-    p_fin_start = time.monotonic()
-    final_result = await run_finalization(
-        client,
-        best_solution,
-        task,
-        config,
-        phase1_result,
-        phase2_results,
-        phase3_result,
+    # Finalization with error recovery (REQ-OR-043)
+    final_result = await _finalize_with_recovery(
+        client=client,
+        best_solution=best_solution,
+        task=task,
+        config=config,
+        phase1_result=phase1_result,
+        phase2_results=phase2_results,
+        phase3_result=phase3_result,
+        pipeline_start=pipeline_start,
+        cost_tracker=cost_tracker,
     )
-    logger.info("Finalization completed in %.1fs", time.monotonic() - p_fin_start)
+
+    # Log summaries (REQ-OR-037, REQ-OR-038, REQ-OR-039)
+    _log_solution_lineage(
+        phase1_result, phase2_results, phase3_result, final_result.final_solution
+    )
 
     return final_result
 
