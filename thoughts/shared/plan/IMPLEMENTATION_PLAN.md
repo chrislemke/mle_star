@@ -838,7 +838,7 @@ Implement two Phase 3 agent functions in `src/mle_star/phase3.py`: `invoke_ens_p
 ---
 
 ## [P1] 36. Phase 3 orchestration (run_phase3, Algorithm 3)
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -847,18 +847,18 @@ Implement `run_phase3(client, task, config, solutions)` executing R ensemble rou
 **Spec:** SRS 07 | **Reqs:** REQ-P3-017 to REQ-P3-035 | **Depends on:** Task 35
 
 ### Acceptance Criteria
-- [ ] Handles `len(solutions) == 1` by returning immediately with single solution as `best_ensemble` (REQ-P3-018)
-- [ ] Raises ValueError if `len(solutions) == 0` (empty input)
-- [ ] Executes R rounds with plan → implement → evaluate cycle
-- [ ] History passed to planner grows each round
-- [ ] Best ensemble selected by score comparison; ties won by LAST occurrence (REQ-P3-025)
-- [ ] `check_and_fix_leakage()` called before each evaluation (REQ-SF-022)
-- [ ] Exactly R `EnsembleAttempt` records created regardless of success/failure (REQ-P3-044)
-- [ ] Failed ensembler: record `EnsembleAttempt` with `SolutionScript(content="", ...)` (REQ-P3-030)
-- [ ] Failed ens_planner: record plan as `"[ens_planner failed]"` in accumulated history (REQ-P3-031)
-- [ ] All-rounds-failed: fallback returns best input solution, no exception raised (REQ-P3-026)
-- [ ] `Phase3Result` correctly constructed
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Handles `len(solutions) == 1` by returning immediately with single solution as `best_ensemble` (REQ-P3-018)
+- [x] Raises ValueError if `len(solutions) == 0` (empty input)
+- [x] Executes R rounds with plan → implement → evaluate cycle
+- [x] History passed to planner grows each round
+- [x] Best ensemble selected by score comparison; ties won by LAST occurrence (REQ-P3-025)
+- [x] `check_and_fix_leakage()` called before each evaluation (REQ-SF-022)
+- [x] Exactly R `EnsembleAttempt` records created regardless of success/failure (REQ-P3-044)
+- [x] Failed ensembler: record `EnsembleAttempt` with `SolutionScript(content="", ...)` (REQ-P3-030)
+- [x] Failed ens_planner: record plan as `"[ens_planner failed]"` in accumulated history (REQ-P3-031)
+- [x] All-rounds-failed: fallback returns best input solution, no exception raised (REQ-P3-026)
+- [x] `Phase3Result` correctly constructed
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

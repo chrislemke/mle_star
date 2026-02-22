@@ -1,16 +1,19 @@
-"""Phase 3: ensemble planner and ensembler agent invocations.
+"""Phase 3: ensemble planner, ensembler agents, and orchestration.
 
 Implements ``invoke_ens_planner`` and ``invoke_ensembler`` for Algorithm 3
-(ensemble construction).  A_ens_planner proposes ensemble strategies from L
-solution scripts and accumulated history.  A_ensembler implements a given
-plan into a single self-contained Python script.
+(ensemble construction), plus ``run_phase3`` orchestration.  A_ens_planner
+proposes ensemble strategies from L solution scripts and accumulated
+history.  A_ensembler implements a given plan into a single self-contained
+Python script.  ``run_phase3`` executes R ensemble rounds, selecting the
+best ensemble via ``is_improvement_or_equal`` (>= semantics).
 
 Helper functions ``_format_solutions`` and ``_format_ensemble_history``
 produce the formatted text blocks inserted into prompt templates.
 
 Refs:
     SRS 07a — Phase 3 Agents (REQ-P3-001 through REQ-P3-016).
-    IMPLEMENTATION_PLAN.md Task 35.
+    SRS 07b — Phase 3 Orchestration (REQ-P3-017 through REQ-P3-035).
+    IMPLEMENTATION_PLAN.md Tasks 35, 36.
 """
 
 from __future__ import annotations
@@ -18,13 +21,23 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from mle_star.execution import evaluate_with_retry
 from mle_star.models import (
     AgentType,
+    MetricDirection,
+    Phase3Result,
+    PipelineConfig,
     SolutionPhase,
     SolutionScript,
+    TaskDescription,
 )
 from mle_star.prompts import PromptRegistry
-from mle_star.safety import extract_code_block
+from mle_star.safety import (
+    check_and_fix_leakage,
+    extract_code_block,
+    make_debug_callback,
+)
+from mle_star.scoring import is_improvement_or_equal
 
 logger = logging.getLogger(__name__)
 
@@ -197,4 +210,180 @@ async def invoke_ensembler(
     return SolutionScript(
         content=extracted,
         phase=SolutionPhase.ENSEMBLE,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 Orchestration (REQ-P3-017 through REQ-P3-035, Task 36)
+# ---------------------------------------------------------------------------
+
+
+def _select_best_input(
+    solutions: list[SolutionScript],
+    task: TaskDescription,
+) -> tuple[SolutionScript, float]:
+    """Select the best-scoring input solution for fallback (REQ-P3-026).
+
+    Uses direct comparison (max/min) based on metric direction.
+    Only considers solutions with non-None scores.
+
+    Args:
+        solutions: Input solution scripts (must be non-empty).
+        task: Task description providing metric direction.
+
+    Returns:
+        Tuple of (best solution, best score).
+    """
+    scored = [(s, s.score) for s in solutions if s.score is not None]
+    if not scored:
+        return solutions[0], 0.0
+
+    if task.metric_direction == MetricDirection.MAXIMIZE:
+        return max(scored, key=lambda x: x[1])  # type: ignore[return-value]
+    return min(scored, key=lambda x: x[1])  # type: ignore[return-value]
+
+
+async def _run_ensemble_round(
+    solutions: list[SolutionScript],
+    plans_snapshot: list[str],
+    scores_snapshot: list[float | None],
+    task: TaskDescription,
+    config: PipelineConfig,
+    client: Any,
+    debug_cb: Any,
+) -> tuple[str, float | None, SolutionScript]:
+    """Execute a single ensemble round: plan, implement, check, evaluate.
+
+    Handles planner and ensembler failures gracefully by returning
+    placeholder values.  Called by ``run_phase3`` for each round r.
+
+    Args:
+        solutions: L input solution scripts to ensemble.
+        plans_snapshot: Copy of accumulated plan history at this round.
+        scores_snapshot: Copy of accumulated score history at this round.
+        task: Task description for evaluation context.
+        config: Pipeline configuration.
+        client: SDK client for agent invocation.
+        debug_cb: Debug callback for ``evaluate_with_retry``.
+
+    Returns:
+        Tuple of ``(plan_text, score_or_none, solution)``.
+    """
+    empty_solution = SolutionScript(content="", phase=SolutionPhase.ENSEMBLE)
+
+    # Step 1: Plan (REQ-P3-019 / REQ-P3-022 step 1).
+    plan = await invoke_ens_planner(solutions, plans_snapshot, scores_snapshot, client)
+    if plan is None:
+        logger.warning("A_ens_planner returned empty response; skipping round")
+        return "[ens_planner failed]", None, empty_solution
+
+    # Step 2: Implement (REQ-P3-020 / REQ-P3-022 step 3).
+    ensemble_sol = await invoke_ensembler(plan, solutions, client)
+    if ensemble_sol is None:
+        logger.warning("A_ensembler returned empty code; skipping round")
+        return plan, None, empty_solution
+
+    # Step 3: Leakage check (REQ-P3-027).
+    checked = await check_and_fix_leakage(ensemble_sol, task, client)
+
+    # Step 4: Evaluate with debug retry (REQ-P3-028).
+    evaluated, eval_result = await evaluate_with_retry(checked, task, config, debug_cb)
+
+    score = eval_result.score
+    if score is not None:
+        evaluated.score = score
+
+    return plan, score, evaluated
+
+
+async def run_phase3(
+    client: Any,
+    task: TaskDescription,
+    config: PipelineConfig,
+    solutions: list[SolutionScript],
+) -> Phase3Result:
+    """Execute Phase 3: ensemble construction via Algorithm 3 (REQ-P3-017).
+
+    Orchestrates R ensemble rounds.  Each round invokes A_ens_planner to
+    propose an ensemble strategy, A_ensembler to implement it, applies
+    leakage checking, and evaluates with debug retry.  The best ensemble
+    solution is selected using ``is_improvement_or_equal`` (>= semantics,
+    so the last occurrence of a tied score wins per REQ-P3-025).
+
+    If ``len(solutions) == 1``, skips ensemble entirely (REQ-P3-018).
+    If all R rounds fail, falls back to the best input solution without
+    raising an exception (REQ-P3-026).
+
+    Args:
+        client: SDK client for agent invocation.
+        task: Task description providing competition context.
+        config: Pipeline configuration (``ensemble_rounds`` = R).
+        solutions: L solution scripts to ensemble (must be >= 1).
+
+    Returns:
+        A ``Phase3Result`` with the best ensemble solution and scores.
+
+    Raises:
+        ValueError: If *solutions* is empty.
+    """
+    if not solutions:
+        msg = "run_phase3 requires at least 1 solution"
+        raise ValueError(msg)
+
+    # REQ-P3-018: Single solution — skip ensemble entirely.
+    if len(solutions) == 1:
+        sol = solutions[0]
+        score = sol.score if sol.score is not None else 0.0
+        return Phase3Result(
+            input_solutions=[sol],
+            ensemble_plans=[],
+            ensemble_scores=[],
+            best_ensemble=sol,
+            best_ensemble_score=score,
+        )
+
+    debug_cb = make_debug_callback(task, config, client)
+
+    accumulated_plans: list[str] = []
+    accumulated_scores: list[float | None] = []
+    best_score: float | None = None
+    best_solution: SolutionScript | None = None
+
+    for _r in range(config.ensemble_rounds):
+        round_result = await _run_ensemble_round(
+            solutions,
+            list(accumulated_plans),
+            list(accumulated_scores),
+            task,
+            config,
+            client,
+            debug_cb,
+        )
+        plan, round_score, sol = round_result
+        accumulated_plans.append(plan)
+        accumulated_scores.append(round_score)
+
+        # REQ-P3-025: Update best using >= semantics (last tie wins).
+        if round_score is not None and (
+            best_score is None
+            or is_improvement_or_equal(round_score, best_score, task.metric_direction)
+        ):
+            best_score = round_score
+            best_solution = sol
+
+    # REQ-P3-026: All rounds failed — fallback to best input solution.
+    if best_solution is None or best_score is None:
+        logger.warning(
+            "Phase 3 ensemble: all %d attempts failed; "
+            "falling back to best input solution",
+            config.ensemble_rounds,
+        )
+        best_solution, best_score = _select_best_input(solutions, task)
+
+    return Phase3Result(
+        input_solutions=solutions,
+        ensemble_plans=accumulated_plans,
+        ensemble_scores=accumulated_scores,
+        best_ensemble=best_solution,
+        best_ensemble_score=best_score,
     )
