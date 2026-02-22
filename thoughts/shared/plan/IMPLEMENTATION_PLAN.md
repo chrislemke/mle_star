@@ -9,7 +9,7 @@
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
 | P1       | 0       | 0           | 44   |
-| P2       | 3       | 0           | 5    |
+| P2       | 2       | 0           | 6    |
 | P3       | 0       | 0           | 0    |
 
 ---
@@ -863,7 +863,7 @@ Implement `run_phase3(client, task, config, solutions)` executing R ensemble rou
 ---
 
 ## [P2] 37. Phase 3 constraints
-**Status:** pending
+**Status:** done
 **Priority:** P2
 
 ### Description
@@ -872,11 +872,11 @@ Implement remaining Phase 3 requirements: performance (orchestration overhead), 
 **Spec:** SRS 07 | **Reqs:** REQ-P3-036 to REQ-P3-049 | **Depends on:** Tasks 35–36
 
 ### Acceptance Criteria
-- [ ] Round failure does not propagate — `run_phase3` never raises (graceful degradation)
-- [ ] Structured logging for each ensemble round
-- [ ] Sequential rounds verified
-- [ ] Exactly R rounds attempted (unless time budget exceeded)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Round failure does not propagate — `run_phase3` never raises (graceful degradation)
+- [x] Structured logging for each ensemble round
+- [x] Sequential rounds verified
+- [x] Exactly R rounds attempted (unless time budget exceeded)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

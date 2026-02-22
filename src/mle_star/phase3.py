@@ -19,6 +19,7 @@ Refs:
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from mle_star.execution import evaluate_with_retry
@@ -251,6 +252,8 @@ async def _run_ensemble_round(
     config: PipelineConfig,
     client: Any,
     debug_cb: Any,
+    *,
+    round_index: int = 0,
 ) -> tuple[str, float | None, SolutionScript]:
     """Execute a single ensemble round: plan, implement, check, evaluate.
 
@@ -265,35 +268,165 @@ async def _run_ensemble_round(
         config: Pipeline configuration.
         client: SDK client for agent invocation.
         debug_cb: Debug callback for ``evaluate_with_retry``.
+        round_index: Current round index (for logging).
 
     Returns:
         Tuple of ``(plan_text, score_or_none, solution)``.
     """
     empty_solution = SolutionScript(content="", phase=SolutionPhase.ENSEMBLE)
 
+    # REQ-P3-039: Ensemble round start.
+    logger.info(
+        "Ensemble round start: r=%d, previous_plans=%d",
+        round_index,
+        len(plans_snapshot),
+    )
+
     # Step 1: Plan (REQ-P3-019 / REQ-P3-022 step 1).
+    logger.info(
+        "A_ens_planner invocation start: r=%d, history_size=%d",
+        round_index,
+        len(plans_snapshot),
+    )
     plan = await invoke_ens_planner(solutions, plans_snapshot, scores_snapshot, client)
     if plan is None:
-        logger.warning("A_ens_planner returned empty response; skipping round")
+        logger.warning("A_ens_planner empty response: r=%d", round_index)
         return "[ens_planner failed]", None, empty_solution
+    logger.info(
+        "A_ens_planner invocation complete: r=%d, plan=%.200s",
+        round_index,
+        plan,
+    )
 
     # Step 2: Implement (REQ-P3-020 / REQ-P3-022 step 3).
+    logger.info(
+        "A_ensembler invocation start: r=%d, plan=%.200s",
+        round_index,
+        plan,
+    )
     ensemble_sol = await invoke_ensembler(plan, solutions, client)
     if ensemble_sol is None:
-        logger.warning("A_ensembler returned empty code; skipping round")
+        logger.warning("A_ensembler extraction failure: r=%d", round_index)
         return plan, None, empty_solution
+    logger.info(
+        "A_ensembler invocation complete: r=%d, script_length=%d",
+        round_index,
+        len(ensemble_sol.content),
+    )
 
     # Step 3: Leakage check (REQ-P3-027).
+    logger.info(
+        "Leakage check start: r=%d, solution_content_length=%d",
+        round_index,
+        len(ensemble_sol.content),
+    )
     checked = await check_and_fix_leakage(ensemble_sol, task, client)
+    content_changed = checked is not ensemble_sol
+    logger.info(
+        "Leakage check complete: r=%d, leakage_found=%s, content_changed=%s",
+        round_index,
+        "yes" if content_changed else "no",
+        "yes" if content_changed else "no",
+    )
 
     # Step 4: Evaluate with debug retry (REQ-P3-028).
+    logger.info(
+        "Evaluation start: r=%d, solution_content_length=%d",
+        round_index,
+        len(checked.content),
+    )
+    eval_start = time.monotonic()
     evaluated, eval_result = await evaluate_with_retry(checked, task, config, debug_cb)
+    eval_duration = time.monotonic() - eval_start
 
     score = eval_result.score
     if score is not None:
         evaluated.score = score
 
+    score_str = str(score) if score is not None else "failed"
+    logger.info(
+        "Evaluation complete: r=%d, score=%s, is_error=%s, duration=%.2fs",
+        round_index,
+        score_str,
+        eval_result.is_error,
+        eval_duration,
+    )
+
+    if eval_result.is_error:
+        logger.warning(
+            "Round failed (execution error): r=%d, error_summary=%s, plan_summary=%.200s",
+            round_index,
+            score_str,
+            plan,
+        )
+
     return plan, score, evaluated
+
+
+async def _execute_rounds(
+    solutions: list[SolutionScript],
+    task: TaskDescription,
+    config: PipelineConfig,
+    client: Any,
+    debug_cb: Any,
+) -> tuple[
+    list[str], list[float | None], SolutionScript | None, float | None, int, int
+]:
+    """Execute all R ensemble rounds and track best solution.
+
+    Args:
+        solutions: L input solution scripts.
+        task: Task description for evaluation context.
+        config: Pipeline configuration.
+        client: SDK client for agent invocation.
+        debug_cb: Debug callback for evaluation.
+
+    Returns:
+        Tuple of (plans, scores, best_solution, best_score, best_round,
+        successful_rounds).
+    """
+    accumulated_plans: list[str] = []
+    accumulated_scores: list[float | None] = []
+    best_score: float | None = None
+    best_solution: SolutionScript | None = None
+    best_round: int = -1
+    successful_rounds = 0
+
+    for _r in range(config.ensemble_rounds):
+        round_result = await _run_ensemble_round(
+            solutions,
+            list(accumulated_plans),
+            list(accumulated_scores),
+            task,
+            config,
+            client,
+            debug_cb,
+            round_index=_r,
+        )
+        plan, round_score, sol = round_result
+        accumulated_plans.append(plan)
+        accumulated_scores.append(round_score)
+
+        if round_score is not None:
+            successful_rounds += 1
+
+        # REQ-P3-025: Update best using >= semantics (last tie wins).
+        if round_score is not None and (
+            best_score is None
+            or is_improvement_or_equal(round_score, best_score, task.metric_direction)
+        ):
+            best_score = round_score
+            best_solution = sol
+            best_round = _r
+
+    return (
+        accumulated_plans,
+        accumulated_scores,
+        best_solution,
+        best_score,
+        best_round,
+        successful_rounds,
+    )
 
 
 async def run_phase3(
@@ -330,10 +463,18 @@ async def run_phase3(
         msg = "run_phase3 requires at least 1 solution"
         raise ValueError(msg)
 
+    num_rounds = config.ensemble_rounds
+    num_solutions = len(solutions)
+
     # REQ-P3-018: Single solution — skip ensemble entirely.
-    if len(solutions) == 1:
+    if num_solutions == 1:
         sol = solutions[0]
         score = sol.score if sol.score is not None else 0.0
+        logger.info(
+            "Phase 3 skipped (single solution): score=%s, competition_id=%s",
+            score,
+            task.competition_id,
+        )
         return Phase3Result(
             input_solutions=[sol],
             ensemble_plans=[],
@@ -342,43 +483,49 @@ async def run_phase3(
             best_ensemble_score=score,
         )
 
+    # REQ-P3-039: Phase 3 start.
+    logger.info(
+        "Phase 3 start: L=%d, R=%d, competition_id=%s",
+        num_solutions,
+        num_rounds,
+        task.competition_id,
+    )
+
+    phase_start = time.monotonic()
     debug_cb = make_debug_callback(task, config, client)
 
-    accumulated_plans: list[str] = []
-    accumulated_scores: list[float | None] = []
-    best_score: float | None = None
-    best_solution: SolutionScript | None = None
-
-    for _r in range(config.ensemble_rounds):
-        round_result = await _run_ensemble_round(
-            solutions,
-            list(accumulated_plans),
-            list(accumulated_scores),
-            task,
-            config,
-            client,
-            debug_cb,
-        )
-        plan, round_score, sol = round_result
-        accumulated_plans.append(plan)
-        accumulated_scores.append(round_score)
-
-        # REQ-P3-025: Update best using >= semantics (last tie wins).
-        if round_score is not None and (
-            best_score is None
-            or is_improvement_or_equal(round_score, best_score, task.metric_direction)
-        ):
-            best_score = round_score
-            best_solution = sol
+    (
+        accumulated_plans,
+        accumulated_scores,
+        best_solution,
+        best_score,
+        best_round,
+        successful_rounds,
+    ) = await _execute_rounds(solutions, task, config, client, debug_cb)
 
     # REQ-P3-026: All rounds failed — fallback to best input solution.
     if best_solution is None or best_score is None:
         logger.warning(
-            "Phase 3 ensemble: all %d attempts failed; "
-            "falling back to best input solution",
-            config.ensemble_rounds,
+            "All rounds failed (fallback): R=%d, falling back to best input solution",
+            num_rounds,
         )
         best_solution, best_score = _select_best_input(solutions, task)
+    else:
+        logger.info(
+            "Best selection: best_round=%d, best_score=%s, successful_rounds=%d",
+            best_round,
+            best_score,
+            successful_rounds,
+        )
+
+    phase_duration = time.monotonic() - phase_start
+    logger.info(
+        "Phase 3 complete: best_score=%s, best_round=%d, duration=%.2fs, rounds_attempted=%d",
+        best_score,
+        best_round,
+        phase_duration,
+        num_rounds,
+    )
 
     return Phase3Result(
         input_solutions=solutions,
