@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 17      | 0           | 27   |
+| P1       | 15      | 0           | 29   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -745,7 +745,7 @@ Implement A_abl agent invocation in `src/mle_star/phase2_outer.py`. The ablation
 ---
 
 ## [P1] 32. Summarize and extractor agents
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -754,22 +754,22 @@ Implement A_summarize and A_extractor agents. A_summarize (REQ-P2O-008 to REQ-P2
 **Spec:** SRS 05 | **Reqs:** REQ-P2O-008 to REQ-P2O-018 | **Depends on:** Task 31
 
 ### Acceptance Criteria
-- [ ] A_summarize returns text summary from ablation results (uses full response)
-- [ ] A_summarize fallback on empty/unparseable response: truncate raw ablation output to last 2000 chars with prefix `"[Auto-summary from raw output] "` (REQ-P2O-036)
-- [ ] A_extractor uses `ExtractorOutput` structured output schema
-- [ ] A_extractor retry on malformed JSON: retry once before entering validation recovery (REQ-P2O-034)
-- [ ] A_extractor returns `list[RefinePlan]` with code_block + plan pairs
-- [ ] `validate_code_block(code_block, solution)` returns `True` iff code_block is exact substring of `solution.content`
-- [ ] Validation recovery level 1: strip trailing whitespace from each line of both code_block and solution, check substring match; if match found, use the matched substring from solution source as c_t
-- [ ] Validation recovery level 2: re-invoke A_extractor with error feedback up to 2 additional times ("The previously extracted code block was not found in the solution. Please extract the code block exactly as it appears in the script.")
-- [ ] Validation recovery level 3: iterate through `ExtractorOutput.plans` list and select the first `RefinePlan` whose `code_block` passes validation (REQ-P2O-018 step 3)
-- [ ] Validation recovery level 4: if no plan passes validation, skip this outer loop iteration entirely and proceed to the next
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] A_summarize returns text summary from ablation results (uses full response)
+- [x] A_summarize fallback on empty/unparseable response: truncate raw ablation output to last 2000 chars with prefix `"[Auto-summary from raw output] "` (REQ-P2O-036)
+- [x] A_extractor uses `ExtractorOutput` structured output schema
+- [x] A_extractor retry on malformed JSON: retry once before entering validation recovery (REQ-P2O-034)
+- [x] A_extractor returns `list[RefinePlan]` with code_block + plan pairs
+- [x] `validate_code_block(code_block, solution)` returns `True` iff code_block is exact substring of `solution.content`
+- [x] Validation recovery level 1: strip trailing whitespace from each line of both code_block and solution, check substring match; if match found, use the matched substring from solution source as c_t
+- [x] Validation recovery level 2: re-invoke A_extractor with error feedback up to 2 additional times ("The previously extracted code block was not found in the solution. Please extract the code block exactly as it appears in the script.")
+- [x] Validation recovery level 3: iterate through `ExtractorOutput.plans` list and select the first `RefinePlan` whose `code_block` passes validation (REQ-P2O-018 step 3)
+- [x] Validation recovery level 4: if no plan passes validation, skip this outer loop iteration entirely and proceed to the next
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
 ## [P1] 33. Outer loop orchestration (run_phase2_outer_loop)
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -778,19 +778,19 @@ Implement `run_phase2_outer_loop(client, task, config, initial_solution, initial
 **Spec:** SRS 05 | **Reqs:** REQ-P2O-019 to REQ-P2O-030 | **Depends on:** Tasks 31, 32, Layer 4a (Phase 2 Inner)
 
 ### Acceptance Criteria
-- [ ] Signature: `run_phase2_outer_loop(client, task, config, initial_solution, initial_score, session_id)` — `initial_score: float` required per REQ-P2O-019
-- [ ] `h_best` initialized from `initial_score` parameter (not from `initial_solution.score`) to avoid `None` check
-- [ ] Executes exactly T outer iterations
-- [ ] Each iteration: ablation → summarize → extract → inner loop
-- [ ] Uses FIRST plan from ExtractorOutput: c_t = plans[0].code_block, p_0 = plans[0].plan
-- [ ] Ablation summaries accumulated across iterations in T_abl list
-- [ ] Code blocks accumulated for provenance tracking in C list; each `CodeBlock` has `outer_step=t` set (REQ-P2O-044)
-- [ ] Best solution updated when inner loop's best score passes `is_improvement_or_equal()` (>=) against current `h_best` (REQ-P2O-027) — do NOT use `InnerLoopResult.improved` flag (which uses strict >)
-- [ ] Inner loop receives: solution=s_t, code_block=c_t, initial_plan=p_0, best_score=h_best
-- [ ] Skipped iterations (validation recovery level 4 failure) recorded in step history with `was_skipped=True` (REQ-P2O-030)
-- [ ] `Phase2Result.best_score` never worse than `initial_score` — score guarantee (REQ-P2O-029)
-- [ ] `Phase2Result` correctly constructed with all fields
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Signature: `run_phase2_outer_loop(client, task, config, initial_solution, initial_score, session_id)` — `initial_score: float` required per REQ-P2O-019
+- [x] `h_best` initialized from `initial_score` parameter (not from `initial_solution.score`) to avoid `None` check
+- [x] Executes exactly T outer iterations
+- [x] Each iteration: ablation → summarize → extract → inner loop
+- [x] Uses FIRST plan from ExtractorOutput: c_t = plans[0].code_block, p_0 = plans[0].plan
+- [x] Ablation summaries accumulated across iterations in T_abl list
+- [x] Code blocks accumulated for provenance tracking in C list; each `CodeBlock` has `outer_step=t` set (REQ-P2O-044)
+- [x] Best solution updated when inner loop's best score passes `is_improvement_or_equal()` (>=) against current `h_best` (REQ-P2O-027) — do NOT use `InnerLoopResult.improved` flag (which uses strict >)
+- [x] Inner loop receives: solution=s_t, code_block=c_t, initial_plan=p_0, best_score=h_best
+- [x] Skipped iterations (validation recovery level 4 failure) recorded in step history with `was_skipped=True` (REQ-P2O-030)
+- [x] `Phase2Result.best_score` never worse than `initial_score` — score guarantee (REQ-P2O-029)
+- [x] `Phase2Result` correctly constructed with all fields
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

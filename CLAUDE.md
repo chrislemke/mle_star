@@ -68,7 +68,7 @@ src/mle_star/
   safety.py            # Safety modules: debugger agent, leakage agent, data agent, code block extraction (Tasks 19, 20, 21)
   phase1.py            # Phase 1 agents + orchestration: retrieve_models, generate_candidate, merge_solutions, run_phase1 (Tasks 27, 28)
   phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration with safety integration (Tasks 23, 24, 25)
-  phase2_outer.py      # Phase 2 outer loop: ablation agent invocation, timeout computation, execution with debug retry (Task 31)
+  phase2_outer.py      # Phase 2 outer loop: ablation agent, summarize agent, extractor agent, code block validation, run_phase2_outer_loop orchestration (Tasks 31, 32, 33)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -96,6 +96,8 @@ tests/
   test_phase2_inner_loop.py      # Tests for run_phase2_inner_loop orchestration (Task 24)
   test_phase2_inner_safety.py    # Tests for inner loop safety integration (Task 25)
   test_phase2_outer_ablation.py  # Tests for ablation agent invocation and execution (Task 31)
+  test_phase2_outer_agents.py    # Tests for summarize and extractor agents (Task 32)
+  test_phase2_outer_loop.py      # Tests for run_phase2_outer_loop orchestration (Task 33)
 ```
 
 ---
@@ -115,6 +117,11 @@ tests/
 - Post-merge safety pattern: `_apply_safety_check()` generic helper uses identity check (`is not`) to detect modification, re-evaluates if modified, and falls back to pre-check version on failure. Applied twice in sequence: `check_data_usage` (exactly once, REQ-P1-030) then `check_and_fix_leakage` (REQ-P1-031). Phase1Result.initial_score always reflects the final post-safety score
 - Ablation script execution uses a custom retry loop (NOT `evaluate_with_retry`) because ablation scripts are informational only — no score parsing, custom timeout, and different error recovery semantics. Timeout formula: `min(time_limit // (outer_steps * 2), 600)` using integer division
 - `_format_previous_ablations()` returns empty string for first iteration (omits section from prompt), and numbered markdown for subsequent iterations with header "# Previous Ablation Study Results"
+- A_summarize uses full text response (no code block extraction); fallback on empty/whitespace: `"[Auto-summary from raw output] " + raw_output[-2000:]` (REQ-P2O-036)
+- A_extractor uses structured output (`ExtractorOutput.model_validate_json`) with one retry on parse failure (REQ-P2O-034); returns `ExtractorOutput | None`
+- `validate_code_block(code_block, solution)` is a simple `code_block in solution.content` substring check (REQ-P2O-017)
+- `_format_previous_blocks()` mirrors `_format_previous_ablations()` pattern: empty list → empty string, non-empty → numbered markdown with header "# Previously Improved Code Blocks"
+- Outer loop orchestration (`run_phase2_outer_loop`): decomposed into `_run_outer_step` helper + `_make_skipped_step` to stay under xenon complexity B. Step helper returns a dict with internal `_new_h_best` and `_new_best_solution` keys (popped by caller). Uses `is_improvement_or_equal` (>= semantics) for best-score update — NOT `InnerLoopResult.improved` (which uses strict >). Skipped iterations (extractor None or validation failure) produce `was_skipped=True` records. Accumulates T_abl and C lists; each `CodeBlock` has `outer_step=t` set. `initial_score: float` is explicit parameter because `SolutionScript.score` is `float | None`
 
 ---
 
