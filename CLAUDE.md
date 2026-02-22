@@ -65,7 +65,7 @@ src/mle_star/
   orchestrator.py      # Pipeline entry point: run_pipeline, SDK client setup, phase dispatch, parallelism, time/cost control, CostTracker, PipelineError/PipelineTimeoutError, result assembly, error recovery, hooks (Tasks 42-47)
   models.py            # Pydantic data models (enums, configs, schemas)
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
-  execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline, subsampling utilities, submission verification, batch evaluation, solution ranking (Tasks 11-17)
+  execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline, subsampling utilities, submission verification, batch evaluation, solution ranking, error masking detection, ExecutorStrategy, SDK Bash executor, output truncation, structured logging (Tasks 11-17, 18)
   safety.py            # Safety modules: debugger agent, leakage agent, data agent, code block extraction (Tasks 19, 20, 21)
   phase1.py            # Phase 1 agents + orchestration: retrieve_models, generate_candidate, merge_solutions, run_phase1 (Tasks 27, 28)
   phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration with safety integration (Tasks 23, 24, 25)
@@ -89,6 +89,7 @@ tests/
   test_execution_eval.py         # Tests for evaluation pipeline, retry, score comparison (Task 15)
   test_execution_subsample.py    # Tests for subsampling utilities (Task 16)
   test_execution_submission.py   # Tests for submission verification, batch eval, ranking (Task 17)
+  test_execution_constraints.py  # Tests for error masking, ExecutorStrategy, SDK executor, logging, truncation, performance (Task 18)
   test_safety_debugger.py        # Tests for debugger safety agent (Task 19)
   test_safety_data.py            # Tests for data usage verification agent (Task 21)
   test_safety_leakage.py         # Tests for leakage detection/correction agent (Task 20)
@@ -151,6 +152,7 @@ tests/
 - Result assembly and error recovery pattern: `_make_failed_phase2_result(phase1_result)` creates synthetic Phase2Result with `step_history=[{"step": 0, "failed": True}]` for failed paths (REQ-OR-040). `_collect_phase2_results` now includes synthetic Phase2Results for failed paths — both output lists always have `len(raw_results)` entries. `_execute_phase3_or_skip` catches both `TimeoutError` and general `Exception` (REQ-OR-041). `_finalize_with_recovery` wraps `run_finalization` in try/except: success → `model_copy(update={...})` to set pipeline-level `total_duration_seconds` and `total_cost_usd`; failure → constructs FinalResult with `submission_path=""` (REQ-OR-043). `_log_phase_summary` logs structured JSON with per-phase costs and durations (REQ-OR-037/038). `_log_solution_lineage` traces solution evolution through phases (REQ-OR-039). `_execute_post_phase1` accepts keyword-only `pipeline_start` and `cost_tracker` args
 
 - Configuration and environment pattern: `validate_api_key()` checks `ANTHROPIC_API_KEY` (raises `OSError` if missing/empty/whitespace). `apply_env_overrides(config)` reads `MLE_STAR_MODEL`, `MLE_STAR_LOG_LEVEL`, `MLE_STAR_MAX_BUDGET`, `MLE_STAR_TIME_LIMIT` and applies them to config — but only overrides **default** values (if field value == PipelineConfig default, env var wins; if field was explicitly set differently, explicit wins). Uses `model_copy(update=...)` since PipelineConfig is frozen. Invalid numeric env vars silently ignored; time_limit < 1 silently ignored. `configure_logging(config)` sets up logger "mle_star" with console handler + optional file handler; idempotent (checks for existing handlers before adding). `PipelineState` is the only **non-frozen** Pydantic model besides `SolutionScript` — used for runtime introspection. `conftest.py` has an `autouse` fixture `_set_api_key_env` that sets a dummy `ANTHROPIC_API_KEY` for all tests
+- Execution constraints pattern (Task 18): `detect_error_masking(content)` uses two compiled regexes — `_BARE_EXCEPT_PATTERN` for bare `except:` and `_BROAD_EXCEPT_PASS_PATTERN` for `except (Exception|BaseException): pass` — returns list of warning strings (advisory only, never raises). `ExecutorStrategy` StrEnum with SUBPROCESS/SDK_BASH values. `execute_script_via_sdk(script_path, working_dir, timeout_ms, *, client)` uses SDK Bash tool interface; timeout capped at `_SDK_BASH_TIMEOUT_CAP_MS` (600,000ms). `evaluate_solution()` accepts keyword-only `strategy` and `client` params — SDK_BASH with timeout > cap falls back to subprocess. `_truncate_output()` truncates strings exceeding `_MAX_OUTPUT_BYTES` (100MB) with warning. Structured logging: write_script at DEBUG, execute_script start/complete at INFO, timeout at WARNING, error at WARNING, retry at INFO
 
 ---
 

@@ -7,17 +7,24 @@ validated solution scripts to disk, running scripts as async
 subprocesses with timeout enforcement and output capture, and
 parsing subprocess output into structured evaluation results.
 
+Also provides ``detect_error_masking`` for advisory error-masking
+detection, ``ExecutorStrategy`` enum for selecting execution backends,
+``execute_script_via_sdk`` for SDK Bash tool execution, and output
+truncation for large stdout/stderr.
+
 Refs:
     SRS 02a — Execution Environment (REQ-EX-001 through REQ-EX-004).
     SRS 02b — Script Operations (REQ-EX-005 through REQ-EX-014).
-    SRS 02d — Constraints (REQ-EX-037, REQ-EX-043, REQ-EX-044).
-    IMPLEMENTATION_PLAN.md Tasks 11, 12, 13, 14.
+    SRS 02c — Advanced Operations (REQ-EX-033, REQ-EX-034).
+    SRS 02d — Constraints (REQ-EX-035 through REQ-EX-047).
+    IMPLEMENTATION_PLAN.md Tasks 11-14, 18.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+from enum import StrEnum
 import logging
 import os
 from pathlib import Path
@@ -26,7 +33,7 @@ import signal
 import subprocess
 import sys
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -43,6 +50,110 @@ if TYPE_CHECKING:
     from mle_star.models import SolutionScript
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Constants (REQ-EX-038, REQ-EX-047)
+# ---------------------------------------------------------------------------
+
+_MAX_OUTPUT_BYTES: int = 100 * 1024 * 1024  # 100 MB (REQ-EX-038)
+"""Maximum output size in bytes before truncation."""
+
+_SDK_BASH_TIMEOUT_CAP_MS: int = 600_000  # 10 minutes (REQ-EX-047)
+"""Maximum timeout in milliseconds for SDK Bash tool."""
+
+
+# ---------------------------------------------------------------------------
+# ExecutorStrategy enum (REQ-EX-034)
+# ---------------------------------------------------------------------------
+
+
+class ExecutorStrategy(StrEnum):
+    """Execution backend selection for script evaluation (REQ-EX-034).
+
+    Attributes:
+        SUBPROCESS: Direct subprocess execution (default). Full control
+            over stdout/stderr separation.
+        SDK_BASH: Claude Agent SDK Bash tool execution. Combined output,
+            subject to 600,000ms timeout cap.
+    """
+
+    SUBPROCESS = "subprocess"
+    SDK_BASH = "sdk_bash"
+
+
+# ---------------------------------------------------------------------------
+# Error masking detection (REQ-EX-045)
+# ---------------------------------------------------------------------------
+
+_BARE_EXCEPT_PATTERN: re.Pattern[str] = re.compile(r"^\s*except\s*:", re.MULTILINE)
+
+_BROAD_EXCEPT_PASS_PATTERN: re.Pattern[str] = re.compile(
+    r"^\s*except\s+(Exception|BaseException)\s*:[ \t]*\n\s+pass\s*$",
+    re.MULTILINE,
+)
+
+
+def detect_error_masking(content: str) -> list[str]:
+    """Scan solution script content for patterns that mask errors (REQ-EX-045).
+
+    Detects two categories of error masking:
+
+    1. Bare ``except:`` clauses (without specifying an exception type).
+    2. ``except Exception:`` or ``except BaseException:`` clauses that
+       contain only ``pass`` in the handler body.
+
+    This is advisory only — it does not prevent script execution.
+
+    Args:
+        content: Python source code to scan.
+
+    Returns:
+        A list of warning strings describing each detected pattern.
+        Empty list if no issues found.
+    """
+    warnings: list[str] = []
+
+    for match in _BARE_EXCEPT_PATTERN.finditer(content):
+        line_num = content[: match.start()].count("\n") + 1
+        warnings.append(f"Line {line_num}: bare 'except:' clause masks all errors")
+
+    for match in _BROAD_EXCEPT_PASS_PATTERN.finditer(content):
+        exc_type = match.group(1)
+        line_num = content[: match.start()].count("\n") + 1
+        warnings.append(
+            f"Line {line_num}: 'except {exc_type}:' with only 'pass' masks errors"
+        )
+
+    return warnings
+
+
+# ---------------------------------------------------------------------------
+# Output truncation (REQ-EX-038)
+# ---------------------------------------------------------------------------
+
+
+def _truncate_output(output: str, max_bytes: int = _MAX_OUTPUT_BYTES) -> str:
+    """Truncate output exceeding the maximum size with a warning (REQ-EX-038).
+
+    Args:
+        output: Raw output string.
+        max_bytes: Maximum allowed output size in bytes.
+
+    Returns:
+        The original output if within limits, or a truncated version
+        with an appended warning message.
+    """
+    if len(output.encode("utf-8", errors="replace")) <= max_bytes:
+        return output
+
+    # Truncate at character level (approximate)
+    truncated = output[:max_bytes]
+    warning = (
+        "\n\n[WARNING: Output truncated. "
+        f"Original size exceeded {max_bytes} bytes limit.]"
+    )
+    return truncated + warning
 
 
 def setup_working_directory(base_path: str) -> str:
@@ -204,7 +315,13 @@ def write_script(
 
     target = Path(working_dir) / filename
     target.write_text(solution.content, encoding="utf-8")
-    return str(target.resolve())
+    abs_path = str(target.resolve())
+    logger.debug(
+        "Script written: path=%s, content_length=%d",
+        abs_path,
+        len(solution.content),
+    )
+    return abs_path
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +414,12 @@ async def execute_script(
         An ``ExecutionRawResult`` containing captured output, exit code,
         duration, and timeout status.
     """
+    logger.info(
+        "Execution start: script=%s, working_dir=%s, timeout=%ds",
+        script_path,
+        working_dir,
+        timeout_seconds,
+    )
     start = time.monotonic()
 
     proc = await asyncio.create_subprocess_exec(
@@ -320,6 +443,11 @@ async def execute_script(
         )
     except TimeoutError:
         timed_out = True
+        logger.warning(
+            "Timeout triggered: script=%s, timeout=%ds",
+            script_path,
+            timeout_seconds,
+        )
         await _kill_process_group(proc)
         # Process is now dead; communicate() will finish collecting
         # whatever was already buffered in the pipes.
@@ -331,10 +459,30 @@ async def execute_script(
     stdout_str = stdout_bytes.decode("utf-8", errors="replace")
     stderr_str = stderr_bytes.decode("utf-8", errors="replace")
 
+    # Truncate large outputs (REQ-EX-038)
+    stdout_str = _truncate_output(stdout_str)
+    stderr_str = _truncate_output(stderr_str)
+
     if timed_out:
         exit_code = -1
     else:
         exit_code = proc.returncode if proc.returncode is not None else -1
+
+    # Log completion or error (REQ-EX-039)
+    if exit_code != 0 and not timed_out:
+        first_tb_line = ""
+        if _TRACEBACK_MARKER in stderr_str:
+            first_tb_line = stderr_str.split(_TRACEBACK_MARKER, 1)[0][-80:]
+        logger.warning(
+            "Error detected: exit_code=%d, traceback_summary=%s",
+            exit_code,
+            first_tb_line or "(no traceback)",
+        )
+    logger.info(
+        "Execution complete: exit_code=%d, duration=%.2fs",
+        exit_code,
+        duration,
+    )
 
     return ExecutionRawResult(
         stdout=stdout_str,
@@ -342,6 +490,71 @@ async def execute_script(
         exit_code=exit_code,
         duration_seconds=duration,
         timed_out=timed_out,
+    )
+
+
+# ---------------------------------------------------------------------------
+# SDK Bash Tool Execution (REQ-EX-033, REQ-EX-047)
+# ---------------------------------------------------------------------------
+
+
+async def execute_script_via_sdk(
+    script_path: str,
+    working_dir: str,
+    timeout_ms: int,
+    *,
+    client: Any,
+) -> ExecutionRawResult:
+    """Execute a Python script using the SDK Bash tool (REQ-EX-033).
+
+    Uses the Claude Agent SDK's ``Bash`` tool interface. The combined
+    ``output`` field is mapped to ``stdout``; ``stderr`` is empty since
+    the SDK combines streams.
+
+    The timeout is capped at ``_SDK_BASH_TIMEOUT_CAP_MS`` (600,000ms)
+    per REQ-EX-047.
+
+    Args:
+        script_path: Absolute path to the Python script to execute.
+        working_dir: Working directory for the command.
+        timeout_ms: Timeout in milliseconds (capped at 600,000ms).
+        client: SDK client with ``execute_bash`` method.
+
+    Returns:
+        An ``ExecutionRawResult`` with captured output from the SDK.
+    """
+    capped_timeout = min(timeout_ms, _SDK_BASH_TIMEOUT_CAP_MS)
+    command = f"cd {working_dir} && python {script_path}"
+
+    logger.info(
+        "SDK Bash execution start: command=%s, timeout=%dms",
+        command,
+        capped_timeout,
+    )
+    start = time.monotonic()
+
+    response: dict[str, Any] = await client.execute_bash(
+        command=command,
+        timeout=capped_timeout,
+    )
+
+    duration = time.monotonic() - start
+
+    output = response.get("output", "")
+    exit_code = response.get("exitCode", -1)
+
+    logger.info(
+        "SDK Bash execution complete: exit_code=%d, duration=%.2fs",
+        exit_code,
+        duration,
+    )
+
+    return ExecutionRawResult(
+        stdout=_truncate_output(output),
+        stderr="",
+        exit_code=exit_code,
+        duration_seconds=duration,
+        timed_out=False,
     )
 
 
@@ -445,13 +658,16 @@ async def evaluate_solution(
     task: TaskDescription,
     config: PipelineConfig,
     timeout_override: int | None = None,
+    *,
+    strategy: ExecutorStrategy = ExecutorStrategy.SUBPROCESS,
+    client: Any = None,
 ) -> EvaluationResult:
-    """Evaluate a solution script end-to-end (REQ-EX-015).
+    """Evaluate a solution script end-to-end (REQ-EX-015, REQ-EX-034).
 
     Orchestrates the full evaluation pipeline: set up working directory,
     clean output, write the script to disk, build the execution environment,
-    execute the script as a subprocess, and parse the output into an
-    ``EvaluationResult``.
+    execute the script as a subprocess (or via SDK Bash tool), and parse
+    the output into an ``EvaluationResult``.
 
     The input ``SolutionScript`` is **never** mutated (REQ-EX-016). The
     caller is responsible for updating ``solution.score`` after evaluation.
@@ -462,6 +678,9 @@ async def evaluate_solution(
         config: Pipeline configuration with ``time_limit_seconds``.
         timeout_override: If provided, overrides ``config.time_limit_seconds``
             as the execution timeout in seconds.
+        strategy: Execution backend to use (default: subprocess).
+        client: SDK client instance (required when ``strategy`` is
+            ``ExecutorStrategy.SDK_BASH``).
 
     Returns:
         An ``EvaluationResult`` with parsed score, error status, and output.
@@ -477,8 +696,25 @@ async def evaluate_solution(
     working_dir = setup_working_directory(task.data_dir)
     clean_output_directory(working_dir)
     script_path = write_script(solution, working_dir)
-    env = build_execution_env()
-    raw = await execute_script(script_path, working_dir, timeout, env)
+
+    if strategy == ExecutorStrategy.SDK_BASH and client is not None:
+        timeout_ms = timeout * 1000
+        if timeout_ms > _SDK_BASH_TIMEOUT_CAP_MS:
+            logger.info(
+                "SDK Bash timeout %dms exceeds cap %dms, falling back to subprocess",
+                timeout_ms,
+                _SDK_BASH_TIMEOUT_CAP_MS,
+            )
+            env = build_execution_env()
+            raw = await execute_script(script_path, working_dir, timeout, env)
+        else:
+            raw = await execute_script_via_sdk(
+                script_path, working_dir, timeout_ms, client=client
+            )
+    else:
+        env = build_execution_env()
+        raw = await execute_script(script_path, working_dir, timeout, env)
+
     return build_evaluation_result(raw)
 
 
@@ -516,9 +752,14 @@ async def evaluate_with_retry(
     current_solution = solution
     result = await evaluate_solution(current_solution, task, config)
 
-    for _ in range(retries):
+    for attempt in range(retries):
         if not result.is_error:
             break
+        logger.info(
+            "Retry attempt: retry=%d/%d",
+            attempt + 1,
+            retries,
+        )
         current_solution = await debug_callback(
             current_solution, result.error_traceback
         )

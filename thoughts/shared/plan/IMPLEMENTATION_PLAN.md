@@ -9,7 +9,7 @@
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
 | P1       | 0       | 0           | 44   |
-| P2       | 8       | 0           | 0    |
+| P2       | 7       | 0           | 1    |
 | P3       | 0       | 0           | 0    |
 
 ---
@@ -435,7 +435,7 @@ Implement `verify_submission(working_dir, expected_filename)` to check that `sub
 ---
 
 ## [P2] 18. Execution harness constraints and interface compliance
-**Status:** pending
+**Status:** done
 **Priority:** P2
 
 ### Description
@@ -444,21 +444,21 @@ Implement remaining execution harness requirements: `detect_error_masking(conten
 **Spec:** SRS 02 | **Reqs:** REQ-EX-028 to REQ-EX-047 | **Depends on:** Tasks 11–17
 
 ### Acceptance Criteria
-- [ ] `detect_error_masking(content)` identifies broad try/except patterns that suppress errors (REQ-EX-045)
-- [ ] `ExecutorStrategy` enum with values `"subprocess"` and `"sdk_bash"` (REQ-EX-034)
-- [ ] `execute_script_via_sdk(script_path, working_dir, timeout_ms) -> ExecutionRawResult` using SDK Bash tool interface `{"command": str, "timeout": int}` (REQ-EX-033)
-- [ ] SDK Bash executor timeout capped at 600,000ms; falls back to subprocess when timeout exceeds cap (REQ-EX-047)
-- [ ] `evaluate_solution()` accepts optional `strategy: ExecutorStrategy` parameter to select backend (REQ-EX-034)
-- [ ] All public functions accept/return correct Spec 01 types (REQ-EX-028 to REQ-EX-032)
-- [ ] `evaluate_solution()` satisfies `ScoreFunction` protocol when wrapped (REQ-EX-032)
-- [ ] Execution overhead < 2 seconds per invocation excluding script runtime (REQ-EX-035)
-- [ ] Score parsing executes in < 10ms for stdout up to 1MB (REQ-EX-036)
-- [ ] UTF-8 decoding with `errors="replace"` for subprocess output (REQ-EX-043)
-- [ ] Large output handling: up to 100MB stdout/stderr with truncation warning (REQ-EX-038)
-- [ ] Default timeout derived from `config.time_limit_seconds` when no override provided (REQ-EX-046)
-- [ ] Structured logging covers all execution events (REQ-EX-039)
-- [ ] No persistent state between executions (REQ-EX-042)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `detect_error_masking(content)` identifies broad try/except patterns that suppress errors (REQ-EX-045)
+- [x] `ExecutorStrategy` enum with values `"subprocess"` and `"sdk_bash"` (REQ-EX-034)
+- [x] `execute_script_via_sdk(script_path, working_dir, timeout_ms) -> ExecutionRawResult` using SDK Bash tool interface `{"command": str, "timeout": int}` (REQ-EX-033)
+- [x] SDK Bash executor timeout capped at 600,000ms; falls back to subprocess when timeout exceeds cap (REQ-EX-047)
+- [x] `evaluate_solution()` accepts optional `strategy: ExecutorStrategy` parameter to select backend (REQ-EX-034)
+- [x] All public functions accept/return correct Spec 01 types (REQ-EX-028 to REQ-EX-032)
+- [x] `evaluate_solution()` satisfies `ScoreFunction` protocol when wrapped (REQ-EX-032)
+- [x] Execution overhead < 2 seconds per invocation excluding script runtime (REQ-EX-035)
+- [x] Score parsing executes in < 10ms for stdout up to 1MB (REQ-EX-036)
+- [x] UTF-8 decoding with `errors="replace"` for subprocess output (REQ-EX-043)
+- [x] Large output handling: up to 100MB stdout/stderr with truncation warning (REQ-EX-038)
+- [x] Default timeout derived from `config.time_limit_seconds` when no override provided (REQ-EX-046)
+- [x] Structured logging covers all execution events (REQ-EX-039)
+- [x] No persistent state between executions (REQ-EX-042)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
