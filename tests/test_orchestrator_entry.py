@@ -83,13 +83,17 @@ def _make_task(**overrides: Any) -> TaskDescription:
 def _make_config(**overrides: Any) -> PipelineConfig:
     """Build a valid PipelineConfig with sensible defaults.
 
+    Uses ``num_parallel_solutions=1`` by default so that Phase 3 is
+    skipped in SDK-setup-focused tests (Phase dispatch is tested in
+    ``test_orchestrator_dispatch.py``).
+
     Args:
         **overrides: Field values to override.
 
     Returns:
         A fully constructed PipelineConfig instance.
     """
-    defaults: dict[str, Any] = {}
+    defaults: dict[str, Any] = {"num_parallel_solutions": 1}
     defaults.update(overrides)
     return PipelineConfig(**defaults)
 
@@ -1091,6 +1095,11 @@ class TestRunPipelineIsAsync:
                 f"{_MODULE}.run_phase2_outer_loop",
                 new_callable=AsyncMock,
                 return_value=_make_phase2_result(),
+            ),
+            patch(
+                f"{_MODULE}.run_phase3",
+                new_callable=AsyncMock,
+                return_value=_make_phase3_result(),
             ),
             patch(
                 f"{_MODULE}.run_finalization",

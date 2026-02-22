@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 8       | 0           | 36   |
+| P1       | 7       | 0           | 37   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -988,7 +988,7 @@ Implement `run_pipeline(task, config)` (async) as the main entry point in `src/m
 ---
 
 ## [P1] 43. Phase dispatch and sequencing
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -997,12 +997,12 @@ Implement sequential phase dispatch within `run_pipeline`: Phase 1 → Phase 2 (
 **Spec:** SRS 09 | **Reqs:** REQ-OR-012 to REQ-OR-017 | **Depends on:** Task 42
 
 ### Acceptance Criteria
-- [ ] Phases execute in strict order: P1 → P2 → P3 → Finalization (REQ-OR-017)
-- [ ] Phase 2 does not begin until Phase 1 completes
-- [ ] Phase 3 skipped when L=1; `FinalResult.phase3` is `None` (REQ-OR-015)
-- [ ] Finalization receives best available solution
-- [ ] Start time and duration recorded per phase
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Phases execute in strict order: P1 → P2 → P3 → Finalization (REQ-OR-017)
+- [x] Phase 2 does not begin until Phase 1 completes
+- [x] Phase 3 skipped when L=1; `FinalResult.phase3` is `None` (REQ-OR-015)
+- [x] Finalization receives best available solution
+- [x] Start time and duration recorded per phase
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

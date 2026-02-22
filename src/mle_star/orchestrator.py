@@ -3,11 +3,12 @@
 Provides ``run_pipeline()`` (async) and ``run_pipeline_sync()`` (sync wrapper)
 as the top-level entry points for the MLE-STAR pipeline. Handles input
 validation, SDK client lifecycle, agent registration, system prompt
-construction, and MCP server registration.
+construction, MCP server registration, and sequential phase dispatch.
 
 Refs:
     SRS 09a -- Orchestrator Entry Point & SDK Client Setup.
-    IMPLEMENTATION_PLAN.md Task 42.
+    SRS 09b -- Orchestrator Phase Dispatch & Sequencing.
+    IMPLEMENTATION_PLAN.md Tasks 42, 43.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+import time
 from typing import Any
 
 from claude_agent_sdk import (
@@ -27,12 +29,17 @@ from mle_star.execution import detect_gpu_info, setup_working_directory
 from mle_star.finalization import run_finalization
 from mle_star.models import (
     FinalResult,
+    Phase1Result,
+    Phase2Result,
+    Phase3Result,
     PipelineConfig,
+    SolutionScript,
     TaskDescription,
     build_default_agent_configs,
 )
 from mle_star.phase1 import run_phase1
 from mle_star.phase2_outer import run_phase2_outer_loop
+from mle_star.phase3 import run_phase3
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +219,80 @@ def _register_mcp_servers(client: ClaudeSDKClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Phase 2 dispatch helpers (REQ-OR-013, REQ-OR-022, REQ-OR-040)
+# ---------------------------------------------------------------------------
+
+
+async def _dispatch_phase2(
+    client: ClaudeSDKClient,
+    task: TaskDescription,
+    config: PipelineConfig,
+    phase1_result: Phase1Result,
+) -> list[Phase2Result | BaseException]:
+    """Dispatch L parallel Phase 2 paths via asyncio.gather (REQ-OR-013).
+
+    Creates one ``run_phase2_outer_loop`` coroutine per path, each receiving
+    the Phase 1 initial solution and score.  Uses ``return_exceptions=True``
+    so that individual path failures do not cancel siblings (REQ-OR-022).
+
+    Args:
+        client: SDK client for agent invocations.
+        task: Task description.
+        config: Pipeline configuration (L = ``num_parallel_solutions``).
+        phase1_result: Phase 1 output providing the initial solution.
+
+    Returns:
+        List of L results, each either a ``Phase2Result`` or an exception.
+    """
+    num_paths = config.num_parallel_solutions
+    phase2_coros = [
+        run_phase2_outer_loop(
+            client,
+            task,
+            config,
+            phase1_result.initial_solution,
+            phase1_result.initial_score,
+            session_id=f"path-{i}",
+        )
+        for i in range(num_paths)
+    ]
+    return await asyncio.gather(*phase2_coros, return_exceptions=True)
+
+
+def _collect_phase2_results(
+    raw_results: list[Phase2Result | BaseException],
+    phase1_result: Phase1Result,
+) -> tuple[list[Phase2Result], list[SolutionScript]]:
+    """Separate successful Phase 2 results and build Phase 3 input (REQ-OR-040).
+
+    For each path: if the result is a ``Phase2Result``, its ``best_solution``
+    is used; if it is an exception, the Phase 1 initial solution is
+    substituted as a fallback (REQ-OR-040).
+
+    Args:
+        raw_results: Mixed list from ``asyncio.gather(return_exceptions=True)``.
+        phase1_result: Fallback source for failed paths.
+
+    Returns:
+        Tuple of (phase2_results, solutions_for_phase3) where
+        ``phase2_results`` contains only successful results and
+        ``solutions_for_phase3`` has one entry per path.
+    """
+    phase2_results: list[Phase2Result] = []
+    solutions: list[SolutionScript] = []
+
+    for i, result in enumerate(raw_results):
+        if isinstance(result, BaseException):
+            logger.warning("Phase 2 path %d failed: %s", i, result)
+            solutions.append(phase1_result.initial_solution)
+        else:
+            phase2_results.append(result)
+            solutions.append(result.best_solution)
+
+    return phase2_results, solutions
+
+
+# ---------------------------------------------------------------------------
 # Pipeline entry points (REQ-OR-001, REQ-OR-053)
 # ---------------------------------------------------------------------------
 
@@ -270,27 +351,56 @@ async def run_pipeline(
 
         setup_working_directory(task.data_dir)
 
-        # Phase dispatch (placeholder — Task 43 implements full sequencing)
+        # --- Phase 1 (REQ-OR-012) ---
+        logger.info("=== Phase 1: Initial Solution Generation ===")
+        p1_start = time.monotonic()
         phase1_result = await run_phase1(task, resolved_config, client)
+        p1_duration = time.monotonic() - p1_start
+        logger.info("Phase 1 completed in %.1fs", p1_duration)
 
-        phase2_result = await run_phase2_outer_loop(
-            client,
-            task,
-            resolved_config,
-            phase1_result.initial_solution,
-            phase1_result.initial_score,
-            session_id="path-0",
+        # --- Phase 2 (REQ-OR-013, REQ-OR-017) ---
+        logger.info("=== Phase 2: Targeted Refinement ===")
+        p2_start = time.monotonic()
+        raw_phase2 = await _dispatch_phase2(
+            client, task, resolved_config, phase1_result
         )
+        phase2_results, phase2_solutions = _collect_phase2_results(
+            raw_phase2, phase1_result
+        )
+        p2_duration = time.monotonic() - p2_start
+        logger.info("Phase 2 completed in %.1fs", p2_duration)
 
+        # --- Phase 3 (REQ-OR-014, REQ-OR-015) ---
+        phase3_result: Phase3Result | None = None
+        best_solution: SolutionScript
+
+        if resolved_config.num_parallel_solutions > 1:
+            logger.info("=== Phase 3: Ensemble Construction ===")
+            p3_start = time.monotonic()
+            phase3_result = await run_phase3(
+                client, task, resolved_config, phase2_solutions
+            )
+            p3_duration = time.monotonic() - p3_start
+            logger.info("Phase 3 completed in %.1fs", p3_duration)
+            best_solution = phase3_result.best_ensemble
+        else:
+            logger.info("Phase 3 skipped (L=1)")
+            best_solution = phase2_solutions[0]
+
+        # --- Finalization (REQ-OR-016) ---
+        logger.info("=== Finalization ===")
+        p_fin_start = time.monotonic()
         final_result = await run_finalization(
             client,
-            phase2_result.best_solution,
+            best_solution,
             task,
             resolved_config,
             phase1_result,
-            [phase2_result],
-            None,
+            phase2_results,
+            phase3_result,
         )
+        p_fin_duration = time.monotonic() - p_fin_start
+        logger.info("Finalization completed in %.1fs", p_fin_duration)
 
         return final_result
     finally:
