@@ -9,7 +9,7 @@
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
 | P1       | 0       | 0           | 44   |
-| P2       | 4       | 0           | 4    |
+| P2       | 3       | 0           | 5    |
 | P3       | 0       | 0           | 0    |
 
 ---
@@ -795,7 +795,7 @@ Implement `run_phase2_outer_loop(client, task, config, initial_solution, initial
 ---
 
 ## [P2] 34. Phase 2 outer loop constraints
-**Status:** pending
+**Status:** done
 **Priority:** P2
 
 ### Description
@@ -804,12 +804,12 @@ Implement remaining outer loop requirements: performance constraints (A_abl resp
 **Spec:** SRS 05 | **Reqs:** REQ-P2O-031 to REQ-P2O-044 | **Depends on:** Tasks 31–33
 
 ### Acceptance Criteria
-- [ ] Structured logging for each outer iteration step
-- [ ] Sequential outer loop execution verified
-- [ ] Best score monotonically improving (never overwritten with worse)
-- [ ] Input solution never mutated
-- [ ] Ablation scripts are self-contained (do not import s_t separately)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Structured logging for each outer iteration step
+- [x] Sequential outer loop execution verified
+- [x] Best score monotonically improving (never overwritten with worse)
+- [x] Input solution never mutated
+- [x] Ablation scripts are self-contained (do not import s_t separately)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

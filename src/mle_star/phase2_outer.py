@@ -26,6 +26,7 @@ Refs:
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from pydantic import ValidationError
@@ -111,6 +112,12 @@ async def invoke_ablation(
         ``phase=REFINED`` and ``is_executable=True``, or ``None`` if
         the agent response is empty or extraction yields no code.
     """
+    logger.info(
+        "A_abl invocation start: solution_length=%d, previous_summaries=%d",
+        len(solution.content),
+        len(previous_summaries),
+    )
+
     registry = PromptRegistry()
     template = registry.get(AgentType.ABLATION)
 
@@ -130,6 +137,8 @@ async def invoke_ablation(
     if not extracted.strip():
         logger.warning("A_abl returned empty code; treating as failure")
         return None
+
+    logger.info("A_abl invocation complete: script_length=%d", len(extracted))
 
     return SolutionScript(
         content=extracted,
@@ -214,9 +223,23 @@ async def execute_ablation_with_retry(
 
     current_script = ablation_script
     script_path = write_script(current_script, working_dir, "ablation_study.py")
+
+    logger.info(
+        "Ablation execution start: script_path=%s, timeout=%ds",
+        script_path,
+        timeout,
+    )
+    exec_start = time.monotonic()
     raw = await execute_script(script_path, working_dir, timeout, env)
+    exec_duration = time.monotonic() - exec_start
 
     if not _is_execution_error(raw.exit_code, raw.timed_out, raw.stderr):
+        logger.info(
+            "Ablation execution complete: exit_code=%d, output_length=%d, duration=%.2fs",
+            raw.exit_code,
+            len(raw.stdout),
+            exec_duration,
+        )
         return raw.stdout, raw.stderr
 
     # Error path — set up debug callback and retry loop (REQ-P2O-021).
@@ -305,6 +328,12 @@ async def invoke_summarize(
         Summary text (T_abl^t) — either the agent response or a fallback
         constructed from truncated raw output.
     """
+    logger.info(
+        "A_summarize invocation start: ablation_code_length=%d, raw_output_length=%d",
+        len(ablation_code),
+        len(raw_output),
+    )
+
     registry = PromptRegistry()
     template = registry.get(AgentType.SUMMARIZE)
 
@@ -321,6 +350,8 @@ async def invoke_summarize(
     if not response.strip():
         logger.warning("A_summarize returned empty response; using fallback")
         return _SUMMARIZE_FALLBACK_PREFIX + raw_output[-_SUMMARIZE_FALLBACK_MAX_CHARS:]
+
+    logger.info("A_summarize invocation complete: summary_length=%d", len(response))
 
     return response
 
@@ -371,6 +402,13 @@ async def invoke_extractor(
         Parsed ``ExtractorOutput`` containing one or more ``RefinePlan``
         objects, or ``None`` if both parsing attempts fail.
     """
+    logger.info(
+        "A_extractor invocation start: summary_length=%d, solution_length=%d, previous_blocks=%d",
+        len(summary),
+        len(solution.content),
+        len(previous_blocks),
+    )
+
     registry = PromptRegistry()
     template = registry.get(AgentType.EXTRACTOR)
 
@@ -394,7 +432,13 @@ async def invoke_extractor(
             output_format=output_format,
         )
         try:
-            return ExtractorOutput.model_validate_json(response)
+            result = ExtractorOutput.model_validate_json(response)
+            logger.info(
+                "A_extractor invocation complete: plans=%d, code_block_length=%d",
+                len(result.plans),
+                len(result.plans[0].code_block),
+            )
+            return result
         except (ValidationError, ValueError):
             logger.warning(
                 "A_extractor response parse failure (attempt %d/2): %.200s",
@@ -442,6 +486,8 @@ async def _run_outer_step(
         ``was_skipped``, plus internal keys ``_new_best_solution`` and ``_new_h_best``
         for the caller to apply updates.
     """
+    step_start = time.monotonic()
+
     # Step 1: Invoke A_abl (REQ-P2O-001).
     ablation_script = await invoke_ablation(s_t, list(ablation_summaries), client)
 
@@ -477,7 +523,14 @@ async def _run_outer_step(
         logger.warning("Code block validation failed at t=%d; skipping iteration", t)
         return _make_skipped_step(t, summary, h_best)
 
+    logger.info("Code block validation passed at t=%d (exact match)", t)
+
     # Step 5: Run inner loop (REQ-P2O-026).
+    logger.info(
+        "Inner loop handoff: block_length=%d, plan=%.200s",
+        len(c_t),
+        p_0,
+    )
     code_block = CodeBlock(content=c_t, outer_step=t)
     inner_result = await run_phase2_inner_loop(
         client=client,
@@ -489,12 +542,30 @@ async def _run_outer_step(
         config=config,
     )
 
+    # Log inner loop return (REQ-P2O-037).
+    improved = is_improvement_or_equal(
+        inner_result.best_score, h_best, task.metric_direction
+    )
+    logger.info(
+        "Inner loop return: best_score=%.6f, improvement=%s",
+        inner_result.best_score,
+        "yes" if improved else "no",
+    )
+
     # Step 6: Update best (REQ-P2O-027) using >= semantics.
     new_h_best = h_best
     new_best_solution: SolutionScript | None = None
-    if is_improvement_or_equal(inner_result.best_score, h_best, task.metric_direction):
+    if improved:
         new_h_best = inner_result.best_score
         new_best_solution = inner_result.best_solution
+
+    step_duration = time.monotonic() - step_start
+    logger.info(
+        "Outer step complete: t=%d, h_best=%.6f, duration=%.2fs",
+        t,
+        new_h_best,
+        step_duration,
+    )
 
     return {
         "outer_step": t,
@@ -568,6 +639,7 @@ async def run_phase2_outer_loop(
         ``Phase2Result`` with accumulated ablation summaries, refined code
         blocks, best solution, best score, and per-step history.
     """
+    loop_start = time.monotonic()
     s_final = initial_solution
     h_best = initial_score
     ablation_summaries: list[str] = []
@@ -613,6 +685,14 @@ async def run_phase2_outer_loop(
         refined_blocks.append(CodeBlock(content=code_block_content, outer_step=t))
 
         step_history.append(step_record)
+
+    loop_duration = time.monotonic() - loop_start
+    logger.info(
+        "Outer loop complete: steps=%d, final_h_best=%.6f, total_duration=%.2fs",
+        config.outer_loop_steps,
+        h_best,
+        loop_duration,
+    )
 
     return Phase2Result(
         ablation_summaries=ablation_summaries,
