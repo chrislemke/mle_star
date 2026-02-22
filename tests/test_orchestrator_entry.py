@@ -1680,7 +1680,6 @@ class TestBuildAgentsDictToolAssignments:
             AgentType.CODER,
             AgentType.ENSEMBLER,
             AgentType.DEBUGGER,
-            AgentType.TEST,
         ]
 
         agents = _build_agents_dict()
@@ -1689,6 +1688,15 @@ class TestBuildAgentsDictToolAssignments:
             key = _find_agent_key(agents, agent_type)
             tools = agents[key].get("tools", [])
             assert "Bash" in tools, f"Agent {agent_type} missing Bash tool"
+
+    def test_test_agent_has_read_only_tools(self) -> None:
+        """A_test agent has only Read tool per REQ-FN-048."""
+        from mle_star.orchestrator import _build_agents_dict
+
+        agents = _build_agents_dict()
+        key = _find_agent_key(agents, AgentType.TEST)
+        tools = agents[key].get("tools", [])
+        assert tools == ["Read"], f"Expected ['Read'] but got {tools}"
 
     def test_read_only_agents_have_read_tool(self) -> None:
         """Read-only agents (summarize, extractor, planner, etc.) have Read tool."""

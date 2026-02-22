@@ -9,7 +9,7 @@
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
 | P1       | 0       | 0           | 44   |
-| P2       | 2       | 0           | 6    |
+| P2       | 1       | 0           | 7    |
 | P3       | 0       | 0           | 0    |
 
 ---
@@ -944,7 +944,7 @@ Implement `check_contamination(client, solution, reference_discussions)` (async)
 ---
 
 ## [P2] 41. Finalization constraints
-**Status:** pending
+**Status:** done
 **Priority:** P2
 
 ### Description
@@ -953,10 +953,10 @@ Implement remaining finalization requirements: performance (overhead < 5s exclud
 **Spec:** SRS 08 | **Reqs:** REQ-FN-037 to REQ-FN-048 | **Depends on:** Tasks 38–40
 
 ### Acceptance Criteria
-- [ ] Graceful degradation: any finalization step failure doesn't crash pipeline
-- [ ] Structured logging for finalization steps
-- [ ] Submission file written to `./final/submission.csv`
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Graceful degradation: any finalization step failure doesn't crash pipeline
+- [x] Structured logging for finalization steps
+- [x] Submission file written to `./final/submission.csv`
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

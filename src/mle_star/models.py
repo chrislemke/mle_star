@@ -837,6 +837,6 @@ def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
         AgentType.TEST: AgentConfig(
             agent_type=AgentType.TEST,
             description="Generates test submissions and validates outputs.",
-            tools=_EXECUTION_TOOLS,
+            tools=_READ_ONLY_TOOLS,
         ),
     }

@@ -106,6 +106,11 @@ async def _remove_subsampling_impl(
     # ------------------------------------------------------------------
     # Step 1 — Extract the subsampling code block (REQ-FN-001).
     # ------------------------------------------------------------------
+    logger.info(
+        "Subsampling extraction start: solution_content_length=%d",
+        len(solution.content),
+    )
+
     extraction_template = registry.get(AgentType.TEST, variant="subsampling_extract")
     extraction_prompt = extraction_template.render(
         final_solution=solution.content,
@@ -122,14 +127,24 @@ async def _remove_subsampling_impl(
     # Step 2 — Verify extraction is valid (REQ-FN-003, REQ-FN-008).
     # ------------------------------------------------------------------
     if not extracted_block.strip():
+        logger.info("Subsampling extraction result: found=False, block_length=0")
         logger.info("No subsampling code detected (empty extraction)")
         return solution
 
     if extracted_block not in solution.content:
         logger.info(
+            "Subsampling extraction result: found=False, block_length=%d",
+            len(extracted_block),
+        )
+        logger.info(
             "Extracted block not found in solution content; treating as no subsampling"
         )
         return solution
+
+    logger.info(
+        "Subsampling extraction result: found=True, block_length=%d",
+        len(extracted_block),
+    )
 
     # ------------------------------------------------------------------
     # Step 3 — Remove the subsampling from the code block (REQ-FN-004).
@@ -146,11 +161,23 @@ async def _remove_subsampling_impl(
 
     replacement_block = extract_code_block(removal_response)
 
+    logger.info(
+        "Subsampling removal result: original_block_length=%d, replacement_block_length=%d",
+        len(extracted_block),
+        len(replacement_block),
+    )
+
     # ------------------------------------------------------------------
     # Step 4 — Replace in solution (REQ-FN-007).
     # ------------------------------------------------------------------
+    original_len = len(solution.content)
     try:
-        return solution.replace_block(extracted_block, replacement_block)
+        result = solution.replace_block(extracted_block, replacement_block)
+        logger.info(
+            "Subsampling replacement result: success=True, content_length_change=%d",
+            len(result.content) - original_len,
+        )
+        return result
     except ValueError:
         logger.warning(
             "replace_block failed: extracted subsampling block not found "
@@ -367,6 +394,13 @@ async def run_finalization(
     """
     start = time.monotonic()
 
+    logger.info(
+        "Finalization start: solution_phase=%s, content_length=%d, competition_id=%s",
+        solution.phase,
+        len(solution.content),
+        task.competition_id,
+    )
+
     # Step 1 — Remove subsampling (REQ-FN-009).
     logger.info("Finalization: removing subsampling")
     solution_no_subsample = await remove_subsampling(client, solution, task)
@@ -389,6 +423,12 @@ async def run_finalization(
     # Step 5 — Verify submission (REQ-EX-024, REQ-EX-025).
     submission_verified = verify_submission(task.data_dir)
     submission_info = get_submission_info(task.data_dir)
+    logger.info(
+        "Submission verification result: exists=%s, size_bytes=%s, row_count=%s",
+        submission_info.get("exists"),
+        submission_info.get("size_bytes"),
+        submission_info.get("row_count"),
+    )
 
     # Step 6 — Fallback handling (REQ-FN-025).
     final_sol, sub_path = _apply_fallback(

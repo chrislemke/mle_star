@@ -39,7 +39,6 @@ EXECUTION_AGENT_TYPES: list[AgentType] = [
     AgentType.CODER,
     AgentType.ENSEMBLER,
     AgentType.DEBUGGER,
-    AgentType.TEST,
 ]
 
 READ_ONLY_AGENT_TYPES: list[AgentType] = [
@@ -49,6 +48,7 @@ READ_ONLY_AGENT_TYPES: list[AgentType] = [
     AgentType.ENS_PLANNER,
     AgentType.LEAKAGE,
     AgentType.DATA,
+    AgentType.TEST,
 ]
 
 EXECUTION_TOOLS: list[str] = ["Bash", "Edit", "Write", "Read"]
