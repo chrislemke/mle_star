@@ -172,6 +172,108 @@ async def invoke_planner(
     return stripped
 
 
+async def _execute_coder_step(
+    k: int,
+    plan: str,
+    original_code: str,
+    solution: SolutionScript,
+    task: TaskDescription,
+    config: PipelineConfig,
+    client: Any,
+) -> dict[str, Any]:
+    """Execute the coder → replace → leakage → eval portion of one inner step.
+
+    Returns a dict with keys: ``plan``, ``score``, ``code_block``,
+    ``was_improvement`` (always ``False``), ``_candidate``,
+    ``_eval_result``, and ``_successful``.  The caller uses
+    ``_candidate`` and ``_eval_result`` for best-score tracking.
+
+    If the coder fails, replacement fails, or evaluation fails, a
+    partial result is returned with ``_successful=False``.
+
+    Args:
+        k: Inner step index.
+        plan: Refinement plan for this step.
+        original_code: Original code block content (c_t).
+        solution: Original solution (s_t) used as replacement base.
+        task: Task description for evaluation context.
+        config: Pipeline configuration.
+        client: SDK client for agent invocation.
+
+    Returns:
+        Dict with step results and internal tracking keys.
+    """
+    logger.info("A_coder invocation start: k=%d, plan=%.200s", k, plan)
+    coder_output = await invoke_coder(original_code, plan, client)
+    if coder_output is None:
+        logger.info("A_coder invocation complete: k=%d, result=failed to parse", k)
+        logger.warning("A_coder returned None at k=%d; skipping eval", k)
+        return {
+            "plan": plan,
+            "score": None,
+            "code_block": "",
+            "was_improvement": False,
+            "_successful": False,
+        }
+    logger.info("A_coder invocation complete: k=%d, code_len=%d", k, len(coder_output))
+
+    try:
+        candidate = solution.replace_block(original_code, coder_output)
+    except ValueError:
+        logger.warning("replace_block failed at k=%d; code block not found", k)
+        return {
+            "plan": plan,
+            "score": None,
+            "code_block": coder_output,
+            "was_improvement": False,
+            "_successful": False,
+        }
+    logger.debug(
+        "Code block replacement success: k=%d, old_len=%d, new_len=%d",
+        k,
+        len(original_code),
+        len(coder_output),
+    )
+
+    # Leakage check (REQ-P2I-030).
+    logger.info("Leakage check start: k=%d, content_len=%d", k, len(candidate.content))
+    pre_leakage = candidate
+    candidate = await check_and_fix_leakage(candidate, task, client)
+    content_changed = candidate is not pre_leakage
+    logger.info(
+        "Leakage check complete: k=%d, leakage_found=%s, content_changed=%s",
+        k,
+        "yes" if content_changed else "no",
+        "yes" if content_changed else "no",
+    )
+
+    # Evaluate with debug retry (REQ-P2I-031).
+    logger.info("Evaluation start: k=%d, content_len=%d", k, len(candidate.content))
+    debug_callback = make_debug_callback(task, config, client)
+    candidate, eval_result = await evaluate_with_retry(
+        candidate, task, config, debug_callback
+    )
+    score = eval_result.score
+    score_str = str(score) if score is not None else "failed"
+    logger.info(
+        "Evaluation complete: k=%d, score=%s, is_error=%s, duration=%.1f",
+        k,
+        score_str,
+        eval_result.is_error,
+        eval_result.duration_seconds,
+    )
+
+    return {
+        "plan": plan,
+        "score": score,
+        "code_block": coder_output,
+        "was_improvement": False,
+        "_candidate": candidate,
+        "_eval_result": eval_result,
+        "_successful": True,
+    }
+
+
 async def run_phase2_inner_loop(
     client: Any,
     solution: SolutionScript,
@@ -213,6 +315,15 @@ async def run_phase2_inner_loop(
     k_steps: int = config.inner_loop_steps
     original_code = code_block.content
 
+    # REQ-P2I-043: Log inner loop start.
+    logger.info(
+        "Inner loop start: code_block_len=%d, initial_plan=%.200s, h_best=%s, K=%d",
+        len(original_code),
+        initial_plan,
+        best_score,
+        k_steps,
+    )
+
     # REQ-P2I-024: Initialize tracking from input parameters.
     local_best_score = best_score
     local_best_solution = solution
@@ -220,107 +331,46 @@ async def run_phase2_inner_loop(
     accumulated_plans: list[str] = []
     accumulated_scores: list[float | None] = []
     attempts: list[RefinementAttempt] = []
+    successful_evals = 0
 
     for k in range(k_steps):
-        # ------------------------------------------------------------------
-        # Step 1: Determine the plan for this iteration.
-        # ------------------------------------------------------------------
-        if k == 0:
-            # REQ-P2I-018: Use initial_plan directly, no planner call.
-            plan = initial_plan
-        else:
-            # REQ-P2I-019/020: Invoke A_planner with full history.
-            # Pass copies so the planner receives a snapshot of history at
-            # the time of invocation, not a reference that grows later.
-            plan_result = await invoke_planner(
-                original_code, list(accumulated_plans), list(accumulated_scores), client
-            )
-            if plan_result is None:
-                # REQ-P2I-034: Planner failure → record and skip.
-                logger.warning("A_planner returned None at k=%d; skipping", k)
-                failed_plan = "[planner failed]"
-                accumulated_plans.append(failed_plan)
-                accumulated_scores.append(None)
-                attempts.append(
-                    RefinementAttempt(
-                        plan=failed_plan,
-                        score=None,
-                        code_block="",
-                        was_improvement=False,
-                    )
-                )
-                continue
-            plan = plan_result
-
-        # ------------------------------------------------------------------
-        # Step 2: Invoke A_coder with ORIGINAL code block (REQ-P2I-021).
-        # ------------------------------------------------------------------
-        coder_output = await invoke_coder(original_code, plan, client)
-        if coder_output is None:
-            # REQ-P2I-032: Coder failure → record with code_block="" and skip eval.
-            logger.warning("A_coder returned None at k=%d; skipping eval", k)
-            accumulated_plans.append(plan)
-            accumulated_scores.append(None)
-            attempts.append(
-                RefinementAttempt(
-                    plan=plan,
-                    score=None,
-                    code_block="",
-                    was_improvement=False,
-                )
-            )
-            continue
-
-        # ------------------------------------------------------------------
-        # Step 3: Replace block in ORIGINAL solution (REQ-P2I-022/023).
-        # ------------------------------------------------------------------
-        try:
-            candidate = solution.replace_block(original_code, coder_output)
-        except ValueError:
-            # REQ-P2I-033: Replacement failure → record with coder output.
-            logger.warning("replace_block failed at k=%d; code block not found", k)
-            accumulated_plans.append(plan)
-            accumulated_scores.append(None)
-            attempts.append(
-                RefinementAttempt(
-                    plan=plan,
-                    score=None,
-                    code_block=coder_output,
-                    was_improvement=False,
-                )
-            )
-            continue
-
-        # ------------------------------------------------------------------
-        # Step 4: Leakage check then evaluate with debug retry.
-        # ------------------------------------------------------------------
-        # REQ-P2I-030: check_and_fix_leakage before every evaluation.
-        candidate = await check_and_fix_leakage(candidate, task, client)
-        # REQ-P2I-031: evaluate_with_retry with debug callback.
-        debug_callback = make_debug_callback(task, config, client)
-        candidate, eval_result = await evaluate_with_retry(
-            candidate, task, config, debug_callback
+        step_result = await _run_inner_step(
+            k,
+            initial_plan,
+            original_code,
+            solution,
+            accumulated_plans,
+            accumulated_scores,
+            task,
+            config,
+            client,
         )
-        score = eval_result.score
 
-        # ------------------------------------------------------------------
-        # Step 5: Track score and update best (REQ-P2I-025/026/027).
-        # ------------------------------------------------------------------
+        accumulated_plans.append(step_result["plan"])
+        accumulated_scores.append(step_result["score"])
+
+        # Update best score if the step was successful (REQ-P2I-025/026/027).
+        score = step_result["score"]
         was_improvement = False
-        if score is not None and is_improvement_or_equal(
-            score, local_best_score, task.metric_direction
+        if (
+            score is not None
+            and step_result.get("_successful")
+            and is_improvement_or_equal(score, local_best_score, task.metric_direction)
         ):
+            old_best = local_best_score
             local_best_score = score
-            local_best_solution = candidate
+            local_best_solution = step_result["_candidate"]
             was_improvement = True
+            logger.info("Best score updated: k=%d, old=%s, new=%s", k, old_best, score)
 
-        accumulated_plans.append(plan)
-        accumulated_scores.append(score)
+        if score is not None and step_result.get("_successful"):
+            successful_evals += 1
+
         attempts.append(
             RefinementAttempt(
-                plan=plan,
-                score=score,
-                code_block=coder_output,
+                plan=step_result["plan"],
+                score=step_result["score"],
+                code_block=step_result["code_block"],
                 was_improvement=was_improvement,
             )
         )
@@ -328,9 +378,82 @@ async def run_phase2_inner_loop(
     # REQ-P2I-036/037: Construct result. improved uses strict is_improvement.
     improved = is_improvement(local_best_score, best_score, task.metric_direction)
 
+    # REQ-P2I-043: Log inner loop completion.
+    logger.info(
+        "Inner loop complete: attempts=%d, successful_evals=%d, best_score=%s, improved=%s",
+        len(attempts),
+        successful_evals,
+        local_best_score,
+        "yes" if improved else "no",
+    )
+
     return InnerLoopResult(
         best_solution=local_best_solution,
         best_score=local_best_score,
         attempts=attempts,
         improved=improved,
+    )
+
+
+async def _run_inner_step(
+    k: int,
+    initial_plan: str,
+    original_code: str,
+    solution: SolutionScript,
+    accumulated_plans: list[str],
+    accumulated_scores: list[float | None],
+    task: TaskDescription,
+    config: PipelineConfig,
+    client: Any,
+) -> dict[str, Any]:
+    """Execute one inner loop step: plan determination + coder step.
+
+    Handles the plan source selection (initial_plan at k=0, A_planner at
+    k>=1) and delegates the coder → replace → leakage → eval chain to
+    ``_execute_coder_step``.
+
+    Args:
+        k: Inner step index.
+        initial_plan: Initial plan from A_extractor (used at k=0).
+        original_code: Original code block content (c_t).
+        solution: Original solution (s_t) used as replacement base.
+        accumulated_plans: Plans from previous steps.
+        accumulated_scores: Scores from previous steps.
+        task: Task description for evaluation context.
+        config: Pipeline configuration.
+        client: SDK client for agent invocation.
+
+    Returns:
+        Dict with step results including ``plan``, ``score``,
+        ``code_block``, ``was_improvement``, and internal keys.
+    """
+    if k == 0:
+        plan = initial_plan
+    else:
+        logger.info(
+            "A_planner invocation start: k=%d, history_len=%d",
+            k,
+            len(accumulated_plans),
+        )
+        plan_result = await invoke_planner(
+            original_code, list(accumulated_plans), list(accumulated_scores), client
+        )
+        if plan_result is None:
+            logger.warning("A_planner returned None at k=%d; skipping", k)
+            return {
+                "plan": "[planner failed]",
+                "score": None,
+                "code_block": "",
+                "was_improvement": False,
+                "_successful": False,
+            }
+        logger.info(
+            "A_planner invocation complete: k=%d, plan=%.200s",
+            k,
+            plan_result,
+        )
+        plan = plan_result
+
+    return await _execute_coder_step(
+        k, plan, original_code, solution, task, config, client
     )

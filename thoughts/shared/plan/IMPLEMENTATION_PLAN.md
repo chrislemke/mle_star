@@ -9,7 +9,7 @@
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
 | P1       | 0       | 0           | 44   |
-| P2       | 6       | 0           | 2    |
+| P2       | 5       | 0           | 3    |
 | P3       | 0       | 0           | 0    |
 
 ---
@@ -620,7 +620,7 @@ Integrate safety checks into the inner loop: call `check_and_fix_leakage()` befo
 ---
 
 ## [P2] 26. Phase 2 inner loop constraints
-**Status:** pending
+**Status:** done
 **Priority:** P2
 
 ### Description
@@ -629,11 +629,11 @@ Implement remaining inner loop requirements: performance constraints (agent invo
 **Spec:** SRS 06 | **Reqs:** REQ-P2I-039 to REQ-P2I-050 | **Depends on:** Tasks 23–25
 
 ### Acceptance Criteria
-- [ ] Structured logging for each inner iteration
-- [ ] Sequential iteration execution verified
-- [ ] Best score is monotonically non-decreasing (maximize) or non-increasing (minimize)
-- [ ] Input solution is never mutated
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Structured logging for each inner iteration (REQ-P2I-043)
+- [x] Sequential iteration execution verified (REQ-P2I-046)
+- [x] Best score is monotonically non-decreasing (maximize) or non-increasing (minimize) (REQ-P2I-047)
+- [x] Input solution is never mutated (REQ-P2I-049)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
