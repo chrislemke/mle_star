@@ -535,13 +535,16 @@ class TestPhase2Dispatch:
         ):
             await run_pipeline(ctx["task"], ctx["config"])
 
-        # Each Phase 2 call should receive the Phase 1 initial_solution
+        # Each Phase 2 call should receive a deep copy of the Phase 1 initial_solution
+        # (REQ-OR-020: deep copy isolation — same content, distinct object)
         for c in ctx["phase2_mock"].call_args_list:
             # initial_solution is the 4th positional arg (client, task, config, initial_solution)
             # or passed as keyword
             args, kwargs = c
             solution_arg = kwargs.get("initial_solution") or args[3]
-            assert solution_arg is p1_solution
+            assert solution_arg.content == p1_solution.content
+            assert solution_arg.phase == p1_solution.phase
+            assert solution_arg is not p1_solution  # Deep copy, not same object
 
     async def test_phase2_receives_phase1_score(self, tmp_path: Path) -> None:
         """Each Phase 2 path receives Phase 1 initial_score."""

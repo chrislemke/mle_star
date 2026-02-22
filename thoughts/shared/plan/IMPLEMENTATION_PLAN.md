@@ -1007,7 +1007,7 @@ Implement sequential phase dispatch within `run_pipeline`: Phase 1 → Phase 2 (
 ---
 
 ## [P1] 44. Asyncio parallelism for Phase 2 paths
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -1016,14 +1016,14 @@ Implement L parallel Phase 2 paths using `asyncio.gather(*tasks, return_exceptio
 **Spec:** SRS 09 | **Reqs:** REQ-OR-018 to REQ-OR-023 | **Depends on:** Task 43
 
 ### Acceptance Criteria
-- [ ] L paths run concurrently via `asyncio.gather(return_exceptions=True)`
-- [ ] Each path receives a deep copy of Phase 1 solution (REQ-OR-020) and `Phase1Result.initial_score` as the `initial_score` parameter
-- [ ] Each path uses separate working directory `./work/path-{i}/` and session ID `"path-{i}"` (REQ-OR-020/021)
-- [ ] Session forking from Phase 1 session supported (REQ-OR-021)
-- [ ] Failed path does not affect other paths (REQ-OR-022)
-- [ ] All-paths-failed falls back to Phase 1 solution (REQ-OR-022)
-- [ ] Overtime paths cancelled gracefully via `asyncio.Task.cancel()` (REQ-OR-023)
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] L paths run concurrently via `asyncio.gather(return_exceptions=True)`
+- [x] Each path receives a deep copy of Phase 1 solution (REQ-OR-020) and `Phase1Result.initial_score` as the `initial_score` parameter
+- [x] Each path uses separate working directory `./work/path-{i}/` and session ID `"path-{i}"` (REQ-OR-020/021)
+- [x] Session forking from Phase 1 session supported (REQ-OR-021)
+- [x] Failed path does not affect other paths (REQ-OR-022)
+- [x] All-paths-failed falls back to Phase 1 solution (REQ-OR-022)
+- [x] Overtime paths cancelled gracefully via `asyncio.Task.cancel()` (REQ-OR-023)
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

@@ -14,6 +14,7 @@ Refs:
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 from pathlib import Path
 import time
@@ -223,40 +224,105 @@ def _register_mcp_servers(client: ClaudeSDKClient) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _create_path_work_directories(
+    task: TaskDescription,
+    num_paths: int,
+) -> list[Path]:
+    """Create per-path working subdirectories (REQ-OR-020).
+
+    Creates ``./work/path-{i}/`` directories relative to the parent of
+    ``task.data_dir`` for each of the L parallel paths. This ensures each
+    path has an isolated filesystem area to avoid conflicts.
+
+    Args:
+        task: Task description providing the data directory context.
+        num_paths: Number of parallel paths (L).
+
+    Returns:
+        List of L ``Path`` objects, one per path's working directory.
+    """
+    base = Path(task.data_dir).parent / "work"
+    path_dirs: list[Path] = []
+    for i in range(num_paths):
+        path_dir = base / f"path-{i}"
+        path_dir.mkdir(parents=True, exist_ok=True)
+        path_dirs.append(path_dir)
+    return path_dirs
+
+
 async def _dispatch_phase2(
     client: ClaudeSDKClient,
     task: TaskDescription,
     config: PipelineConfig,
     phase1_result: Phase1Result,
+    *,
+    phase2_timeout: float | None = None,
 ) -> list[Phase2Result | BaseException]:
-    """Dispatch L parallel Phase 2 paths via asyncio.gather (REQ-OR-013).
+    """Dispatch L parallel Phase 2 paths with isolation (REQ-OR-013, REQ-OR-018).
 
-    Creates one ``run_phase2_outer_loop`` coroutine per path, each receiving
-    the Phase 1 initial solution and score.  Uses ``return_exceptions=True``
-    so that individual path failures do not cancel siblings (REQ-OR-022).
+    Creates one ``run_phase2_outer_loop`` coroutine per path. Each path
+    receives a deep copy of the Phase 1 initial solution (REQ-OR-020),
+    its own working subdirectory (REQ-OR-020), and a unique session ID
+    (REQ-OR-021). Uses ``return_exceptions=True`` so that individual path
+    failures do not cancel siblings (REQ-OR-022).
+
+    When *phase2_timeout* is set, paths still running after the timeout
+    are cancelled via ``asyncio.Task.cancel()`` (REQ-OR-023).
 
     Args:
         client: SDK client for agent invocations.
         task: Task description.
         config: Pipeline configuration (L = ``num_parallel_solutions``).
         phase1_result: Phase 1 output providing the initial solution.
+        phase2_timeout: Maximum seconds to wait for all paths. ``None``
+            means no timeout (wait indefinitely).
 
     Returns:
         List of L results, each either a ``Phase2Result`` or an exception.
+        Cancelled paths appear as ``asyncio.CancelledError`` instances.
     """
     num_paths = config.num_parallel_solutions
+
+    # REQ-OR-020: Create per-path working directories
+    _create_path_work_directories(task, num_paths)
+
+    # REQ-OR-020: Deep copy the initial solution for each path
     phase2_coros = [
         run_phase2_outer_loop(
             client,
             task,
             config,
-            phase1_result.initial_solution,
+            copy.deepcopy(phase1_result.initial_solution),
             phase1_result.initial_score,
             session_id=f"path-{i}",
         )
         for i in range(num_paths)
     ]
-    return await asyncio.gather(*phase2_coros, return_exceptions=True)
+
+    if phase2_timeout is None:
+        return await asyncio.gather(*phase2_coros, return_exceptions=True)
+
+    # REQ-OR-023: Bounded wait with cancellation of overtime paths
+    tasks = [asyncio.create_task(coro) for coro in phase2_coros]
+    _done, pending = await asyncio.wait(tasks, timeout=phase2_timeout)
+
+    for overtime_task in pending:
+        overtime_task.cancel()
+        logger.warning("Phase 2 path cancelled due to timeout")
+
+    # Wait for cancelled tasks to finish their cancellation
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    # Collect results in original order (preserving path indices)
+    results: list[Phase2Result | BaseException] = []
+    for t in tasks:
+        try:
+            results.append(t.result())
+        except BaseException as exc:
+            results.append(exc)
+
+    return results
 
 
 def _collect_phase2_results(

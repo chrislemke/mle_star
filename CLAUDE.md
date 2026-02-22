@@ -62,7 +62,7 @@ uv run mle_star
 src/mle_star/
   __init__.py          # Package init
   cli.py               # CLI entry point (uv run mle_star)
-  orchestrator.py      # Pipeline entry point: run_pipeline, SDK client setup, phase dispatch, PipelineError/PipelineTimeoutError (Tasks 42, 43)
+  orchestrator.py      # Pipeline entry point: run_pipeline, SDK client setup, phase dispatch, parallelism, PipelineError/PipelineTimeoutError (Tasks 42, 43, 44)
   models.py            # Pydantic data models (enums, configs, schemas)
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
   execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline, subsampling utilities, submission verification, batch evaluation, solution ranking (Tasks 11-17)
@@ -107,6 +107,7 @@ tests/
   test_finalization_test_submission.py # Tests for test submission agent (Task 39)
   test_orchestrator_entry.py     # Tests for pipeline entry point and SDK client setup (Task 42)
   test_orchestrator_dispatch.py  # Tests for phase dispatch and sequencing (Task 43)
+  test_orchestrator_parallelism.py # Tests for asyncio parallelism, deep copy, working dirs, cancellation (Task 44)
   test_finalization_contamination.py # Tests for contamination check and run_finalization (Task 40)
 ```
 
@@ -140,6 +141,7 @@ tests/
 - Finalization orchestration (`run_finalization`): decomposed into main function + `_apply_fallback` helper to stay under xenon complexity B. Pipeline: `remove_subsampling` → `generate_test_submission` → `check_and_fix_leakage` → `evaluate_with_retry(make_debug_callback)` → `verify_submission` / `get_submission_info` → `_apply_fallback` → `check_contamination` → `FinalResult`. Fallback triggers on `eval_result.is_error or not submission_verified` — returns original `solution` param with `submission_path=""`. Duration tracked with `time.monotonic()`. `total_cost_usd` always `None` (tracked by orchestrator, not finalization)
 - Orchestrator entry pattern: `_validate_inputs()` runs before SDK client creation (no client on validation failure). `ClaudeSDKClient(ClaudeAgentOptions(...))` with `connect()`/`disconnect()` in try/finally. `_build_agents_dict()` converts all 14 `AgentConfig` via `to_agent_definition()` keyed by `str(AgentType)`. `_build_system_prompt()` assembles Kaggle grandmaster persona + task context + GPU info. `_register_mcp_servers()` wrapped in try/except with warning log on failure. `run_phase1` signature is `(task, config, client)` — task first, not client first. `PipelineError(message, *, diagnostics=dict)` and `PipelineTimeoutError` subclass it
 - Phase dispatch pattern: P1 → P2 (L paths via `asyncio.gather(return_exceptions=True)`) → P3 (skip when L=1) → Finalization. `_dispatch_phase2()` creates L coroutines and gathers them. `_collect_phase2_results()` separates successes from exceptions, substituting Phase 1 solution for failed paths (REQ-OR-040). Phase 3 receives `phase2_solutions` list (one per path). Best solution for finalization: from Phase 3 `best_ensemble` (L>1) or Phase 2 `best_solution` (L=1). Each phase logs start/duration via `time.monotonic()`. Phase boundary markers: `"=== Phase N: ... ==="`
+- Phase 2 parallelism pattern: `_dispatch_phase2()` uses `copy.deepcopy()` for each path's initial solution (REQ-OR-020) so mutations are isolated. `_create_path_work_directories()` creates `./work/path-{i}/` relative to `task.data_dir` parent (REQ-OR-020). When `phase2_timeout` is set, uses `asyncio.wait(tasks, timeout=...)` + `task.cancel()` for overtime paths (REQ-OR-023); when None, uses `asyncio.gather(return_exceptions=True)`. Cancelled paths appear as `asyncio.CancelledError` in results and are handled by `_collect_phase2_results()` as failures (Phase 1 fallback). Results are collected in original order (preserving path indices)
 
 ---
 
