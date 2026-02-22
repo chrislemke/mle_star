@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 15      | 0           | 29   |
+| P1       | 14      | 0           | 30   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -818,7 +818,7 @@ Implement remaining outer loop requirements: performance constraints (A_abl resp
 ---
 
 ## [P1] 35. Ensemble planner and ensembler agents
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -827,13 +827,13 @@ Implement two Phase 3 agent functions in `src/mle_star/phase3.py`: `invoke_ens_p
 **Spec:** SRS 07 | **Reqs:** REQ-P3-001 to REQ-P3-016 | **Depends on:** Spec 01, Spec 02, Spec 03
 
 ### Acceptance Criteria
-- [ ] `invoke_ens_planner()` returns ensemble plan string
-- [ ] First call (empty history) uses initial prompt variant
-- [ ] Subsequent calls include full plan+score history formatted with `Plan {r}:` / `Score {r}:` labels (consistent with inner loop planner format from Task 23); None scores displayed as "N/A (evaluation failed)"
-- [ ] `invoke_ensembler()` returns `SolutionScript` with `phase="ensemble"` — FULL program, not code block
-- [ ] Ensembler prompt includes "Do not subsample" instruction
-- [ ] Both return `None` on agent failure
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] `invoke_ens_planner()` returns ensemble plan string
+- [x] First call (empty history) uses initial prompt variant
+- [x] Subsequent calls include full plan+score history formatted with `Plan {r}:` / `Score {r}:` labels (consistent with inner loop planner format from Task 23); None scores displayed as "N/A (evaluation failed)"
+- [x] `invoke_ensembler()` returns `SolutionScript` with `phase="ensemble"` — FULL program, not code block
+- [x] Ensembler prompt includes "Do not subsample" instruction
+- [x] Both return `None` on agent failure
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

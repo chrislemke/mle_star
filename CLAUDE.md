@@ -69,6 +69,7 @@ src/mle_star/
   phase1.py            # Phase 1 agents + orchestration: retrieve_models, generate_candidate, merge_solutions, run_phase1 (Tasks 27, 28)
   phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration with safety integration (Tasks 23, 24, 25)
   phase2_outer.py      # Phase 2 outer loop: ablation agent, summarize agent, extractor agent, code block validation, run_phase2_outer_loop orchestration (Tasks 31, 32, 33)
+  phase3.py            # Phase 3 agents: invoke_ens_planner, invoke_ensembler + formatting helpers (Task 35)
   prompts/             # YAML prompt templates for 14 agents
     __init__.py        # PromptRegistry class (Task 08)
     *.yaml
@@ -98,6 +99,7 @@ tests/
   test_phase2_outer_ablation.py  # Tests for ablation agent invocation and execution (Task 31)
   test_phase2_outer_agents.py    # Tests for summarize and extractor agents (Task 32)
   test_phase2_outer_loop.py      # Tests for run_phase2_outer_loop orchestration (Task 33)
+  test_phase3_agents.py          # Tests for Phase 3 ensemble planner and ensembler agents (Task 35)
 ```
 
 ---
@@ -122,6 +124,7 @@ tests/
 - `validate_code_block(code_block, solution)` is a simple `code_block in solution.content` substring check (REQ-P2O-017)
 - `_format_previous_blocks()` mirrors `_format_previous_ablations()` pattern: empty list → empty string, non-empty → numbered markdown with header "# Previously Improved Code Blocks"
 - Outer loop orchestration (`run_phase2_outer_loop`): decomposed into `_run_outer_step` helper + `_make_skipped_step` to stay under xenon complexity B. Step helper returns a dict with internal `_new_h_best` and `_new_best_solution` keys (popped by caller). Uses `is_improvement_or_equal` (>= semantics) for best-score update — NOT `InnerLoopResult.improved` (which uses strict >). Skipped iterations (extractor None or validation failure) produce `was_skipped=True` records. Accumulates T_abl and C lists; each `CodeBlock` has `outer_step=t` set. `initial_score: float` is explicit parameter because `SolutionScript.score` is `float | None`
+- Phase 3 agent pattern: `invoke_ens_planner` returns raw stripped text (like A_planner), `invoke_ensembler` uses `extract_code_block()` (like A_coder/A_init/A_merger). Both validate `len(solutions) >= 2`. `_format_solutions()` numbers solutions as "# {n}th Python Solution" with fenced code blocks. `_format_ensemble_history()` mirrors `_format_plan_history()` from phase2_inner.py: `## Plan:` / `## Score:` labels, None → "N/A (evaluation failed)", empty list → empty string
 
 ---
 
