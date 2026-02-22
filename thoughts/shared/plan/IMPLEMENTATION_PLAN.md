@@ -9,7 +9,7 @@
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
 | P1       | 0       | 0           | 44   |
-| P2       | 7       | 0           | 1    |
+| P2       | 6       | 0           | 2    |
 | P3       | 0       | 0           | 0    |
 
 ---
@@ -532,7 +532,7 @@ Implement the A_data agent: agent definition (Figure 22), `check_data_usage(solu
 ---
 
 ## [P2] 22. Safety module constraints
-**Status:** pending
+**Status:** done
 **Priority:** P2
 
 ### Description
@@ -541,11 +541,11 @@ Implement remaining safety module requirements: agent default configs inclusion 
 **Spec:** SRS 03 | **Reqs:** REQ-SF-032 to REQ-SF-046 | **Depends on:** Tasks 19–21
 
 ### Acceptance Criteria
-- [ ] Safety agent configs included in `build_default_agent_configs()`
-- [ ] All safety agents load prompts from `PromptRegistry`
-- [ ] Graceful degradation: agent failure returns original solution (never raises)
-- [ ] Structured logging for all safety agent invocations
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Safety agent configs included in `build_default_agent_configs()`
+- [x] All safety agents load prompts from `PromptRegistry`
+- [x] Graceful degradation: agent failure returns original solution (never raises)
+- [x] Structured logging for all safety agent invocations
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 

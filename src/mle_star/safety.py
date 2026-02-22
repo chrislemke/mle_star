@@ -138,6 +138,8 @@ async def _invoke_debugger_agent(
     template = registry.get(AgentType.DEBUGGER)
     prompt = template.render(code=solution.content, bug=traceback)
 
+    logger.info("Debug invocation start for phase=%s", solution.phase)
+
     response: str = await client.send_message(
         agent_type=str(AgentType.DEBUGGER),
         message=prompt,
@@ -145,6 +147,8 @@ async def _invoke_debugger_agent(
 
     code = extract_code_block(response)
     code = _ensure_score_line(code)
+
+    logger.info("Debug invocation result length=%d", len(code))
 
     return SolutionScript(
         content=code,
@@ -312,6 +316,8 @@ async def _check_and_fix_leakage_impl(
     registry = PromptRegistry()
 
     # Step 1 — Detection.
+    logger.info("Leakage detection start")
+
     detection_template = registry.get(AgentType.LEAKAGE, variant="detection")
     detection_prompt = detection_template.render(code=solution.content)
 
@@ -322,6 +328,11 @@ async def _check_and_fix_leakage_impl(
 
     detection_output = LeakageDetectionOutput.model_validate_json(
         detection_response,
+    )
+
+    logger.info(
+        "Leakage detection result: %d answers",
+        len(detection_output.answers),
     )
 
     # Step 2 — Correction for each leaky block.
@@ -451,9 +462,18 @@ async def _check_data_usage_impl(
         task_description=task.description,
     )
 
+    logger.info("Data usage check start")
+
     response: str = await client.send_message(
         agent_type=str(AgentType.DATA),
         message=prompt,
     )
 
-    return parse_data_agent_response(response, solution)
+    result = parse_data_agent_response(response, solution)
+
+    if result is solution:
+        logger.info("Data usage check result: confirmed all data used")
+    else:
+        logger.info("Data usage check result: solution modified")
+
+    return result

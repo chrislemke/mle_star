@@ -66,7 +66,7 @@ src/mle_star/
   models.py            # Pydantic data models (enums, configs, schemas)
   scoring.py           # Score parsing, comparison functions, ScoreFunction protocol (Task 07)
   execution.py         # Execution harness: env setup, working dir, GPU, async script exec, output parsing, evaluation pipeline, subsampling utilities, submission verification, batch evaluation, solution ranking, error masking detection, ExecutorStrategy, SDK Bash executor, output truncation, structured logging (Tasks 11-17, 18)
-  safety.py            # Safety modules: debugger agent, leakage agent, data agent, code block extraction (Tasks 19, 20, 21)
+  safety.py            # Safety modules: debugger agent, leakage agent, data agent, code block extraction, structured logging (Tasks 19, 20, 21, 22)
   phase1.py            # Phase 1 agents + orchestration: retrieve_models, generate_candidate, merge_solutions, run_phase1 (Tasks 27, 28)
   phase2_inner.py      # Phase 2 inner loop: coder/planner agents + run_phase2_inner_loop orchestration with safety integration (Tasks 23, 24, 25)
   phase2_outer.py      # Phase 2 outer loop: ablation agent, summarize agent, extractor agent, code block validation, run_phase2_outer_loop orchestration (Tasks 31, 32, 33)
@@ -93,6 +93,7 @@ tests/
   test_safety_debugger.py        # Tests for debugger safety agent (Task 19)
   test_safety_data.py            # Tests for data usage verification agent (Task 21)
   test_safety_leakage.py         # Tests for leakage detection/correction agent (Task 20)
+  test_safety_constraints.py     # Tests for safety module constraints, logging, graceful degradation (Task 22)
   test_phase1_agents.py          # Tests for Phase 1 agents: retriever, init, merger (Task 27)
   test_phase1_orchestration.py   # Tests for run_phase1 orchestration (Task 28)
   test_phase1_safety.py          # Tests for Phase 1 post-merge safety checks (Task 29)
@@ -128,6 +129,7 @@ tests/
 - A_coder uses `extract_code_block()` for response parsing; A_planner returns raw stripped text (no extraction)
 - Inner loop passes `list(accumulated_plans)` (copies) to `invoke_planner` to provide a snapshot at invocation time — passing the mutable list directly would let later mutations leak into captured references
 - Safety integration pattern in inner loop: `check_and_fix_leakage(candidate, task, client)` → `make_debug_callback(task, config, client)` → `evaluate_with_retry(candidate, task, config, debug_callback)` — leakage check runs before EVERY evaluation, debug retry handles execution errors
+- Safety structured logging (REQ-SF-041): `_invoke_debugger_agent` logs INFO at start ("Debug invocation start for phase=...") and result ("Debug invocation result length=..."); `_check_and_fix_leakage_impl` logs INFO at detection start/result ("Leakage detection start", "Leakage detection result: N answers"); `_check_data_usage_impl` logs INFO at start ("Data usage check start") and result ("Data usage check result: confirmed/modified"). Parse failures and `replace_block` skips log WARNING. Graceful degradation (outer try/except) logs via `logger.exception`
 - Phase 1 agent pattern: `retrieve_models` parses structured JSON via `RetrieverOutput.model_validate_json()`; `generate_candidate` and `merge_solutions` extract code via `extract_code_block()` and return `SolutionScript | None` (None on empty extraction). Empty-check uses `.strip()` for whitespace-only responses
 - Phase 1 orchestration (`run_phase1`): decomposed into `_generate_and_evaluate_candidates` + `_run_merge_loop` + `_apply_post_merge_safety` to stay under xenon complexity threshold B. `_CandidateResults` class accumulates candidate loop state. Merge loop uses `is_improvement_or_equal` (>= semantics) and breaks on first failure/non-improvement
 - Post-merge safety pattern: `_apply_safety_check()` generic helper uses identity check (`is not`) to detect modification, re-evaluates if modified, and falls back to pre-check version on failure. Applied twice in sequence: `check_data_usage` (exactly once, REQ-P1-030) then `check_and_fix_leakage` (REQ-P1-031). Phase1Result.initial_score always reflects the final post-safety score
