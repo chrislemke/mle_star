@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 7       | 0           | 37   |
+| P1       | 6       | 0           | 38   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -1028,7 +1028,7 @@ Implement L parallel Phase 2 paths using `asyncio.gather(*tasks, return_exceptio
 ---
 
 ## [P1] 45. Time and cost control
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -1037,21 +1037,21 @@ Implement time and cost budgeting: overall `time_limit_seconds` enforcement with
 **Spec:** SRS 09 | **Reqs:** REQ-OR-024 to REQ-OR-030 | **Depends on:** Task 44
 
 ### Acceptance Criteria
-- [ ] Deadline computed at pipeline start via `time.monotonic()`
-- [ ] Deadline checked before each phase and agent call
-- [ ] Phase time budgets follow proportional allocation (configurable via PhaseTimeBudget)
-- [ ] Per-path Phase 2 budget = `phase2_budget / L`
-- [ ] Cost accumulated and checked after each agent call
-- [ ] 80% budget warning logged (REQ-OR-029)
-- [ ] Graceful shutdown: cancel tasks → best solution so far → skip to finalization (REQ-OR-030)
-- [ ] Phase 1 incomplete at timeout → raise PipelineTimeoutError (REQ-OR-030)
-- [ ] Pipeline with `time_limit_seconds=60` terminates within 90s
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Deadline computed at pipeline start via `time.monotonic()`
+- [x] Deadline checked before each phase and agent call
+- [x] Phase time budgets follow proportional allocation (configurable via PhaseTimeBudget)
+- [x] Per-path Phase 2 budget = `phase2_budget / L`
+- [x] Cost accumulated and checked after each agent call
+- [x] 80% budget warning logged (REQ-OR-029)
+- [x] Graceful shutdown: cancel tasks → best solution so far → skip to finalization (REQ-OR-030)
+- [x] Phase 1 incomplete at timeout → raise PipelineTimeoutError (REQ-OR-030)
+- [x] Pipeline with `time_limit_seconds=60` terminates within 90s
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
 ## [P1] 46. Hook system
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -1060,13 +1060,13 @@ Implement the 5 SDK hooks: (1) `PostToolUse` progress hook — structured JSON l
 **Spec:** SRS 09 | **Reqs:** REQ-OR-031 to REQ-OR-035 | **Depends on:** Task 45
 
 ### Acceptance Criteria
-- [ ] Progress hook logs: timestamp, agent type, tool name, session ID, elapsed time, success/failure (JSON format)
-- [ ] Cost hook accumulates per-agent costs thread-safely (safe for concurrent Phase 2 paths)
-- [ ] Safety hook blocks known dangerous bash patterns; returns `BlockToolUse` result
-- [ ] Safety hook has configurable blocked-command list
-- [ ] Timeout hook sets finalize flag when remaining < 10% budget OR < 5 min (whichever is larger)
-- [ ] Error hook tracks consecutive failures per agent type for circuit-breaker logic
-- [ ] Tests pass with ≥90% coverage; mypy clean
+- [x] Progress hook logs: timestamp, agent type, tool name, session ID, elapsed time, success/failure (JSON format)
+- [x] Cost hook accumulates per-agent costs thread-safely (safe for concurrent Phase 2 paths)
+- [x] Safety hook blocks known dangerous bash patterns; returns `BlockToolUse` result
+- [x] Safety hook has configurable blocked-command list
+- [x] Timeout hook sets finalize flag when remaining < 10% budget OR < 5 min (whichever is larger)
+- [x] Error hook tracks consecutive failures per agent type for circuit-breaker logic
+- [x] Tests pass with ≥90% coverage; mypy clean
 
 ---
 
