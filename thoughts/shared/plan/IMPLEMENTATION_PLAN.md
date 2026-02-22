@@ -8,7 +8,7 @@
 
 | Priority | Pending | In Progress | Done |
 |----------|---------|-------------|------|
-| P1       | 11      | 0           | 33   |
+| P1       | 9       | 0           | 35   |
 | P2       | 8       | 0           | 0    |
 | P3       | 0       | 0           | 0    |
 
@@ -1156,7 +1156,7 @@ Update `src/mle_star/cli.py` to wire the CLI entry point to `run_pipeline_sync()
 ---
 
 ## [P1] 51. Shared test infrastructure
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -1165,17 +1165,17 @@ Create shared test fixtures, factories, and mock objects in `tests/conftest.py` 
 **Depends on:** Task 03 (config models), Task 04 (solution models), Task 05 (agent types)
 
 ### Acceptance Criteria
-- [ ] `conftest.py` provides `mock_client` fixture returning a mock `ClaudeSDKClient` with configurable responses
-- [ ] Factory functions: `make_solution()`, `make_task()`, `make_config()`, `make_eval_result()` with sensible defaults
-- [ ] `mock_registry` fixture returning a stub `PromptRegistry`
-- [ ] `tmp_working_dir` fixture providing a temporary directory with standard layout
-- [ ] All fixtures are session-scoped or function-scoped as appropriate
-- [ ] mypy clean
+- [x] `conftest.py` provides `mock_client` fixture returning a mock `ClaudeSDKClient` with configurable responses
+- [x] Factory functions: `make_solution()`, `make_task()`, `make_config()`, `make_eval_result()` with sensible defaults
+- [x] `mock_registry` fixture returning a stub `PromptRegistry`
+- [x] `tmp_working_dir` fixture providing a temporary directory with standard layout
+- [x] All fixtures are session-scoped or function-scoped as appropriate
+- [x] mypy clean
 
 ---
 
 ## [P1] 52. Prompts package initialization
-**Status:** pending
+**Status:** done
 **Priority:** P1
 
 ### Description
@@ -1184,9 +1184,9 @@ Create `src/mle_star/prompts/__init__.py` to make the prompts directory a proper
 **Depends on:** None (package structure)
 
 ### Acceptance Criteria
-- [ ] `src/mle_star/prompts/__init__.py` exists (can be empty or contain package docstring)
-- [ ] `importlib.resources.files("mle_star.prompts")` resolves correctly
-- [ ] mypy clean
+- [x] `src/mle_star/prompts/__init__.py` exists (can be empty or contain package docstring)
+- [x] `importlib.resources.files("mle_star.prompts")` resolves correctly
+- [x] mypy clean
 
 ---
 
