@@ -1,6 +1,6 @@
 """Tests for configuration management and environment (Task 48).
 
-Validates ``apply_env_overrides``, ``validate_api_key``, ``configure_logging``,
+Validates ``apply_env_overrides``, ``configure_logging``,
 and ``PipelineState`` defined in ``src/mle_star/orchestrator.py``.
 
 These tests are written TDD-first -- the implementation does not yet exist.
@@ -273,60 +273,6 @@ class TestApplyEnvOverrides:
         # Assert
         assert result.time_limit_seconds == 43200
 
-
-# ===========================================================================
-# REQ-OR-046: API key validation
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestValidateApiKey:
-    """validate_api_key checks for ANTHROPIC_API_KEY env var (REQ-OR-046)."""
-
-    def test_raises_when_api_key_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """EnvironmentError raised when ANTHROPIC_API_KEY is not set."""
-        from mle_star.orchestrator import validate_api_key
-
-        # Arrange
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-        # Act & Assert
-        with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
-            validate_api_key()
-
-    def test_passes_when_api_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """No error when ANTHROPIC_API_KEY is set to a non-empty value."""
-        from mle_star.orchestrator import validate_api_key
-
-        # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key-12345")
-
-        # Act & Assert -- should not raise
-        validate_api_key()
-
-    def test_raises_when_api_key_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """EnvironmentError raised when ANTHROPIC_API_KEY is set but empty."""
-        from mle_star.orchestrator import validate_api_key
-
-        # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "")
-
-        # Act & Assert
-        with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
-            validate_api_key()
-
-    def test_raises_when_api_key_whitespace_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """EnvironmentError raised when ANTHROPIC_API_KEY is whitespace only."""
-        from mle_star.orchestrator import validate_api_key
-
-        # Arrange
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "   ")
-
-        # Act & Assert
-        with pytest.raises(EnvironmentError, match="ANTHROPIC_API_KEY"):
-            validate_api_key()
 
 
 # ===========================================================================

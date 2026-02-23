@@ -52,6 +52,7 @@ __all__ = [
     "Phase3Result",
     "PhaseTimeBudget",
     "PipelineConfig",
+    "PipelineError",
     "PromptTemplate",
     "RefinePlan",
     "RefinementAttempt",
@@ -62,7 +63,6 @@ __all__ = [
     "TaskDescription",
     "TaskType",
     "build_default_agent_configs",
-    "PipelineError",
     "run_pipeline",
     "run_pipeline_sync",
 ]

@@ -944,7 +944,6 @@ class TestFinalResultAssembly:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.setup_working_directory"),
             patch(
@@ -1060,7 +1059,6 @@ class TestPhaseDurationBreakdown:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.setup_working_directory"),
             patch(
@@ -1232,7 +1230,6 @@ class TestPhase1FailurePipelineError:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.setup_working_directory"),
             patch(
@@ -1297,7 +1294,6 @@ class TestFinalizationFailureIntegration:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.setup_working_directory"),
             patch(
@@ -1338,7 +1334,6 @@ class TestFinalizationFailureIntegration:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.setup_working_directory"),
             patch(
@@ -1385,7 +1380,6 @@ class TestFinalizationFailureIntegration:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.setup_working_directory"),
             patch(
@@ -1424,7 +1418,6 @@ class TestFinalizationFailureIntegration:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.setup_working_directory"),
             patch(

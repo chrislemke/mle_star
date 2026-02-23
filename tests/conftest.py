@@ -105,17 +105,6 @@ def make_eval_result(**overrides: Any) -> EvaluationResult:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _set_api_key_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure ``ANTHROPIC_API_KEY`` is set for all tests.
-
-    Tests must never depend on real environment variables.
-    This fixture provides a dummy key so that ``validate_api_key()``
-    does not raise during integration-style orchestrator tests.
-    """
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-dummy-key")
-
-
 @pytest.fixture()
 def mock_client() -> AsyncMock:
     """Return an AsyncMock simulating a ClaudeSDKClient.

@@ -323,21 +323,6 @@ _ENV_FIELD_MAP: dict[str, str] = {
 """Maps environment variable names to PipelineConfig field names."""
 
 
-def validate_api_key() -> None:
-    """Check that ``ANTHROPIC_API_KEY`` is set and non-empty (REQ-OR-046).
-
-    Raises:
-        EnvironmentError: If the key is missing, empty, or whitespace-only.
-    """
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not key.strip():
-        msg = (
-            "ANTHROPIC_API_KEY environment variable is required but "
-            "not set or empty. Set it to your Anthropic API key."
-        )
-        raise OSError(msg)
-
-
 def apply_env_overrides(config: PipelineConfig) -> PipelineConfig:
     """Apply ``MLE_STAR_*`` env var overrides to a config (REQ-OR-046).
 
@@ -1146,14 +1131,12 @@ async def run_pipeline(
 
     Raises:
         ValueError: If inputs fail validation (REQ-OR-002).
-        EnvironmentError: If ``ANTHROPIC_API_KEY`` is not set (REQ-OR-046).
         PipelineError: If the pipeline encounters an unrecoverable error.
         PipelineTimeoutError: If Phase 1 does not complete in time.
     """
     resolved_config = _validate_inputs(task, config)
 
-    # REQ-OR-046: Validate API key and apply env var overrides
-    validate_api_key()
+    # REQ-OR-046: Apply env var overrides
     resolved_config = apply_env_overrides(resolved_config)
 
     # REQ-OR-047: Configure logging

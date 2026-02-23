@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -314,7 +313,6 @@ class TestDeadlineComputation:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
@@ -355,7 +353,6 @@ class TestDeadlineComputation:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
@@ -399,7 +396,6 @@ class TestGracefulShutdown:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
@@ -445,7 +441,6 @@ class TestGracefulShutdown:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
@@ -484,7 +479,6 @@ class TestGracefulShutdown:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
@@ -530,7 +524,6 @@ class TestPhase2ReceivesTimeBudget:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
@@ -587,7 +580,6 @@ class TestPhase1FallbackOnTimeout:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
@@ -667,7 +659,6 @@ class TestPipelineTimeLimitIntegration:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
@@ -711,7 +702,6 @@ class TestPipelineTimeLimitIntegration:
 
         with (
             patch(f"{_MODULE}._create_client", return_value=mock_client),
-            patch(f"{_MODULE}.validate_api_key"),
             patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.configure_logging"),
             patch(f"{_MODULE}.setup_working_directory"),
