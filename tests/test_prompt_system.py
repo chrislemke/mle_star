@@ -24,6 +24,8 @@ import pytest
 # ---------------------------------------------------------------------------
 
 AGENT_TYPE_VALUES: list[str] = [
+    "baseline",
+    "researcher",
     "retriever",
     "init",
     "merger",
@@ -42,6 +44,8 @@ AGENT_TYPE_VALUES: list[str] = [
 
 # Single-template agents (one YAML file -> one PromptTemplate)
 SINGLE_TEMPLATE_AGENTS: list[AgentType] = [
+    AgentType.BASELINE,
+    AgentType.RESEARCHER,
     AgentType.RETRIEVER,
     AgentType.INIT,
     AgentType.MERGER,
@@ -66,11 +70,11 @@ TEST_VARIANTS: list[str] = [
     "contamination_check",
 ]
 
-# Total unique agent types = 14
-TOTAL_AGENT_TYPES: int = 14
+# Total unique agent types = 16 (14 original + baseline + researcher)
+TOTAL_AGENT_TYPES: int = 16
 
-# Total template variants = 11 single + 1 data + 2 leakage + 4 test = 18
-TOTAL_TEMPLATE_VARIANTS: int = 18
+# Total template variants = 13 single + 1 data + 2 leakage + 4 test = 20
+TOTAL_TEMPLATE_VARIANTS: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +540,7 @@ class TestPromptRegistryGetSingleTemplate:
         """Each single-template agent has a non-empty figure_ref."""
         registry = PromptRegistry()
         pt = registry.get(agent_type)
-        assert pt.figure_ref.startswith("Figure ")
+        assert pt.figure_ref.startswith("Figure ") or pt.figure_ref.startswith("N/A")
 
     @pytest.mark.parametrize("agent_type", SINGLE_TEMPLATE_AGENTS)
     def test_get_template_has_variables_list(self, agent_type: AgentType) -> None:
@@ -562,11 +566,11 @@ class TestPromptRegistryRetrieverContent:
         assert pt.figure_ref == "Figure 9"
 
     def test_retriever_variables(self) -> None:
-        """Retriever template has variables ['task_description', 'target_column', 'M']."""
+        """Retriever template has variables ['task_description', 'target_column', 'M', 'research_context']."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
         assert sorted(pt.variables) == sorted(
-            ["task_description", "target_column", "M"]
+            ["task_description", "target_column", "M", "research_context"]
         )
 
     def test_retriever_template_contains_placeholders(self) -> None:
@@ -581,7 +585,8 @@ class TestPromptRegistryRetrieverContent:
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
         rendered = pt.render(
-            task_description="classify images", target_column="label", M=4
+            task_description="classify images", target_column="label", M=4,
+            research_context="",
         )
         assert "classify images" in rendered
         assert "4" in rendered
@@ -910,19 +915,19 @@ class TestPromptRegistryVariables:
     """Templates have correct variable lists matching their YAML definitions."""
 
     def test_retriever_variables_are_task_description_and_m(self) -> None:
-        """Retriever template declares variables task_description, target_column, and M."""
+        """Retriever template declares variables task_description, target_column, M, and research_context."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
         assert sorted(pt.variables) == sorted(
-            ["task_description", "target_column", "M"]
+            ["task_description", "target_column", "M", "research_context"]
         )
 
     def test_init_variables(self) -> None:
-        """Init template declares variables task_description, target_column, model_name, example_code."""
+        """Init template declares variables task_description, target_column, model_name, example_code, research_context."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.INIT)
         assert sorted(pt.variables) == sorted(
-            ["task_description", "target_column", "model_name", "example_code"]
+            ["task_description", "target_column", "model_name", "example_code", "research_context"]
         )
 
     def test_merger_variables(self) -> None:
@@ -966,7 +971,8 @@ class TestPromptRegistryRenderIntegration:
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
         rendered = pt.render(
-            task_description="Predict house prices", target_column="price", M=4
+            task_description="Predict house prices", target_column="price", M=4,
+            research_context="",
         )
         assert "Predict house prices" in rendered
         assert "4" in rendered

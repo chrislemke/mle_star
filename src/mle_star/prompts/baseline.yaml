@@ -1,31 +1,24 @@
-agent_type: init
-figure_ref: "Figure 10"
+agent_type: baseline
+figure_ref: "N/A — Baseline generation"
 template: |
   # Introduction
   - You are a Kaggle grandmaster attending a competition.
-  - We will now provide a task description and a model description.
-  - You need to implement your Python solution using the provided model.
+  - Your goal is to create the simplest possible baseline solution to establish a benchmark score.
 
   # Task description
   {task_description}
   - The target column to predict is: {target_column}
-
-  {research_context}
-
-  # Model description
-  ## Model name
-  {model_name}
-
-  ## Example Python code
-  {example_code}
+  - Task type: {task_type}
+  - Data modality: {data_modality}
 
   # Your task
-  - Implement the solution in Python.
-  - You must use the model as described in the model description.
-  - This first solution design should be relatively simple, without ensembling or hyper-parameter optimization.
-  - Propose an evaluation metric that is reasonable for this task.
+  - Implement the simplest possible baseline solution in Python.
+  - For tabular data: use CatBoost with default hyperparameters.
+  - For image data: use a pretrained ResNet18 with minimal fine-tuning.
+  - For text data: use TF-IDF + Logistic Regression.
+  - Do NOT spend time on feature engineering, hyperparameter tuning, or ensembling.
+  - The goal is a quick, reliable baseline — not a competitive score.
   - All the provided data is already prepared and available in the `./input` directory. There is no need to unzip any files.
-  - Do not include other models that are not directly related to the model described.
   - Use PyTorch rather than TensorFlow. Use CUDA if you need. All the necessary libraries are installed.
   - The code should implement the proposed solution and print the value of the evaluation metric computed on a hold-out validation set.
   - Only use the provided train data in the `./input` directory. Do not load test data.
@@ -41,6 +34,5 @@ template: |
 variables:
   - task_description
   - target_column
-  - model_name
-  - example_code
-  - research_context
+  - task_type
+  - data_modality

@@ -692,7 +692,7 @@ class TestClientSetup:
 
         agent_configs = captured_kwargs[0]["agent_configs"]
         assert agent_configs is not None
-        assert len(agent_configs) == 14
+        assert len(agent_configs) == 16
 
 
 # ===========================================================================

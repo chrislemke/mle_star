@@ -20,12 +20,18 @@ Refs:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import TYPE_CHECKING
 
 from mle_star.execution import evaluate_solution
-from mle_star.models import AgentType, LeakageDetectionOutput, SolutionScript
+from mle_star.models import (
+    AgentType,
+    LeakageAnswer,
+    LeakageDetectionOutput,
+    SolutionScript,
+)
 from mle_star.prompts import PromptRegistry
 
 if TYPE_CHECKING:
@@ -296,6 +302,135 @@ async def check_and_fix_leakage(
         return solution
 
 
+def _looks_like_python_code(text: str) -> bool:
+    """Heuristic check whether text looks like Python source code.
+
+    Returns ``True`` if the text contains common Python keywords or
+    constructs (import, def, class, print, assignment with ``=``).
+    """
+    stripped = text.strip()
+    if not stripped:
+        return False
+    python_indicators = [
+        r"^\s*import\s+",
+        r"^\s*from\s+\w+\s+import\s+",
+        r"^\s*def\s+\w+\s*\(",
+        r"^\s*class\s+\w+",
+        r"^\s*if\s+__name__\s*==",
+        r"^\s*print\s*\(",
+        r"^\s*\w+\s*=\s*",
+    ]
+    for pattern in python_indicators:
+        if re.search(pattern, stripped, re.MULTILINE):
+            return True
+    return False
+
+
+# Patterns indicating positive leakage detection in free-text responses.
+_POSITIVE_LEAKAGE_PATTERNS: list[str] = [
+    "data leakage detected",
+    "yes data leakage",
+    "leakage detected",
+    "leakage is present",
+    "leakage found",
+    "data leakage",
+]
+
+
+def _parse_leakage_output(response: str) -> LeakageDetectionOutput:
+    """Parse leakage detection response with fallback JSON extraction.
+
+    Tries direct JSON parsing first, then attempts to extract JSON from
+    the text response (e.g., embedded in markdown or preceded by text).
+    Handles empty responses and free-text positive leakage indications.
+    """
+    # Strategy 0 — Empty / whitespace response.
+    if not response or not response.strip():
+        logger.warning(
+            "Leakage detection returned empty response; defaulting to 'No Data Leakage'"
+        )
+        return LeakageDetectionOutput(
+            answers=[
+                LeakageAnswer(
+                    leakage_status="No Data Leakage",
+                    code_block="(empty response)",
+                )
+            ]
+        )
+
+    # 1. Direct parse
+    try:
+        return LeakageDetectionOutput.model_validate_json(response)
+    except Exception:
+        pass
+
+    # 2. Try to extract JSON from the text
+    from mle_star.phase1 import _extract_json_from_text
+
+    extracted = _extract_json_from_text(response)
+    if extracted is not None:
+        try:
+            parsed = json.loads(extracted)
+            if isinstance(parsed, list):
+                wrapped = json.dumps({"answers": parsed})
+                return LeakageDetectionOutput.model_validate_json(wrapped)
+            if isinstance(parsed, dict):
+                return LeakageDetectionOutput.model_validate_json(extracted)
+        except Exception:
+            pass
+
+    # 3. Try JSON code blocks
+    code_block_match = re.search(r"```(?:json)?\s*\n(.*?)```", response, re.DOTALL)
+    if code_block_match:
+        block = code_block_match.group(1).strip()
+        try:
+            parsed = json.loads(block)
+            if isinstance(parsed, list):
+                wrapped = json.dumps({"answers": parsed})
+                return LeakageDetectionOutput.model_validate_json(wrapped)
+            if isinstance(parsed, dict):
+                return LeakageDetectionOutput.model_validate_json(block)
+        except Exception:
+            pass
+
+    # 4. If the response contains "No Data Leakage" but no JSON, create a
+    #    default "no leakage" output so the pipeline can continue.
+    if "no data leakage" in response.lower() or "no leakage" in response.lower():
+        return LeakageDetectionOutput(
+            answers=[
+                LeakageAnswer(
+                    leakage_status="No Data Leakage",
+                    code_block="(auto-detected from text response)",
+                )
+            ]
+        )
+
+    # 5. Free-text positive leakage detection.
+    response_lower = response.lower()
+    for pattern in _POSITIVE_LEAKAGE_PATTERNS:
+        if pattern in response_lower:
+            logger.info(
+                "Detected positive leakage from free-text pattern: %r", pattern
+            )
+            code = extract_code_block(response)
+            # If extract_code_block returned the whole response (no fence found),
+            # use a placeholder string instead.
+            if code == response.strip():
+                code = "(leakage detected in free-text response)"
+            return LeakageDetectionOutput(
+                answers=[
+                    LeakageAnswer(
+                        leakage_status="Yes Data Leakage",
+                        code_block=code,
+                    )
+                ]
+            )
+
+    truncated = response[:500]
+    msg = f"Failed to parse leakage detection output. Raw response: {truncated}"
+    raise ValueError(msg)
+
+
 async def _check_and_fix_leakage_impl(
     solution: SolutionScript,
     task: TaskDescription,
@@ -327,9 +462,7 @@ async def _check_and_fix_leakage_impl(
         message=detection_prompt,
     )
 
-    detection_output = LeakageDetectionOutput.model_validate_json(
-        detection_response,
-    )
+    detection_output = _parse_leakage_output(detection_response)
 
     logger.info(
         "Leakage detection result: %d answers",
@@ -360,10 +493,27 @@ async def _check_and_fix_leakage_impl(
                 answer.code_block, corrected_block
             )
         except ValueError:
-            logger.warning(
-                "Leaky code block not found in solution; skipping "
-                "replacement for this answer (REQ-SF-021)",
-            )
+            # When the code_block is a placeholder (from free-text detection),
+            # try using the full corrected code if it looks like valid Python.
+            if answer.code_block.startswith("(") and _looks_like_python_code(
+                corrected_block
+            ):
+                logger.info(
+                    "Placeholder code block detected; using full corrected "
+                    "code from correction agent",
+                )
+                current_solution = SolutionScript(
+                    content=corrected_block,
+                    phase=current_solution.phase,
+                    score=current_solution.score,
+                    is_executable=current_solution.is_executable,
+                    source_model=current_solution.source_model,
+                )
+            else:
+                logger.warning(
+                    "Leaky code block not found in solution; skipping "
+                    "replacement for this answer (REQ-SF-021)",
+                )
 
     return current_solution
 

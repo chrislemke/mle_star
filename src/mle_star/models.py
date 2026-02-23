@@ -301,6 +301,8 @@ class AgentType(StrEnum):
     agent naming convention (Section 6).
     """
 
+    BASELINE = "baseline"
+    RESEARCHER = "researcher"
     RETRIEVER = "retriever"
     INIT = "init"
     MERGER = "merger"
@@ -437,6 +439,30 @@ class LeakageDetectionOutput(BaseModel):
             msg = "answers list must contain at least 1 entry"
             raise ValueError(msg)
         return v
+
+
+class ResearchFindings(BaseModel):
+    """Structured output from the internet research agent.
+
+    Contains model recommendations, feature engineering ideas,
+    preprocessing techniques, and other domain-specific insights
+    gathered from web research.
+
+    Attributes:
+        model_recommendations: Recommended model architectures.
+        feature_engineering_ideas: Ideas for feature engineering.
+        preprocessing_ideas: Preprocessing pipeline suggestions.
+        other_insights: Other domain-specific insights.
+        raw_summary: Raw summary text of all findings.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    model_recommendations: list[str]
+    feature_engineering_ideas: list[str]
+    preprocessing_ideas: list[str]
+    other_insights: list[str]
+    raw_summary: str
 
 
 class DataContaminationResult(BaseModel):
@@ -612,6 +638,9 @@ class Phase1Result(BaseModel):
     candidate_scores: list[float | None]
     initial_solution: SolutionScript
     initial_score: float
+    baseline_score: float | None = None
+    baseline_solution: SolutionScript | None = None
+    research_findings: ResearchFindings | None = None
 
 
 class Phase2Result(BaseModel):
@@ -804,11 +833,21 @@ def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
         A fresh dict mapping every ``AgentType`` to its default config.
     """
     return {
+        AgentType.BASELINE: AgentConfig(
+            agent_type=AgentType.BASELINE,
+            description="Generates a simple baseline solution with default settings.",
+            tools=_EXECUTION_TOOLS,
+        ),
+        AgentType.RESEARCHER: AgentConfig(
+            agent_type=AgentType.RESEARCHER,
+            description="Conducts internet research for model architectures and techniques.",
+            tools=["WebSearch", "WebFetch"],
+            output_schema=ResearchFindings,
+        ),
         AgentType.RETRIEVER: AgentConfig(
             agent_type=AgentType.RETRIEVER,
             description="Retrieves ML models and example code from the web.",
             tools=["WebSearch", "WebFetch"],
-            output_schema=RetrieverOutput,
         ),
         AgentType.INIT: AgentConfig(
             agent_type=AgentType.INIT,

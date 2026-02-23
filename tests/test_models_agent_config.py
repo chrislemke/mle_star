@@ -57,7 +57,7 @@ RETRIEVER_TOOLS: list[str] = ["WebSearch", "WebFetch"]
 
 # Mapping of agent types to expected output_schema (None means no schema)
 AGENT_OUTPUT_SCHEMAS: dict[AgentType, type[BaseModel] | None] = {
-    AgentType.RETRIEVER: RetrieverOutput,
+    AgentType.RETRIEVER: None,
     AgentType.INIT: None,
     AgentType.MERGER: None,
     AgentType.ABLATION: None,
@@ -512,10 +512,10 @@ class TestBuildDefaultAgentConfigsStructure:
         configs = build_default_agent_configs()
         assert isinstance(configs, dict)
 
-    def test_returns_exactly_14_configs(self) -> None:
-        """The dict contains exactly 14 entries (one per agent)."""
+    def test_returns_exactly_16_configs(self) -> None:
+        """The dict contains exactly 16 entries (one per agent)."""
         configs = build_default_agent_configs()
-        assert len(configs) == 14
+        assert len(configs) == 16
 
     def test_keys_are_all_agent_type_values(self) -> None:
         """Every key is an AgentType enum value."""
@@ -570,10 +570,10 @@ class TestBuildDefaultAgentConfigsRetriever:
         assert retriever.tools == ["WebSearch", "WebFetch"]
 
     def test_retriever_output_schema(self) -> None:
-        """A_retriever has output_schema=RetrieverOutput."""
+        """A_retriever has no output_schema (parsed from prompt text)."""
         configs = build_default_agent_configs()
         retriever = configs[AgentType.RETRIEVER]
-        assert retriever.output_schema is RetrieverOutput
+        assert retriever.output_schema is None
 
 
 @pytest.mark.unit
@@ -604,10 +604,10 @@ class TestBuildDefaultAgentConfigsReadOnlyAgents:
 class TestBuildDefaultAgentConfigsOutputSchemas:
     """Agents have the correct output_schema assignments (REQ-OR-008)."""
 
-    def test_retriever_output_schema_is_retriever_output(self) -> None:
-        """A_retriever has output_schema=RetrieverOutput."""
+    def test_retriever_output_schema_is_none(self) -> None:
+        """A_retriever has no output_schema (parsed from prompt text)."""
         configs = build_default_agent_configs()
-        assert configs[AgentType.RETRIEVER].output_schema is RetrieverOutput
+        assert configs[AgentType.RETRIEVER].output_schema is None
 
     def test_extractor_output_schema_is_extractor_output(self) -> None:
         """A_extractor has output_schema=ExtractorOutput."""
@@ -662,15 +662,16 @@ class TestBuildDefaultAgentConfigsToolSummary:
                     f"{agent_type.value} has unknown tool: {tool}"
                 )
 
-    def test_retriever_is_only_agent_with_web_tools(self) -> None:
-        """Only A_retriever has WebSearch or WebFetch in its tools."""
+    def test_web_tools_only_on_web_agents(self) -> None:
+        """Only A_retriever and A_researcher have WebSearch or WebFetch in their tools."""
         configs = build_default_agent_configs()
         web_tools = {"WebSearch", "WebFetch"}
+        web_agents = {AgentType.RETRIEVER, AgentType.RESEARCHER}
         for agent_type, config in configs.items():
             assert config.tools is not None
             has_web_tools = bool(web_tools & set(config.tools))
-            if agent_type == AgentType.RETRIEVER:
-                assert has_web_tools, "Retriever should have web tools"
+            if agent_type in web_agents:
+                assert has_web_tools, f"{agent_type.value} should have web tools"
             else:
                 assert not has_web_tools, (
                     f"{agent_type.value} should not have web tools"
@@ -835,12 +836,11 @@ class TestDefaultConfigIntegration:
         else:
             assert result is None
 
-    def test_retriever_to_output_format_produces_retriever_schema(self) -> None:
-        """Retriever default config's to_output_format produces RetrieverOutput schema."""
+    def test_retriever_to_output_format_is_none(self) -> None:
+        """Retriever default config has no output_schema (parsed from prompt text)."""
         configs = build_default_agent_configs()
         result = configs[AgentType.RETRIEVER].to_output_format()
-        assert result is not None
-        assert result["schema"] == RetrieverOutput.model_json_schema()
+        assert result is None
 
     def test_extractor_to_output_format_produces_extractor_schema(self) -> None:
         """Extractor default config's to_output_format produces ExtractorOutput schema."""

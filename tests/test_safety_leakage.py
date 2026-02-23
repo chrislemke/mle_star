@@ -1595,3 +1595,189 @@ class TestLeakagePromptTemplates:
         template = registry.get(AgentType.LEAKAGE, variant="correction")
         rendered = template.render(code="x = 1")
         assert "leakage" in rendered.lower()
+
+
+# ===========================================================================
+# _parse_leakage_output — empty / whitespace / free-text handling
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestParseLeakageOutputEmptyResponse:
+    """_parse_leakage_output handles empty and whitespace responses."""
+
+    def test_empty_response_defaults_to_no_leakage(self) -> None:
+        """Empty string response defaults to 'No Data Leakage'."""
+        from mle_star.safety import _parse_leakage_output
+
+        result = _parse_leakage_output("")
+        assert len(result.answers) == 1
+        assert result.answers[0].leakage_status == "No Data Leakage"
+        assert result.answers[0].code_block == "(empty response)"
+
+    def test_whitespace_response_defaults_to_no_leakage(self) -> None:
+        """Whitespace-only response defaults to 'No Data Leakage'."""
+        from mle_star.safety import _parse_leakage_output
+
+        result = _parse_leakage_output("   \n\t  ")
+        assert len(result.answers) == 1
+        assert result.answers[0].leakage_status == "No Data Leakage"
+
+    def test_none_response_defaults_to_no_leakage(self) -> None:
+        """None-like empty response defaults to 'No Data Leakage'."""
+        from mle_star.safety import _parse_leakage_output
+
+        result = _parse_leakage_output("")
+        assert result.answers[0].leakage_status == "No Data Leakage"
+
+
+@pytest.mark.unit
+class TestParseLeakageOutputFreeTextPositive:
+    """_parse_leakage_output handles free-text positive leakage responses."""
+
+    def test_free_text_positive_leakage_parsed(self) -> None:
+        """Free-text 'data leakage detected' is parsed as positive leakage."""
+        from mle_star.safety import _parse_leakage_output
+
+        response = (
+            "After reviewing the code, I found that there is data leakage detected "
+            "in the preprocessing pipeline. The scaler is fit on all data."
+        )
+        result = _parse_leakage_output(response)
+        assert len(result.answers) == 1
+        assert result.answers[0].leakage_status == "Yes Data Leakage"
+
+    def test_free_text_with_code_block_extracts_code(self) -> None:
+        """Free-text with a code fence extracts the code block."""
+        from mle_star.safety import _parse_leakage_output
+
+        response = (
+            "Data leakage detected in the following code:\n"
+            "```python\n"
+            "scaler.fit(all_data)\n"
+            "```\n"
+            "The scaler should only be fit on training data."
+        )
+        result = _parse_leakage_output(response)
+        assert result.answers[0].leakage_status == "Yes Data Leakage"
+        assert result.answers[0].code_block == "scaler.fit(all_data)"
+
+    def test_free_text_without_code_block_uses_placeholder(self) -> None:
+        """Free-text without code fence uses placeholder code block."""
+        from mle_star.safety import _parse_leakage_output
+
+        response = "Yes, there is data leakage detected in the code."
+        result = _parse_leakage_output(response)
+        assert result.answers[0].code_block == "(leakage detected in free-text response)"
+
+    @pytest.mark.parametrize(
+        "pattern",
+        [
+            "data leakage detected",
+            "yes data leakage",
+            "leakage detected",
+            "leakage is present",
+            "leakage found",
+            "data leakage",
+        ],
+    )
+    def test_various_positive_leakage_patterns(self, pattern: str) -> None:
+        """Various positive leakage phrases are detected."""
+        from mle_star.safety import _parse_leakage_output
+
+        response = f"After analysis: {pattern} in the preprocessing step."
+        result = _parse_leakage_output(response)
+        assert result.answers[0].leakage_status == "Yes Data Leakage"
+
+    @pytest.mark.parametrize(
+        "pattern",
+        [
+            "Data Leakage Detected",
+            "YES DATA LEAKAGE",
+            "Leakage Detected",
+        ],
+    )
+    def test_case_insensitive_pattern_matching(self, pattern: str) -> None:
+        """Pattern matching is case-insensitive."""
+        from mle_star.safety import _parse_leakage_output
+
+        response = f"Result: {pattern}."
+        result = _parse_leakage_output(response)
+        assert result.answers[0].leakage_status == "Yes Data Leakage"
+
+
+@pytest.mark.unit
+class TestFreeTextDetectionCorrectionFlow:
+    """Integration test for free-text leakage detection triggering correction."""
+
+    async def test_free_text_detection_triggers_correction_flow(self) -> None:
+        """Free-text positive detection triggers the correction agent."""
+        from mle_star.safety import check_and_fix_leakage
+
+        client = AsyncMock()
+        # Detection returns free-text with positive leakage and a code block
+        free_text_detection = (
+            "Data leakage detected in the preprocessing:\n"
+            "```python\n"
+            "scaler.fit(all_data)\n"
+            "```"
+        )
+        corrected_code = (
+            "import pandas as pd\n"
+            "scaler.fit(train_data_only)\n"
+            'print(f"Final Validation Performance: {0.9}")\n'
+        )
+        correction_response = f"```python\n{corrected_code}\n```"
+        client.send_message = AsyncMock(
+            side_effect=[free_text_detection, correction_response]
+        )
+
+        solution = _make_solution(content="scaler.fit(all_data)\nprint('done')")
+
+        with patch(
+            f"{_SAFETY}.PromptRegistry",
+        ) as mock_registry_cls:
+            mock_registry = mock_registry_cls.return_value
+            mock_template = AsyncMock()
+            mock_template.render = lambda **kwargs: "prompt"
+            mock_registry.get.return_value = mock_template
+
+            result = await check_and_fix_leakage(solution, _make_task(), client)
+
+        # Correction agent should have been called
+        assert client.send_message.call_count == 2
+        assert isinstance(result, SolutionScript)
+
+    async def test_placeholder_code_block_uses_full_corrected_code(self) -> None:
+        """When code_block is a placeholder, full corrected code replaces solution."""
+        from mle_star.safety import check_and_fix_leakage
+
+        client = AsyncMock()
+        # Free-text without code fence -> placeholder code block
+        free_text_detection = "Yes, data leakage detected in this solution."
+        corrected_code = (
+            "import pandas as pd\n"
+            "df = pd.read_csv('train.csv')\n"
+            "scaler.fit(df[train_idx])\n"
+            'print(f"Final Validation Performance: {0.9}")\n'
+        )
+        correction_response = f"```python\n{corrected_code}\n```"
+        client.send_message = AsyncMock(
+            side_effect=[free_text_detection, correction_response]
+        )
+
+        solution = _make_solution(content="original code here")
+
+        with patch(
+            f"{_SAFETY}.PromptRegistry",
+        ) as mock_registry_cls:
+            mock_registry = mock_registry_cls.return_value
+            mock_template = AsyncMock()
+            mock_template.render = lambda **kwargs: "prompt"
+            mock_registry.get.return_value = mock_template
+
+            result = await check_and_fix_leakage(solution, _make_task(), client)
+
+        # Should use the full corrected code since the code_block was a placeholder
+        # extract_code_block strips trailing whitespace
+        assert result.content == corrected_code.strip()

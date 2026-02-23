@@ -119,6 +119,8 @@ def _setup_standard_mocks(
 
     Returns a dict keyed by function name, suitable for use with patch().
     """
+    mock_baseline = AsyncMock(return_value=None)
+    mock_research = AsyncMock(return_value=None)
     mock_retrieve = AsyncMock(return_value=models)
     mock_generate = AsyncMock(side_effect=candidates)
     mock_leakage = AsyncMock(side_effect=lambda sol, _task, _client: sol)
@@ -139,6 +141,8 @@ def _setup_standard_mocks(
     mock_improve = MagicMock(return_value=True)
 
     return {
+        "generate_baseline": mock_baseline,
+        "conduct_research": mock_research,
         "retrieve_models": mock_retrieve,
         "generate_candidate": mock_generate,
         "check_and_fix_leakage": mock_leakage,
@@ -242,7 +246,9 @@ class TestRetrieveModelsInvocation:
         with _apply_patches(mocks):
             await run_phase1(task, config, client)
 
-        mocks["retrieve_models"].assert_awaited_once_with(task, config, client)
+        mocks["retrieve_models"].assert_awaited_once_with(
+            task, config, client, research_context=""
+        )
 
 
 # ===========================================================================
@@ -284,7 +290,9 @@ class TestCandidateGenerationLoop:
 
         assert mocks["generate_candidate"].await_count == 3
         for _i, model in enumerate(models):
-            mocks["generate_candidate"].assert_any_await(task, model, config, client)
+            mocks["generate_candidate"].assert_any_await(
+                task, model, config, client, research_context=""
+            )
 
     async def test_leakage_check_called_for_each_successful_candidate(self) -> None:
         """check_and_fix_leakage is called for each non-None candidate."""

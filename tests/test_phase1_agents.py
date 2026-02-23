@@ -1754,7 +1754,8 @@ class TestRetrieverPromptTemplateIntegration:
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
         rendered = template.render(
-            task_description="Predict house prices", target_column="Not specified", M=4
+            task_description="Predict house prices", target_column="Not specified", M=4,
+            research_context="",
         )
         assert "Predict house prices" in rendered
         assert "4" in rendered
@@ -1807,6 +1808,7 @@ class TestInitPromptTemplateIntegration:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "Classify images" in rendered
         assert "xgboost" in rendered

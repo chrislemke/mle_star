@@ -218,7 +218,7 @@ class TestCandidateGenerationSequential:
 
         call_order: list[str] = []
 
-        async def _gen_side(task: Any, model: Any, config: Any, client: Any) -> Any:
+        async def _gen_side(task: Any, model: Any, config: Any, client: Any, **kwargs: Any) -> Any:
             call_order.append(f"gen_{model.model_name}")
             idx = int(model.model_name.split("_")[1])
             return candidates[idx]
@@ -1647,7 +1647,8 @@ class TestRetrieverPromptFidelity:
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
         rendered = template.render(
-            task_description="Test task", target_column="Not specified", M=5
+            task_description="Test task", target_column="Not specified", M=5,
+            research_context="",
         )
         assert "model_name" in rendered
         assert "example_code" in rendered
@@ -1659,7 +1660,8 @@ class TestRetrieverPromptFidelity:
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
         rendered = template.render(
-            task_description="Test task", target_column="Not specified", M=7
+            task_description="Test task", target_column="Not specified", M=7,
+            research_context="",
         )
         assert "7" in rendered
 
@@ -1673,6 +1675,7 @@ class TestRetrieverPromptFidelity:
             task_description="Classify images into 10 categories",
             target_column="Not specified",
             M=3,
+            research_context="",
         )
         assert "Classify images" in rendered
 
@@ -1683,7 +1686,8 @@ class TestRetrieverPromptFidelity:
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
         rendered = template.render(
-            task_description="Test", target_column="Not specified", M=3
+            task_description="Test", target_column="Not specified", M=3,
+            research_context="",
         )
         assert "effective" in rendered.lower() or "model" in rendered.lower()
 
@@ -1694,7 +1698,8 @@ class TestRetrieverPromptFidelity:
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
         rendered = template.render(
-            task_description="Test", target_column="Not specified", M=3
+            task_description="Test", target_column="Not specified", M=3,
+            research_context="",
         )
         assert "example code" in rendered.lower() or "example_code" in rendered.lower()
 
@@ -1719,6 +1724,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "Kaggle grandmaster" in rendered
 
@@ -1733,6 +1739,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "simple" in rendered.lower()
         assert "ensembl" in rendered.lower()
@@ -1748,6 +1755,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "./input" in rendered
 
@@ -1762,6 +1770,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "PyTorch" in rendered
 
@@ -1776,6 +1785,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "30,000" in rendered or "30000" in rendered
 
@@ -1790,6 +1800,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "Final Validation Performance" in rendered
 
@@ -1804,6 +1815,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "single code block" in rendered.lower()
 
@@ -1818,6 +1830,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "exit()" in rendered
 
@@ -1832,6 +1845,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
+            research_context="",
         )
         assert "try:" in rendered and "except:" in rendered
 
@@ -1846,6 +1860,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="my_special_model",
             example_code="import special",
+            research_context="",
         )
         assert "my_special_model" in rendered
 
@@ -1860,6 +1875,7 @@ class TestInitPromptFidelity:
             target_column="Not specified",
             model_name="xgboost",
             example_code="from xgboost import XGBClassifier",
+            research_context="",
         )
         assert "from xgboost import XGBClassifier" in rendered
 

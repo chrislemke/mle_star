@@ -91,6 +91,31 @@ def _check_claude_cli() -> None:
         sys.exit(1)
 
 
+def _print_startup_summary(task: TaskDescription, config: PipelineConfig) -> None:
+    """Print a startup summary banner to stdout.
+
+    Args:
+        task: Task description with competition metadata.
+        config: Pipeline configuration with hyperparameters.
+    """
+    sep = "=" * 60
+    print(sep)
+    print("MLE-STAR Pipeline")
+    print(sep)
+    print(f"  Competition:  {task.competition_id}")
+    print(f"  Task type:    {task.task_type}")
+    print(f"  Metric:       {task.evaluation_metric} ({task.metric_direction})")
+    print(f"  Data dir:     {task.data_dir}")
+    print(f"  Model:        {config.model}")
+    print(f"  Time limit:   {config.time_limit_seconds}s")
+    print(
+        f"  Hyperparams:  M={config.num_retrieved_models}, "
+        f"T={config.outer_loop_steps}, K={config.inner_loop_steps}, "
+        f"L={config.num_parallel_solutions}, R={config.ensemble_rounds}"
+    )
+    print(sep)
+
+
 def main() -> int:
     """Entry point for the mle_star CLI application.
 
@@ -116,6 +141,10 @@ def main() -> int:
         if args.config is not None:
             config_data = _load_yaml(args.config, "config")
             config = PipelineConfig(**config_data)
+
+        # Print startup summary
+        effective_config = config if config is not None else PipelineConfig()
+        _print_startup_summary(task, effective_config)
 
         # Run the pipeline
         result = run_pipeline_sync(task, config)

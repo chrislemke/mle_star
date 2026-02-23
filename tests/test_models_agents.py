@@ -36,6 +36,8 @@ import pytest
 # ---------------------------------------------------------------------------
 
 AGENT_TYPE_VALUES: list[str] = [
+    "baseline",
+    "researcher",
     "retriever",
     "init",
     "merger",
@@ -132,9 +134,9 @@ class TestAgentType:
         """AgentType inherits from StrEnum."""
         assert issubclass(AgentType, StrEnum)
 
-    def test_member_count_is_fourteen(self) -> None:
-        """Enum has exactly 14 members."""
-        assert len(AgentType) == 14
+    def test_member_count(self) -> None:
+        """Enum has exactly 16 members (14 original + baseline + researcher)."""
+        assert len(AgentType) == 16
 
     @pytest.mark.parametrize("value", AGENT_TYPE_VALUES)
     def test_contains_expected_value(self, value: str) -> None:

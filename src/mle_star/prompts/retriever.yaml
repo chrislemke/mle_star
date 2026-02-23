@@ -5,6 +5,8 @@ template: |
   {task_description}
   - The target column to predict is: {target_column}
 
+  {research_context}
+
   # Your task
   - List {M} recent effective models and their example codes to win the above competition.
 
@@ -12,10 +14,18 @@ template: |
   - The example code should be concise and simple.
   - You must provide an example code, i.e., do not just mention GitHubs or papers.
 
-  Use this JSON schema:
-  Model = {{'model_name': str, 'example_code': str}}
-  Return: list[Model]
+  # Output format — MANDATORY
+  You MUST respond with ONLY a valid JSON object matching this schema.
+  Do NOT include any text, markdown, or explanation before or after the JSON.
+  Do NOT wrap the JSON in code fences.
+
+  Schema:
+  {{"models": [{{"model_name": "<string>", "example_code": "<string>"}}, ...]}}
+
+  Example output:
+  {{"models": [{{"model_name": "XGBoost", "example_code": "import xgboost as xgb\\nmodel = xgb.XGBRegressor()\\nmodel.fit(X_train, y_train)"}}, {{"model_name": "LightGBM", "example_code": "import lightgbm as lgb\\nmodel = lgb.LGBMRegressor()\\nmodel.fit(X_train, y_train)"}}]}}
 variables:
   - task_description
   - target_column
   - M
+  - research_context

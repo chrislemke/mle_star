@@ -606,7 +606,7 @@ class TestClaudeCLIVersionCheck:
         from mle_star.orchestrator import check_claude_cli_version
 
         mock_result = MagicMock()
-        mock_result.stdout = "claude 1.0.0\n"
+        mock_result.stdout = "1.0.0 (Claude Code)\n"
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/claude"),
@@ -619,7 +619,7 @@ class TestClaudeCLIVersionCheck:
         from mle_star.orchestrator import check_claude_cli_version
 
         mock_result = MagicMock()
-        mock_result.stdout = "claude 2.0.0\n"
+        mock_result.stdout = "2.0.0 (Claude Code)\n"
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/claude"),
@@ -632,7 +632,7 @@ class TestClaudeCLIVersionCheck:
         from mle_star.orchestrator import check_claude_cli_version
 
         mock_result = MagicMock()
-        mock_result.stdout = "claude 1.0.1\n"
+        mock_result.stdout = "1.0.1 (Claude Code)\n"
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/claude"),
@@ -645,7 +645,7 @@ class TestClaudeCLIVersionCheck:
         from mle_star.orchestrator import check_claude_cli_version
 
         mock_result = MagicMock()
-        mock_result.stdout = "claude 0.9.0\n"
+        mock_result.stdout = "0.9.0 (Claude Code)\n"
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/claude"),
@@ -669,7 +669,7 @@ class TestClaudeCLIVersionCheck:
         from mle_star.orchestrator import check_claude_cli_version
 
         mock_result = MagicMock()
-        mock_result.stdout = "claude 0.0.1\n"
+        mock_result.stdout = "0.0.1 (Claude Code)\n"
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/claude"),
@@ -687,7 +687,7 @@ class TestClaudeCLIVersionCheck:
         from mle_star.orchestrator import check_claude_cli_version
 
         mock_result = MagicMock()
-        mock_result.stdout = f"claude {version}\n"
+        mock_result.stdout = f"{version} (Claude Code)\n"
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/claude"),
@@ -705,7 +705,7 @@ class TestClaudeCLIVersionCheck:
         from mle_star.orchestrator import check_claude_cli_version
 
         mock_result = MagicMock()
-        mock_result.stdout = f"claude {version}\n"
+        mock_result.stdout = f"{version} (Claude Code)\n"
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/claude"),
@@ -718,7 +718,7 @@ class TestClaudeCLIVersionCheck:
         from mle_star.orchestrator import check_claude_cli_version
 
         mock_result = MagicMock()
-        mock_result.stdout = "claude 0.9.0\n"
+        mock_result.stdout = "0.9.0 (Claude Code)\n"
 
         with (
             patch("shutil.which", return_value="/usr/local/bin/claude"),
@@ -959,13 +959,13 @@ class TestConcurrentSessionLimit:
 class TestAgentNameUniqueness:
     """All 14 agent names from build_default_agent_configs are unique (REQ-OR-057)."""
 
-    def test_agent_configs_has_14_entries(self) -> None:
-        """build_default_agent_configs returns exactly 14 agent definitions."""
+    def test_agent_configs_has_16_entries(self) -> None:
+        """build_default_agent_configs returns exactly 16 agent definitions."""
         # Act
         agents = build_default_agent_configs()
 
         # Assert
-        assert len(agents) == 14
+        assert len(agents) == 16
 
     def test_all_agent_names_are_unique(self) -> None:
         """All 14 agent names (keys) are unique."""
@@ -1103,11 +1103,11 @@ class TestOrchestratorConstraintProperties:
         assert budgets["phase2_per_path"] == pytest.approx(expected_per_path, rel=1e-6)
 
     @given(
-        num_agents=st.just(14),
+        num_agents=st.just(16),
     )
     @settings(max_examples=3, deadline=5000)
     def test_agent_count_invariant(self, num_agents: int) -> None:
-        """Agent count is always exactly 14."""
+        """Agent count is always exactly 16."""
         agents = build_default_agent_configs()
         assert len(agents) == num_agents
 

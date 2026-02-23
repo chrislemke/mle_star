@@ -78,7 +78,7 @@ def check_claude_cli_version() -> None:
         )
         version_str = result.stdout.strip()
         parts = version_str.split()
-        installed = parts[-1] if parts else "0.0.0"
+        installed = parts[0] if parts else "0.0.0"
     except (_subprocess_mod.TimeoutExpired, FileNotFoundError) as exc:
         msg = f"Cannot determine claude CLI version: {exc}"
         raise FileNotFoundError(msg) from exc
@@ -98,6 +98,59 @@ def _parse_version_tuple(version: str) -> tuple[int, ...]:
         Tuple of integer components, e.g. ``(1, 0, 0)``.
     """
     return tuple(int(part) for part in version.split("."))
+
+
+# ---------------------------------------------------------------------------
+# JSON output extraction helper
+# ---------------------------------------------------------------------------
+
+
+def _extract_result_from_json_output(raw_output: str) -> str:
+    """Extract the result content from Claude CLI ``--output-format json`` output.
+
+    When ``--output-format json`` is active, the CLI returns a JSON array of
+    conversation messages.  The actual agent result lives in the last message
+    with ``"type": "result"`` under its ``"result"`` key.
+
+    If *raw_output* is not a JSON array or contains no result message, the
+    raw string is returned unchanged so that downstream callers can still
+    attempt their own parsing (graceful fallback).
+
+    Args:
+        raw_output: Raw stdout from ``claude -p --output-format json``.
+
+    Returns:
+        The extracted result string, or *raw_output* as fallback.
+    """
+    stripped = raw_output.strip()
+    if not stripped.startswith("["):
+        return raw_output
+
+    try:
+        messages = json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        return raw_output
+
+    if not isinstance(messages, list) or len(messages) == 0:
+        return raw_output
+
+    # Find the last message with type == "result"
+    result_msg = None
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("type") == "result":
+            result_msg = msg
+
+    if result_msg is None:
+        return raw_output
+
+    content = result_msg.get("result", "")
+
+    # If the result field is already a dict or list, re-serialize for
+    # model_validate_json() compatibility.
+    if isinstance(content, (dict, list)):
+        return json.dumps(content)
+
+    return str(content)
 
 
 # ---------------------------------------------------------------------------
@@ -171,10 +224,14 @@ class ClaudeCodeClient:
             config, message, output_schema, use_structured_output, session_id
         )
 
+        # Remove CLAUDECODE env var to allow nested Claude CLI invocations
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
         stdout, stderr = await proc.communicate()
 
@@ -183,7 +240,19 @@ class ClaudeCodeClient:
             msg = f"claude -p failed (exit {proc.returncode}): {error_text[:500]}"
             raise RuntimeError(msg)
 
-        return stdout.decode("utf-8", errors="replace")
+        raw_output = stdout.decode("utf-8", errors="replace")
+
+        # When structured JSON output is active, the CLI wraps the result
+        # in a JSON array of conversation messages.  Extract the actual
+        # result content so that downstream model_validate_json() calls
+        # receive a plain JSON object.
+        effective_schema = output_schema
+        if effective_schema is None and use_structured_output:
+            effective_schema = config.output_schema
+        if effective_schema is not None:
+            return _extract_result_from_json_output(raw_output)
+
+        return raw_output
 
     def _build_command(
         self,
@@ -665,7 +734,11 @@ async def _execute_phase1_with_deadline(
         PipelineTimeoutError: If Phase 1 times out.
     """
     remaining = max(0.01, deadline - time.monotonic())
-    logger.info("=== Phase 1: Initial Solution Generation ===")
+    sep = "=" * 60
+    logger.info("%s", sep)
+    logger.info("Phase 1: Initial Solution Generation [1/4]")
+    logger.info("Budget: %.0fs remaining", remaining)
+    logger.info("%s", sep)
     p1_start = time.monotonic()
     try:
         result = await asyncio.wait_for(
@@ -678,7 +751,14 @@ async def _execute_phase1_with_deadline(
             f"Pipeline timed out during Phase 1 after {elapsed:.1f}s",
             diagnostics={"elapsed_time": elapsed},
         ) from None
-    logger.info("Phase 1 completed in %.1fs", time.monotonic() - p1_start)
+    p1_duration = time.monotonic() - p1_start
+    p1_remaining = max(0.0, deadline - time.monotonic())
+    logger.info(
+        "Phase 1 complete in %.1fs | Score: %s | Remaining: %.0fs",
+        p1_duration,
+        result.initial_score,
+        p1_remaining,
+    )
     return result
 
 
@@ -722,14 +802,24 @@ async def _execute_phase3_or_skip(
         logger.warning("Deadline exceeded; skipping Phase 3")
         return None, current_best
 
-    logger.info("=== Phase 3: Ensemble Construction ===")
+    sep = "=" * 60
+    p3_budget = budgets.get("phase3", 0.0)
+    logger.info("%s", sep)
+    logger.info("Phase 3: Ensemble Construction [3/4]")
+    logger.info("Budget: %.0fs allocated", p3_budget)
+    logger.info("%s", sep)
     p3_start = time.monotonic()
     try:
         phase3_result = await asyncio.wait_for(
             run_phase3(client, task, config, phase2_solutions),
-            timeout=max(0.01, budgets.get("phase3", 0.0)),
+            timeout=max(0.01, p3_budget),
         )
-        logger.info("Phase 3 completed in %.1fs", time.monotonic() - p3_start)
+        p3_duration = time.monotonic() - p3_start
+        logger.info(
+            "Phase 3 complete in %.1fs | Score: %s",
+            p3_duration,
+            phase3_result.best_ensemble_score,
+        )
         return phase3_result, phase3_result.best_ensemble
     except TimeoutError:
         logger.warning(
@@ -995,7 +1085,12 @@ async def _finalize_with_recovery(
         A ``FinalResult`` with pipeline-level duration.
     """
     try:
-        logger.info("=== Finalization ===")
+        sep = "=" * 60
+        elapsed = time.monotonic() - pipeline_start
+        logger.info("%s", sep)
+        logger.info("Finalization [4/4]")
+        logger.info("Elapsed: %.0fs", elapsed)
+        logger.info("%s", sep)
         final_result = await run_finalization(
             client,
             best_solution,
@@ -1142,6 +1237,24 @@ async def run_pipeline(
     # REQ-OR-047: Configure logging
     configure_logging(resolved_config)
 
+    logger.info(
+        "Pipeline configuration: model=%s, time_limit=%ds, M=%d, T=%d, K=%d, L=%d, R=%d",
+        resolved_config.model,
+        resolved_config.time_limit_seconds,
+        resolved_config.num_retrieved_models,
+        resolved_config.outer_loop_steps,
+        resolved_config.inner_loop_steps,
+        resolved_config.num_parallel_solutions,
+        resolved_config.ensemble_rounds,
+    )
+    logger.info(
+        "Task: competition_id=%s, metric=%s (%s), data_dir=%s",
+        task.competition_id,
+        task.evaluation_metric,
+        task.metric_direction,
+        task.data_dir,
+    )
+
     # REQ-OR-054: Verify Claude CLI availability
     check_claude_cli_version()
 
@@ -1208,10 +1321,22 @@ async def _execute_post_phase1(
     phase2_results: list[Phase2Result] = []
     phase2_solutions: list[SolutionScript] = [phase1_result.initial_solution]
     phase3_result: Phase3Result | None = None
+    phase_durations: dict[str, float] = {}
 
     # Phase 2 with deadline check and computed timeout (REQ-OR-024, REQ-OR-026)
     if time.monotonic() < deadline:
-        logger.info("=== Phase 2: Targeted Refinement ===")
+        sep = "=" * 60
+        p2_budget = budgets["phase2"]
+        p2_per_path = budgets["phase2_per_path"]
+        logger.info("%s", sep)
+        logger.info("Phase 2: Targeted Refinement [2/4]")
+        logger.info(
+            "Budget: %.0fs allocated (%.0fs per path, L=%d paths)",
+            p2_budget,
+            p2_per_path,
+            config.num_parallel_solutions,
+        )
+        logger.info("%s", sep)
         p2_start = time.monotonic()
         raw_phase2 = await _dispatch_phase2(
             client,
@@ -1224,16 +1349,39 @@ async def _execute_post_phase1(
             raw_phase2, phase1_result
         )
         best_solution = phase2_solutions[0]
-        logger.info("Phase 2 completed in %.1fs", time.monotonic() - p2_start)
+        p2_duration = time.monotonic() - p2_start
+        phase_durations["phase2"] = p2_duration
+        p2_best = max(
+            (r.best_score for r in phase2_results),
+            default=phase1_result.initial_score,
+        )
+        logger.info(
+            "Phase 2 complete in %.1fs | Best score: %s | Time used: %.0fs/%.0fs (%.0f%%)",
+            p2_duration,
+            p2_best,
+            p2_duration,
+            p2_budget,
+            (p2_duration / p2_budget * 100) if p2_budget > 0 else 0,
+        )
+        # Score progression
+        p2_scores = [r.best_score for r in phase2_results]
+        logger.info(
+            "Score progression: Phase 1=%s -> Phase 2 paths=%s",
+            phase1_result.initial_score,
+            p2_scores,
+        )
     else:
         logger.warning("Deadline exceeded; skipping Phase 2")
 
     # Phase 3 with timeout and skip logic (REQ-OR-015, REQ-OR-024)
+    p3_start = time.monotonic()
     phase3_result, best_solution = await _execute_phase3_or_skip(
         client, task, config, phase2_solutions, best_solution, deadline, budgets
     )
+    phase_durations["phase3"] = time.monotonic() - p3_start
 
     # Finalization with error recovery (REQ-OR-043)
+    fin_start = time.monotonic()
     final_result = await _finalize_with_recovery(
         client=client,
         best_solution=best_solution,
@@ -1244,10 +1392,21 @@ async def _execute_post_phase1(
         phase3_result=phase3_result,
         pipeline_start=pipeline_start,
     )
+    phase_durations["finalization"] = time.monotonic() - fin_start
 
     # Log summaries (REQ-OR-037, REQ-OR-038, REQ-OR-039)
     _log_solution_lineage(
         phase1_result, phase2_results, phase3_result, final_result.final_solution
+    )
+    _log_phase_summary(phase_durations)
+
+    # Pipeline completion log
+    total_elapsed = time.monotonic() - pipeline_start
+    final_score = final_result.final_solution.score
+    logger.info(
+        "Pipeline complete | Total: %.1fs | Final score: %s",
+        total_elapsed,
+        final_score,
     )
 
     return final_result

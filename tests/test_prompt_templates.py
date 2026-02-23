@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 ALL_AGENT_TYPES: list[str] = [
+    "baseline",
+    "researcher",
     "retriever",
     "init",
     "merger",
@@ -42,6 +44,8 @@ ALL_AGENT_TYPES: list[str] = [
 
 # Agents that use the single-template YAML format (no variants)
 SINGLE_TEMPLATE_AGENTS: list[str] = [
+    "baseline",
+    "researcher",
     "retriever",
     "init",
     "merger",
@@ -64,8 +68,10 @@ MULTI_TEMPLATE_AGENTS: list[str] = [
 
 # Expected variables for each agent type / variant
 EXPECTED_VARIABLES: dict[tuple[str, str | None], list[str]] = {
-    ("retriever", None): ["task_description", "target_column", "M"],
-    ("init", None): ["task_description", "target_column", "model_name", "example_code"],
+    ("baseline", None): ["task_description", "target_column", "task_type", "data_modality"],
+    ("researcher", None): ["task_description", "target_column", "task_type", "data_modality", "baseline_score"],
+    ("retriever", None): ["task_description", "target_column", "M", "research_context"],
+    ("init", None): ["task_description", "target_column", "model_name", "example_code", "research_context"],
     ("merger", None): ["base_code", "reference_code"],
     ("ablation", None): ["solution_script", "previous_ablations"],
     ("summarize", None): ["ablation_code", "raw_result"],
@@ -90,6 +96,8 @@ EXPECTED_VARIABLES: dict[tuple[str, str | None], list[str]] = {
 
 # Expected figure references
 EXPECTED_FIGURES: dict[tuple[str, str | None], str] = {
+    ("baseline", None): "N/A — Baseline generation",
+    ("researcher", None): "N/A — Internet research phase",
     ("retriever", None): "Figure 9",
     ("init", None): "Figure 10",
     ("merger", None): "Figure 11",
@@ -110,7 +118,7 @@ EXPECTED_FIGURES: dict[tuple[str, str | None], str] = {
     ("test", "contamination_check"): "Figure 28",
 }
 
-TOTAL_TEMPLATE_COUNT = 18
+TOTAL_TEMPLATE_COUNT = 20
 
 LEAKAGE_VARIANTS: list[str] = ["detection", "correction"]
 TEST_VARIANTS: list[str] = [
@@ -379,9 +387,9 @@ class TestSingleTemplateStructure:
         assert isinstance(figure_ref, str), (
             f"Agent '{agent_type}' figure_ref is not a string"
         )
-        assert re.match(r"^Figure \d+$", figure_ref), (
+        assert re.match(r"^(Figure \d+|N/A)", figure_ref), (
             f"Agent '{agent_type}' figure_ref '{figure_ref}' "
-            "does not match expected 'Figure N' format"
+            "does not match expected 'Figure N' or 'N/A' format"
         )
 
     @pytest.mark.parametrize("agent_type", SINGLE_TEMPLATE_AGENTS)
@@ -850,15 +858,15 @@ class TestTemplateContentQuality:
     def test_figure_ref_format_consistency(
         self, loaded_templates: dict[str, Any]
     ) -> None:
-        """Verify all figure_ref fields follow 'Figure N' format."""
+        """Verify all figure_ref fields follow 'Figure N' or 'N/A — ...' format."""
         entries = _get_all_template_entries(loaded_templates)
         for entry in entries:
             agent = entry["agent_type"]
             variant = entry.get("variant", "base")
             fig = entry["figure_ref"]
-            assert re.match(r"^Figure \d+$", fig), (
+            assert re.match(r"^(Figure \d+|N/A)", fig), (
                 f"{agent}/{variant}: figure_ref '{fig}' does not match "
-                "'Figure N' format"
+                "'Figure N' or 'N/A' format"
             )
 
 
