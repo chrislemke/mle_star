@@ -24,8 +24,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ChristophLemworking/mle_star"
-Repository = "https://github.com/ChristophLemworking/mle_star"
+Homepage = "https://github.com/chrislemke/mle_star"
+Repository = "https://github.com/chrislemke/mle_star"
 
 [project.scripts]
 mle_star = "mle_star.cli:main"

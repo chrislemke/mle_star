@@ -103,13 +103,34 @@ When L = 1, Phase 3 is skipped entirely and the single refined solution proceeds
 
 ## Installation
 
-Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+### Prerequisites
+
+- Python 3.13+
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) available on PATH — the CLI check runs at startup and exits with an error if not found.
+
+### Install from Git (for data science projects)
+
+The package has only two lightweight dependencies (`pydantic`, `pyyaml`), so it can be installed directly from git:
 
 ```bash
-uv sync
+uv add git+https://github.com/chrislemke/mle_star.git
 ```
 
-The pipeline also requires the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) to be available on PATH. The CLI check runs at startup and exits with an error if not found.
+```toml
+dependencies = [
+    "mle_star @ git+https://github.com/chrislemke/mle_star.git",
+]
+```
+
+After installation the `mle_star` CLI command and `python -m mle_star` are both available.
+
+### Development Setup
+
+```bash
+git clone https://github.com/chrislemke/mle_star.git
+cd mle_star
+uv sync
+```
 
 ## Usage
 
