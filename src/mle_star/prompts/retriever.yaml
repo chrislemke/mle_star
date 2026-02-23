@@ -3,6 +3,7 @@ figure_ref: "Figure 9"
 template: |
   # Competition
   {task_description}
+  - The target column to predict is: {target_column}
 
   # Your task
   - List {M} recent effective models and their example codes to win the above competition.
@@ -16,4 +17,5 @@ template: |
   Return: list[Model]
 variables:
   - task_description
+  - target_column
   - M

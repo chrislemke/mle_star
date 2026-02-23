@@ -8,6 +8,7 @@ template: |
 
   # Task description
   {task_description}
+  - The target column to predict is: {target_column}
 
   # Model description
   ## Model name
@@ -37,5 +38,6 @@ template: |
   - Do not use try: and except: or if else to ignore unintended behavior.
 variables:
   - task_description
+  - target_column
   - model_name
   - example_code

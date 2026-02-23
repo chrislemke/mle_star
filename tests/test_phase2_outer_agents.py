@@ -866,8 +866,8 @@ class TestInvokeExtractorStructuredOutput:
 class TestInvokeExtractorOutputFormat:
     """invoke_extractor uses output_format parameter in send_message (REQ-P2O-016)."""
 
-    async def test_send_message_includes_output_format(self) -> None:
-        """Client.send_message is called with an output_format parameter."""
+    async def test_send_message_does_not_include_output_format(self) -> None:
+        """Client.send_message no longer includes explicit output_format (auto-applied by client)."""
         from mle_star.phase2_outer import invoke_extractor
 
         client = AsyncMock()
@@ -888,7 +888,7 @@ class TestInvokeExtractorOutputFormat:
             )
 
         call_kwargs = client.send_message.call_args[1]
-        assert "output_format" in call_kwargs
+        assert "output_format" not in call_kwargs
 
 
 # ===========================================================================

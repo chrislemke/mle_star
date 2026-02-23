@@ -1,10 +1,9 @@
-"""Pipeline orchestrator: entry point, SDK client setup, and phase dispatch.
+"""Pipeline orchestrator: entry point, CLI client setup, and phase dispatch.
 
 Provides ``run_pipeline()`` (async) and ``run_pipeline_sync()`` (sync wrapper)
 as the top-level entry points for the MLE-STAR pipeline. Handles input
-validation, SDK client lifecycle, agent registration, system prompt
-construction, MCP server registration, sequential phase dispatch, time
-budgeting, cost tracking, and graceful shutdown.
+validation, Claude Code CLI client lifecycle, system prompt construction,
+sequential phase dispatch, time budgeting, and graceful shutdown.
 
 Refs:
     SRS 09a -- Orchestrator Entry Point & SDK Client Setup.
@@ -21,22 +20,18 @@ import json
 import logging
 import os
 from pathlib import Path
-import re
-import threading
+import shutil
+import subprocess as _subprocess_mod
 import time
 from typing import Any
 
-from claude_agent_sdk import (
-    AgentDefinition,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    HookMatcher,
-)
 from pydantic import BaseModel
 
 from mle_star.execution import detect_gpu_info, setup_working_directory
 from mle_star.finalization import run_finalization
 from mle_star.models import (
+    AgentConfig,
+    AgentType,
     FinalResult,
     Phase1Result,
     Phase2Result,
@@ -54,27 +49,42 @@ from mle_star.phase3 import run_phase3
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# SDK version check (REQ-OR-054)
+# Claude CLI version check (REQ-OR-054)
 # ---------------------------------------------------------------------------
 
-_MIN_SDK_VERSION = "0.1.39"
+_MIN_CLAUDE_CLI_VERSION = "1.0.0"
 
 
-def check_sdk_version() -> None:
-    """Verify that ``claude-agent-sdk`` meets the minimum version (REQ-OR-054).
+def check_claude_cli_version() -> None:
+    """Verify that ``claude`` CLI meets the minimum version (REQ-OR-054).
 
-    Reads ``claude_agent_sdk.__version__`` and compares it against the
-    minimum required version (0.1.39). Raises ``ImportError`` with a clear
-    message if the installed version is too old.
+    Checks that the ``claude`` executable is on ``PATH`` and that its
+    version is at least ``_MIN_CLAUDE_CLI_VERSION``.
 
     Raises:
-        ImportError: If the SDK version is below 0.1.39.
+        FileNotFoundError: If ``claude`` is not found on PATH.
+        ImportError: If the CLI version is below the minimum.
     """
-    import claude_agent_sdk as sdk
+    if shutil.which("claude") is None:
+        msg = "Claude Code CLI ('claude') not found on PATH"
+        raise FileNotFoundError(msg)
 
-    installed = getattr(sdk, "__version__", "0.0.0")
-    if _parse_version_tuple(installed) < _parse_version_tuple(_MIN_SDK_VERSION):
-        msg = f"claude-agent-sdk >= {_MIN_SDK_VERSION} required, but found {installed}"
+    try:
+        result = _subprocess_mod.run(
+            ["claude", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        version_str = result.stdout.strip()
+        parts = version_str.split()
+        installed = parts[-1] if parts else "0.0.0"
+    except (_subprocess_mod.TimeoutExpired, FileNotFoundError) as exc:
+        msg = f"Cannot determine claude CLI version: {exc}"
+        raise FileNotFoundError(msg) from exc
+
+    if _parse_version_tuple(installed) < _parse_version_tuple(_MIN_CLAUDE_CLI_VERSION):
+        msg = f"claude CLI >= {_MIN_CLAUDE_CLI_VERSION} required, but found {installed}"
         raise ImportError(msg)
 
 
@@ -82,12 +92,162 @@ def _parse_version_tuple(version: str) -> tuple[int, ...]:
     """Parse a dotted version string into a tuple of ints for comparison.
 
     Args:
-        version: A version string like ``"0.1.39"``.
+        version: A version string like ``"1.0.0"``.
 
     Returns:
-        Tuple of integer components, e.g. ``(0, 1, 39)``.
+        Tuple of integer components, e.g. ``(1, 0, 0)``.
     """
     return tuple(int(part) for part in version.split("."))
+
+
+# ---------------------------------------------------------------------------
+# ClaudeCodeClient — subprocess-based CLI wrapper
+# ---------------------------------------------------------------------------
+
+
+class ClaudeCodeClient:
+    """Subprocess-based client for Claude Code headless mode.
+
+    Wraps ``claude -p`` invocations as async subprocess calls. Each
+    ``send_message()`` call spawns a new subprocess.
+
+    Attributes:
+        system_prompt: Shared system prompt for all agents.
+        agent_configs: Mapping of AgentType to AgentConfig.
+        model: Default Claude model identifier.
+        permission_mode: CLI permission mode flag.
+    """
+
+    def __init__(
+        self,
+        *,
+        system_prompt: str,
+        agent_configs: dict[AgentType, AgentConfig],
+        model: str = "sonnet",
+        permission_mode: str = "dangerously-skip-permissions",
+    ) -> None:
+        """Initialize the Claude Code client.
+
+        Args:
+            system_prompt: Shared system prompt for all agents.
+            agent_configs: Mapping of AgentType to AgentConfig.
+            model: Default Claude model identifier.
+            permission_mode: CLI permission mode flag.
+        """
+        self._system_prompt = system_prompt
+        self._agent_configs = agent_configs
+        self._model = model
+        self._permission_mode = permission_mode
+
+    async def send_message(
+        self,
+        agent_type: AgentType,
+        message: str,
+        *,
+        output_schema: type[BaseModel] | None = None,
+        use_structured_output: bool = True,
+        session_id: str | None = None,
+    ) -> str:
+        """Send a message to an agent via ``claude -p``.
+
+        Args:
+            agent_type: The agent to invoke.
+            message: The prompt message.
+            output_schema: Per-call override for structured JSON output
+                schema. When ``None``, falls back to
+                ``AgentConfig.output_schema``.
+            use_structured_output: When ``False``, skip structured output
+                even if the agent config has an ``output_schema``.
+            session_id: Optional session ID for ``--resume`` continuation.
+
+        Returns:
+            The agent's text response.
+
+        Raises:
+            RuntimeError: If the subprocess exits with non-zero status.
+        """
+        config = self._agent_configs[agent_type]
+        cmd = self._build_command(
+            config, message, output_schema, use_structured_output, session_id
+        )
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            error_text = stderr.decode("utf-8", errors="replace")
+            msg = f"claude -p failed (exit {proc.returncode}): {error_text[:500]}"
+            raise RuntimeError(msg)
+
+        return stdout.decode("utf-8", errors="replace")
+
+    def _build_command(
+        self,
+        config: AgentConfig,
+        message: str,
+        output_schema: type[BaseModel] | None,
+        use_structured_output: bool,
+        session_id: str | None,
+    ) -> list[str]:
+        """Build the ``claude`` CLI command list.
+
+        Args:
+            config: Agent configuration.
+            message: The prompt message.
+            output_schema: Per-call structured output schema override.
+            use_structured_output: Whether to apply structured output.
+            session_id: Optional session ID for resume.
+
+        Returns:
+            List of command-line arguments.
+        """
+        cmd = ["claude", "-p", message, "--verbose"]
+        self._add_agent_flags(cmd, config)
+        self._add_global_flags(
+            cmd, output_schema, use_structured_output, config, session_id
+        )
+        return cmd
+
+    def _add_agent_flags(self, cmd: list[str], config: AgentConfig) -> None:
+        """Append agent-specific flags (system prompt, model, tools, max turns)."""
+        agent_system = self._system_prompt
+        if config.system_prompt:
+            agent_system = f"{self._system_prompt}\n\n{config.system_prompt}"
+        cmd.extend(["--system-prompt", agent_system])
+
+        model = config.model or self._model
+        cmd.extend(["--model", model])
+
+        if config.tools:
+            cmd.extend(["--allowedTools", ",".join(config.tools)])
+        if config.max_turns is not None:
+            cmd.extend(["--max-turns", str(config.max_turns)])
+
+    def _add_global_flags(
+        self,
+        cmd: list[str],
+        output_schema: type[BaseModel] | None,
+        use_structured_output: bool,
+        config: AgentConfig,
+        session_id: str | None,
+    ) -> None:
+        """Append global flags (permission, budget, structured output, session)."""
+        if self._permission_mode:
+            cmd.append(f"--{self._permission_mode}")
+
+        effective_schema = output_schema
+        if effective_schema is None and use_structured_output:
+            effective_schema = config.output_schema
+        if effective_schema is not None:
+            schema = effective_schema.model_json_schema()
+            cmd.extend(["--output-format", "json", "--json-schema", json.dumps(schema)])
+
+        if session_id:
+            cmd.extend(["--resume", session_id])
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +259,7 @@ class PipelineError(Exception):
     """Pipeline failure with diagnostic context (REQ-OR-042).
 
     Raised when the pipeline encounters an unrecoverable error. The
-    ``diagnostics`` dict carries structured context (elapsed time, cost,
+    ``diagnostics`` dict carries structured context (elapsed time,
     last successful operation) for debugging.
 
     Attributes:
@@ -111,7 +271,7 @@ class PipelineError(Exception):
 
         Args:
             message: Human-readable error description.
-            diagnostics: Structured context (elapsed time, cost, etc.).
+            diagnostics: Structured context (elapsed time, etc.).
         """
         super().__init__(message)
         self.diagnostics = diagnostics
@@ -139,7 +299,6 @@ class PipelineState(BaseModel):
     Attributes:
         current_phase: Current pipeline phase name.
         elapsed_seconds: Wall-clock seconds since pipeline start.
-        accumulated_cost_usd: Total cost accumulated so far.
         phase2_path_statuses: Per-path status strings for Phase 2.
         best_score_so_far: Best score achieved across all phases.
         agent_call_count: Total number of agent calls made.
@@ -147,7 +306,6 @@ class PipelineState(BaseModel):
 
     current_phase: str = "phase1"
     elapsed_seconds: float = 0.0
-    accumulated_cost_usd: float = 0.0
     phase2_path_statuses: list[str] = []
     best_score_so_far: float | None = None
     agent_call_count: int = 0
@@ -160,7 +318,6 @@ class PipelineState(BaseModel):
 _ENV_FIELD_MAP: dict[str, str] = {
     "MLE_STAR_MODEL": "model",
     "MLE_STAR_LOG_LEVEL": "log_level",
-    "MLE_STAR_MAX_BUDGET": "max_budget_usd",
     "MLE_STAR_TIME_LIMIT": "time_limit_seconds",
 }
 """Maps environment variable names to PipelineConfig field names."""
@@ -234,12 +391,6 @@ def _parse_env_value(field_name: str, raw: str) -> Any:
     """
     if field_name in ("model", "log_level"):
         return raw
-
-    if field_name == "max_budget_usd":
-        try:
-            return float(raw)
-        except ValueError:
-            return None
 
     if field_name == "time_limit_seconds":
         try:
@@ -394,82 +545,51 @@ def _format_gpu_section(gpu_info: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Agent registration (REQ-OR-006)
+# Retry with backoff (REQ-OR-052)
 # ---------------------------------------------------------------------------
 
 
-def _build_agents_dict() -> dict[str, dict[str, Any]]:
-    """Build the agents dictionary for SDK client registration (REQ-OR-006).
-
-    Converts all 14 ``AgentConfig`` instances (from
-    ``build_default_agent_configs()``) into agent definition dicts via
-    ``to_agent_definition()``, keyed by their ``AgentType`` string value.
-
-    Returns:
-        Dict mapping agent type strings to agent definition dicts.
-    """
-    configs = build_default_agent_configs()
-    return {
-        str(agent_type): config.to_agent_definition()
-        for agent_type, config in configs.items()
-    }
-
-
-# ---------------------------------------------------------------------------
-# MCP server registration (REQ-OR-010)
-# ---------------------------------------------------------------------------
-
-
-def _register_mcp_servers(client: ClaudeSDKClient) -> None:
-    """Register MCP servers for custom tool capabilities (REQ-OR-010).
-
-    Attempts to register score-parsing and file-listing MCP tools.
-    This is a placeholder for future MCP integration.
-
-    Args:
-        client: The SDK client to register servers on.
-    """
-
-
-# ---------------------------------------------------------------------------
-# SDK reconnection (REQ-OR-052)
-# ---------------------------------------------------------------------------
-
-
-async def reconnect_with_backoff(
-    client: Any,
-    session_id: str,
+async def retry_with_backoff(
+    client: ClaudeCodeClient,
+    agent_type: AgentType,
+    message: str,
     *,
     max_retries: int = 3,
-) -> None:
-    """Reconnect the SDK client with exponential backoff (REQ-OR-052).
+    session_id: str | None = None,
+) -> str:
+    """Retry a failed agent invocation with exponential backoff (REQ-OR-052).
 
-    Attempts to reconnect up to *max_retries* times using
-    ``client.connect(resume=session_id)``. Delays between retries
-    follow a ``2^i`` pattern (1 s, 2 s, 4 s, ...).
-
-    The ``resume`` keyword is passed through to ``connect()``; the actual
-    mechanism for session resumption depends on the SDK client interface.
+    Attempts to invoke the agent up to *max_retries* times. Delays
+    between retries follow a ``2^i`` pattern (1 s, 2 s, 4 s, ...).
 
     Args:
-        client: The SDK client to reconnect.
-        session_id: Session ID to resume.
-        max_retries: Maximum number of connection attempts. Defaults to 3.
+        client: The Claude Code client.
+        agent_type: Agent to invoke.
+        message: Prompt message.
+        max_retries: Maximum number of retry attempts. Defaults to 3.
+        session_id: Optional session ID for resume.
+
+    Returns:
+        The agent response text.
 
     Raises:
-        ConnectionError: If all retry attempts are exhausted.
+        RuntimeError: If all retry attempts are exhausted.
     """
     last_error: BaseException | None = None
     for attempt in range(max_retries):
         try:
-            await client.connect(resume=session_id)
-            return
-        except ConnectionError as exc:
+            return await client.send_message(
+                agent_type=agent_type,
+                message=message,
+                session_id=session_id,
+            )
+        except RuntimeError as exc:
             last_error = exc
             if attempt < max_retries - 1:
                 delay = 2**attempt
                 logger.warning(
-                    "SDK reconnect attempt %d/%d failed; retrying in %ds",
+                    "Agent %s attempt %d/%d failed; retrying in %ds",
+                    agent_type,
                     attempt + 1,
                     max_retries,
                     delay,
@@ -478,8 +598,8 @@ async def reconnect_with_backoff(
 
     if last_error is not None:
         raise last_error
-    msg = "reconnect_with_backoff called with max_retries=0"
-    raise ConnectionError(msg)
+    msg = "retry_with_backoff called with max_retries=0"
+    raise RuntimeError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -529,375 +649,6 @@ def _compute_phase_budgets(
 
 
 # ---------------------------------------------------------------------------
-# Cost tracking (REQ-OR-027, REQ-OR-029)
-# ---------------------------------------------------------------------------
-
-
-class CostTracker:
-    """Thread-safe cost accumulator with budget enforcement (REQ-OR-027).
-
-    Tracks the running total of API costs and logs a warning when 80%
-    of the budget is consumed (REQ-OR-029). Thread-safe for concurrent
-    Phase 2 paths.
-
-    Attributes:
-        total: Current accumulated cost in USD.
-        exceeded: Whether the budget has been reached or exceeded.
-    """
-
-    def __init__(self, max_budget: float | None = None) -> None:
-        """Initialize the cost tracker.
-
-        Args:
-            max_budget: Maximum budget in USD. ``None`` means unlimited.
-        """
-        self._total = 0.0
-        self._max_budget = max_budget
-        self._warned_80pct = False
-        self._lock = threading.Lock()
-
-    def accumulate(self, amount: float) -> None:
-        """Add a cost amount to the running total.
-
-        Logs a warning the first time the 80% threshold is crossed
-        (REQ-OR-029).
-
-        Args:
-            amount: Cost in USD to add.
-        """
-        with self._lock:
-            self._total += amount
-            if (
-                self._max_budget is not None
-                and not self._warned_80pct
-                and self._total >= 0.8 * self._max_budget
-            ):
-                logger.warning(
-                    "80%% of budget consumed: $%.2f / $%.2f",
-                    self._total,
-                    self._max_budget,
-                )
-                self._warned_80pct = True
-
-    @property
-    def total(self) -> float:
-        """Current accumulated cost in USD."""
-        return self._total
-
-    @property
-    def exceeded(self) -> bool:
-        """Whether the accumulated cost has reached or exceeded the budget."""
-        if self._max_budget is None:
-            return False
-        return self._total >= self._max_budget
-
-
-# ---------------------------------------------------------------------------
-# Hook system (REQ-OR-031 through REQ-OR-035)
-# ---------------------------------------------------------------------------
-
-_DEFAULT_BLOCKED_PATTERNS: list[str] = [
-    r"rm\s+-rf\s+/",
-    r"\bmkfs\b",
-    r"\bdd\s+if=",
-    r":\(\)\s*\{",
-]
-"""Default dangerous bash command patterns blocked by the safety hook."""
-
-
-def create_progress_hook(
-    pipeline_start: float,
-    session_agent_map: dict[str, str],
-) -> Any:
-    """Create a PostToolUse hook for structured JSON logging (REQ-OR-031).
-
-    Logs a JSON entry with timestamp, agent type, tool name, session ID,
-    elapsed time, and success indicator on every tool use completion.
-
-    Args:
-        pipeline_start: Monotonic time when the pipeline started.
-        session_agent_map: Shared mapping of session_id to agent_type.
-
-    Returns:
-        An async hook callback for PostToolUse events.
-    """
-
-    async def _hook(
-        hook_input: Any,
-        tool_use_id: str | None,
-        context: Any,
-    ) -> dict[str, Any]:
-        elapsed = time.monotonic() - pipeline_start
-        entry = {
-            "timestamp": time.time(),
-            "agent_type": session_agent_map.get(hook_input["session_id"], "unknown"),
-            "tool_name": hook_input["tool_name"],
-            "session_id": hook_input["session_id"],
-            "elapsed_time": round(elapsed, 3),
-            "success": True,
-        }
-        logger.info(json.dumps(entry))
-        return {}
-
-    return _hook
-
-
-def create_cost_hook(cost_tracker: CostTracker) -> Any:
-    """Create a Stop/SubagentStop hook for cost status logging (REQ-OR-032).
-
-    Logs the current accumulated cost on each agent stop event for
-    observability and budget monitoring.
-
-    Args:
-        cost_tracker: Shared thread-safe cost accumulator.
-
-    Returns:
-        An async hook callback for Stop/SubagentStop events.
-    """
-
-    async def _hook(
-        hook_input: Any,
-        tool_use_id: str | None,
-        context: Any,
-    ) -> dict[str, Any]:
-        logger.info(
-            "Cost status: $%.2f accumulated (session=%s)",
-            cost_tracker.total,
-            hook_input["session_id"],
-        )
-        return {}
-
-    return _hook
-
-
-def create_safety_hook(
-    work_dir: str,
-    blocked_patterns: list[str] | None = None,
-) -> Any:
-    """Create a PreToolUse hook that blocks dangerous bash commands (REQ-OR-033).
-
-    Inspects Bash tool inputs against a configurable list of regex patterns.
-    Returns a deny decision with an explanation when a match is found.
-
-    Args:
-        work_dir: The pipeline working directory.
-        blocked_patterns: Regex patterns to block. Defaults to
-            ``_DEFAULT_BLOCKED_PATTERNS`` when ``None``.
-
-    Returns:
-        An async hook callback for PreToolUse events.
-    """
-    patterns = (
-        blocked_patterns
-        if blocked_patterns is not None
-        else list(_DEFAULT_BLOCKED_PATTERNS)
-    )
-    compiled = [re.compile(p) for p in patterns]
-
-    async def _hook(
-        hook_input: Any,
-        tool_use_id: str | None,
-        context: Any,
-    ) -> dict[str, Any]:
-        if hook_input.get("tool_name") != "Bash":
-            return {}
-        command = hook_input.get("tool_input", {}).get("command", "")
-        matched = _check_blocked_command(command, compiled)
-        if matched is not None:
-            return _make_deny_result(matched, command)
-        return {}
-
-    return _hook
-
-
-def _check_blocked_command(
-    command: str,
-    compiled_patterns: list[re.Pattern[str]],
-) -> str | None:
-    """Check a command against compiled blocked patterns.
-
-    Args:
-        command: The bash command string to check.
-        compiled_patterns: Pre-compiled regex patterns.
-
-    Returns:
-        The matched pattern string, or ``None`` if no match.
-    """
-    for pattern in compiled_patterns:
-        if pattern.search(command):
-            return pattern.pattern
-    return None
-
-
-def _make_deny_result(matched_pattern: str, command: str) -> dict[str, Any]:
-    """Build a deny hook result with explanation.
-
-    Args:
-        matched_pattern: The pattern that matched.
-        command: The blocked command.
-
-    Returns:
-        A SyncHookJSONOutput-compatible dict with deny decision.
-    """
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": (
-                f"Blocked dangerous command matching /{matched_pattern}/: "
-                f"{command[:100]}"
-            ),
-        },
-    }
-
-
-def create_timeout_hook(
-    deadline: float,
-    time_limit: float,
-    finalize_flag: threading.Event,
-) -> Any:
-    """Create a PostToolUse hook for deadline monitoring (REQ-OR-034).
-
-    Sets the finalize flag when remaining time drops below the threshold
-    ``max(10% of time_limit, 300 seconds)``.
-
-    Args:
-        deadline: Absolute monotonic deadline for the pipeline.
-        time_limit: Total time budget in seconds.
-        finalize_flag: Shared event to signal finalization.
-
-    Returns:
-        An async hook callback for PostToolUse events.
-    """
-    threshold = max(0.10 * time_limit, 300.0)
-
-    async def _hook(
-        hook_input: Any,
-        tool_use_id: str | None,
-        context: Any,
-    ) -> dict[str, Any]:
-        remaining = deadline - time.monotonic()
-        if remaining < threshold:
-            finalize_flag.set()
-        return {}
-
-    return _hook
-
-
-def create_error_hook(
-    failure_counts: dict[str, int],
-    failure_lock: threading.Lock,
-) -> Any:
-    """Create a PostToolUseFailure hook for error tracking (REQ-OR-035).
-
-    Logs failure details and tracks consecutive failure counts per session
-    for circuit-breaker logic.
-
-    Args:
-        failure_counts: Shared dict mapping session_id to failure count.
-        failure_lock: Lock for thread-safe failure count updates.
-
-    Returns:
-        An async hook callback for PostToolUseFailure events.
-    """
-
-    async def _hook(
-        hook_input: Any,
-        tool_use_id: str | None,
-        context: Any,
-    ) -> dict[str, Any]:
-        session_id = hook_input["session_id"]
-        tool_name = hook_input.get("tool_name", "unknown")
-        error = hook_input.get("error", "unknown error")
-        with failure_lock:
-            failure_counts[session_id] = failure_counts.get(session_id, 0) + 1
-        logger.warning(
-            "Tool failure: tool=%s session=%s error=%s",
-            tool_name,
-            session_id,
-            error,
-        )
-        return {}
-
-    return _hook
-
-
-def create_agent_tracking_hook(
-    session_agent_map: dict[str, str],
-) -> Any:
-    """Create a SubagentStart hook to track session-to-agent mapping.
-
-    Populates a shared mapping so other hooks can resolve session IDs
-    to agent type names.
-
-    Args:
-        session_agent_map: Shared dict to populate with mappings.
-
-    Returns:
-        An async hook callback for SubagentStart events.
-    """
-
-    async def _hook(
-        hook_input: Any,
-        tool_use_id: str | None,
-        context: Any,
-    ) -> dict[str, Any]:
-        session_agent_map[hook_input["session_id"]] = hook_input["agent_type"]
-        return {}
-
-    return _hook
-
-
-def build_hooks(
-    pipeline_start: float,
-    deadline: float,
-    time_limit: float,
-    cost_tracker: CostTracker,
-    work_dir: str,
-    finalize_flag: threading.Event,
-    failure_counts: dict[str, int],
-    failure_lock: threading.Lock,
-    session_agent_map: dict[str, str],
-    blocked_patterns: list[str] | None = None,
-) -> dict[str, list[HookMatcher]]:
-    """Assemble all SDK hooks into the registration dict (REQ-OR-031..035).
-
-    Creates and groups all hook callbacks into the dict format expected
-    by ``ClaudeAgentOptions.hooks``.
-
-    Args:
-        pipeline_start: Monotonic time when the pipeline started.
-        deadline: Absolute monotonic deadline.
-        time_limit: Total time budget in seconds.
-        cost_tracker: Shared thread-safe cost accumulator.
-        work_dir: Pipeline working directory path.
-        finalize_flag: Shared event for finalization signaling.
-        failure_counts: Shared dict for consecutive failure tracking.
-        failure_lock: Lock for thread-safe failure count updates.
-        session_agent_map: Shared session-to-agent-type mapping.
-        blocked_patterns: Custom blocked command patterns (optional).
-
-    Returns:
-        Dict mapping event name strings to lists of ``HookMatcher``.
-    """
-    progress = create_progress_hook(pipeline_start, session_agent_map)
-    cost = create_cost_hook(cost_tracker)
-    safety = create_safety_hook(work_dir, blocked_patterns)
-    timeout = create_timeout_hook(deadline, time_limit, finalize_flag)
-    error = create_error_hook(failure_counts, failure_lock)
-    tracking = create_agent_tracking_hook(session_agent_map)
-
-    return {
-        "PreToolUse": [HookMatcher(matcher="Bash", hooks=[safety])],
-        "PostToolUse": [HookMatcher(hooks=[progress, timeout])],
-        "Stop": [HookMatcher(hooks=[cost])],
-        "SubagentStop": [HookMatcher(hooks=[cost])],
-        "SubagentStart": [HookMatcher(hooks=[tracking])],
-        "PostToolUseFailure": [HookMatcher(hooks=[error])],
-    }
-
-
-# ---------------------------------------------------------------------------
 # Phase 1 with deadline enforcement (REQ-OR-024, REQ-OR-030)
 # ---------------------------------------------------------------------------
 
@@ -905,7 +656,7 @@ def build_hooks(
 async def _execute_phase1_with_deadline(
     task: TaskDescription,
     config: PipelineConfig,
-    client: ClaudeSDKClient,
+    client: ClaudeCodeClient,
     deadline: float,
     pipeline_start: float,
 ) -> Phase1Result:
@@ -918,7 +669,7 @@ async def _execute_phase1_with_deadline(
     Args:
         task: Task description.
         config: Pipeline configuration.
-        client: SDK client.
+        client: Claude Code client.
         deadline: Absolute monotonic deadline.
         pipeline_start: Pipeline start time (for diagnostics).
 
@@ -952,7 +703,7 @@ async def _execute_phase1_with_deadline(
 
 
 async def _execute_phase3_or_skip(
-    client: ClaudeSDKClient,
+    client: ClaudeCodeClient,
     task: TaskDescription,
     config: PipelineConfig,
     phase2_solutions: list[SolutionScript],
@@ -967,7 +718,7 @@ async def _execute_phase3_or_skip(
     the Phase 3 budget.
 
     Args:
-        client: SDK client.
+        client: Claude Code client.
         task: Task description.
         config: Pipeline configuration.
         phase2_solutions: Solutions from Phase 2 for ensemble.
@@ -1041,7 +792,7 @@ def _create_path_work_directories(
 
 
 async def _dispatch_phase2(
-    client: ClaudeSDKClient,
+    client: ClaudeCodeClient,
     task: TaskDescription,
     config: PipelineConfig,
     phase1_result: Phase1Result,
@@ -1060,7 +811,7 @@ async def _dispatch_phase2(
     are cancelled via ``asyncio.Task.cancel()`` (REQ-OR-023).
 
     Args:
-        client: SDK client for agent invocations.
+        client: Claude Code client for agent invocations.
         task: Task description.
         config: Pipeline configuration (L = ``num_parallel_solutions``).
         phase1_result: Phase 1 output providing the initial solution.
@@ -1116,7 +867,7 @@ async def _dispatch_phase2(
 
 
 async def _dispatch_phase2_with_session_limit(
-    client: ClaudeSDKClient,
+    client: ClaudeCodeClient,
     task: TaskDescription,
     config: PipelineConfig,
     phase1_result: Phase1Result,
@@ -1128,7 +879,7 @@ async def _dispatch_phase2_with_session_limit(
     (limited by an ``asyncio.Semaphore``) and a warning is logged.
 
     Args:
-        client: SDK client for agent invocations.
+        client: Claude Code client for agent invocations.
         task: Task description.
         config: Pipeline configuration (L = ``num_parallel_solutions``).
         phase1_result: Phase 1 output providing the initial solution.
@@ -1229,7 +980,7 @@ def _collect_phase2_results(
 
 async def _finalize_with_recovery(
     *,
-    client: ClaudeSDKClient,
+    client: ClaudeCodeClient,
     best_solution: SolutionScript,
     task: TaskDescription,
     config: PipelineConfig,
@@ -1237,17 +988,16 @@ async def _finalize_with_recovery(
     phase2_results: list[Phase2Result],
     phase3_result: Phase3Result | None,
     pipeline_start: float,
-    cost_tracker: CostTracker,
 ) -> FinalResult:
     """Run finalization with error recovery (REQ-OR-043).
 
     Wraps ``run_finalization()`` in a try/except. On success, updates the
     returned ``FinalResult`` with pipeline-level ``total_duration_seconds``
-    and ``total_cost_usd`` (REQ-OR-036). On failure, constructs a best-effort
-    ``FinalResult`` with ``submission_path=""``.
+    (REQ-OR-036). On failure, constructs a best-effort ``FinalResult``
+    with ``submission_path=""``.
 
     Args:
-        client: SDK client.
+        client: Claude Code client.
         best_solution: Best solution to finalize.
         task: Task description.
         config: Pipeline configuration.
@@ -1255,10 +1005,9 @@ async def _finalize_with_recovery(
         phase2_results: All Phase 2 results (including synthetic).
         phase3_result: Phase 3 output (or None).
         pipeline_start: Monotonic time when the pipeline started.
-        cost_tracker: Shared cost accumulator.
 
     Returns:
-        A ``FinalResult`` with pipeline-level duration and cost.
+        A ``FinalResult`` with pipeline-level duration.
     """
     try:
         logger.info("=== Finalization ===")
@@ -1275,7 +1024,6 @@ async def _finalize_with_recovery(
         return final_result.model_copy(
             update={
                 "total_duration_seconds": total_duration,
-                "total_cost_usd": cost_tracker.total,
             }
         )
     except Exception:
@@ -1293,26 +1041,22 @@ async def _finalize_with_recovery(
             final_solution=best_solution,
             submission_path="",
             total_duration_seconds=total_duration,
-            total_cost_usd=cost_tracker.total,
         )
 
 
 def _log_phase_summary(
     phase_durations: dict[str, float],
-    phase_costs: dict[str, float],
 ) -> None:
-    """Log per-phase cost and duration breakdown (REQ-OR-037, REQ-OR-038).
+    """Log per-phase duration breakdown (REQ-OR-037).
 
-    Emits a structured JSON log entry with cost and duration per phase
+    Emits a structured JSON log entry with duration per phase
     for post-pipeline analysis and observability.
 
     Args:
         phase_durations: Phase name to duration (seconds) mapping.
-        phase_costs: Phase name to cost (USD) mapping.
     """
     summary = {
         "durations": phase_durations,
-        "costs": phase_costs,
     }
     logger.info("Phase summary: %s", json.dumps(summary, default=str))
 
@@ -1345,6 +1089,39 @@ def _log_solution_lineage(
 
 
 # ---------------------------------------------------------------------------
+# Client creation helper (REQ-OR-005)
+# ---------------------------------------------------------------------------
+
+
+def _create_client(
+    config: PipelineConfig,
+    task: TaskDescription,
+) -> ClaudeCodeClient:
+    """Create a Claude Code headless client (REQ-OR-005).
+
+    Builds the system prompt and agent configurations, and returns
+    a configured ``ClaudeCodeClient``.
+
+    Args:
+        config: Pipeline configuration.
+        task: Task description for system prompt construction.
+
+    Returns:
+        A configured Claude Code client.
+    """
+    gpu_info = detect_gpu_info()
+    system_prompt = _build_system_prompt(task, gpu_info)
+    agent_configs = build_default_agent_configs()
+
+    return ClaudeCodeClient(
+        system_prompt=system_prompt,
+        agent_configs=agent_configs,
+        model=config.model,
+        permission_mode=config.permission_mode,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Pipeline entry points (REQ-OR-001, REQ-OR-053)
 # ---------------------------------------------------------------------------
 
@@ -1355,10 +1132,9 @@ async def run_pipeline(
 ) -> FinalResult:
     """Execute the full MLE-STAR pipeline (REQ-OR-001).
 
-    Validates inputs, creates the SDK client with all 14 agents registered,
-    and dispatches pipeline phases in sequence. Enforces
+    Validates inputs, creates the Claude Code client with all 14 agents
+    configured, and dispatches pipeline phases in sequence. Enforces
     ``config.time_limit_seconds`` via a monotonic deadline (REQ-OR-024).
-    The client is always disconnected on exit via try/finally.
 
     Args:
         task: Description of the competition task to solve.
@@ -1383,112 +1159,41 @@ async def run_pipeline(
     # REQ-OR-047: Configure logging
     configure_logging(resolved_config)
 
+    # REQ-OR-054: Verify Claude CLI availability
+    check_claude_cli_version()
+
     # REQ-OR-024: Compute deadline at pipeline start
     pipeline_start = time.monotonic()
     deadline = pipeline_start + resolved_config.time_limit_seconds
 
-    # REQ-OR-031..035: Build SDK hooks for observability and safety
-    cost_tracker = CostTracker(max_budget=resolved_config.max_budget_usd)
-    finalize_flag = threading.Event()
-    failure_counts: dict[str, int] = {}
-    failure_lock = threading.Lock()
-    session_agent_map: dict[str, str] = {}
+    # Create client (no connect/disconnect needed for subprocess-based client)
+    client = _create_client(resolved_config, task)
 
-    hooks = build_hooks(
+    setup_working_directory(task.data_dir)
+
+    # Phase 1 with deadline enforcement (REQ-OR-024, REQ-OR-030)
+    phase1_result = await _execute_phase1_with_deadline(
+        task, resolved_config, client, deadline, pipeline_start
+    )
+
+    # Compute remaining time budgets (REQ-OR-025)
+    remaining = max(0.0, deadline - time.monotonic())
+    budgets = _compute_phase_budgets(resolved_config, remaining)
+
+    # Phases 2-Final with graceful shutdown (REQ-OR-030)
+    return await _execute_post_phase1(
+        client,
+        task,
+        resolved_config,
+        phase1_result,
+        deadline,
+        budgets,
         pipeline_start=pipeline_start,
-        deadline=deadline,
-        time_limit=resolved_config.time_limit_seconds,
-        cost_tracker=cost_tracker,
-        work_dir=task.data_dir,
-        finalize_flag=finalize_flag,
-        failure_counts=failure_counts,
-        failure_lock=failure_lock,
-        session_agent_map=session_agent_map,
     )
-
-    client = _create_sdk_client(resolved_config, task, hooks=hooks)
-
-    try:
-        await client.connect()
-        _try_register_mcp(client)
-        setup_working_directory(task.data_dir)
-
-        # Phase 1 with deadline enforcement (REQ-OR-024, REQ-OR-030)
-        phase1_result = await _execute_phase1_with_deadline(
-            task, resolved_config, client, deadline, pipeline_start
-        )
-
-        # Compute remaining time budgets (REQ-OR-025)
-        remaining = max(0.0, deadline - time.monotonic())
-        budgets = _compute_phase_budgets(resolved_config, remaining)
-
-        # Phases 2-Final with graceful shutdown (REQ-OR-030)
-        return await _execute_post_phase1(
-            client,
-            task,
-            resolved_config,
-            phase1_result,
-            deadline,
-            budgets,
-            pipeline_start=pipeline_start,
-            cost_tracker=cost_tracker,
-        )
-    finally:
-        await client.disconnect()
-
-
-def _create_sdk_client(
-    config: PipelineConfig,
-    task: TaskDescription,
-    hooks: dict[str, list[HookMatcher]] | None = None,
-) -> ClaudeSDKClient:
-    """Create and configure the SDK client (REQ-OR-005).
-
-    Builds the system prompt, agent definitions, and SDK options.
-    Optionally registers hooks for observability and safety.
-
-    Args:
-        config: Pipeline configuration.
-        task: Task description for system prompt construction.
-        hooks: SDK hook registrations, or ``None`` to skip hooks.
-
-    Returns:
-        A configured but not-yet-connected SDK client.
-    """
-    gpu_info = detect_gpu_info()
-    system_prompt = _build_system_prompt(task, gpu_info)
-    agents_dict = _build_agents_dict()
-
-    agent_definitions: dict[str, AgentDefinition] = {
-        name: AgentDefinition(**defn) for name, defn in agents_dict.items()
-    }
-
-    options = ClaudeAgentOptions(
-        model=config.model,
-        permission_mode=config.permission_mode,  # type: ignore[arg-type]
-        max_budget_usd=config.max_budget_usd,
-        agents=agent_definitions,
-        system_prompt=system_prompt,
-        hooks=hooks,  # type: ignore[arg-type]
-    )
-
-    return ClaudeSDKClient(options)
-
-
-def _try_register_mcp(client: ClaudeSDKClient) -> None:
-    """Attempt MCP server registration, logging failures (REQ-OR-010).
-
-    Args:
-        client: The SDK client.
-    """
-    try:
-        _register_mcp_servers(client)
-    except Exception:
-        logger.warning("MCP server registration failed; continuing without MCP")
 
 
 async def _execute_post_phase1(
-    client: ClaudeSDKClient,
+    client: ClaudeCodeClient,
     task: TaskDescription,
     config: PipelineConfig,
     phase1_result: Phase1Result,
@@ -1496,7 +1201,6 @@ async def _execute_post_phase1(
     budgets: dict[str, float],
     *,
     pipeline_start: float,
-    cost_tracker: CostTracker,
 ) -> FinalResult:
     """Execute Phase 2 through Finalization with graceful shutdown (REQ-OR-030).
 
@@ -1506,14 +1210,13 @@ async def _execute_post_phase1(
     Finalization is wrapped in ``_finalize_with_recovery()`` (REQ-OR-043).
 
     Args:
-        client: SDK client.
+        client: Claude Code client.
         task: Task description.
         config: Pipeline configuration.
         phase1_result: Phase 1 output.
         deadline: Absolute monotonic deadline (REQ-OR-024).
         budgets: Phase time budgets from ``_compute_phase_budgets()``.
         pipeline_start: Monotonic time when the pipeline started.
-        cost_tracker: Shared cost accumulator.
 
     Returns:
         The assembled ``FinalResult``.
@@ -1557,7 +1260,6 @@ async def _execute_post_phase1(
         phase2_results=phase2_results,
         phase3_result=phase3_result,
         pipeline_start=pipeline_start,
-        cost_tracker=cost_tracker,
     )
 
     # Log summaries (REQ-OR-037, REQ-OR-038, REQ-OR-039)

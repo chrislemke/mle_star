@@ -425,20 +425,10 @@ class TestPipelineConfigDefaults:
 class TestPipelineConfigOrchestratorFields:
     """PipelineConfig includes orchestrator-level fields from Spec 09."""
 
-    def test_max_budget_usd_default_is_none(self) -> None:
-        """max_budget_usd defaults to None (REQ-OR-028)."""
-        cfg = PipelineConfig()
-        assert cfg.max_budget_usd is None
-
-    def test_max_budget_usd_accepts_float(self) -> None:
-        """max_budget_usd accepts a float value."""
-        cfg = PipelineConfig(max_budget_usd=50.0)
-        assert cfg.max_budget_usd == 50.0
-
     def test_permission_mode_default(self) -> None:
-        """permission_mode defaults to 'bypassPermissions' (REQ-OR-009)."""
+        """permission_mode defaults to 'dangerously-skip-permissions' (REQ-OR-009)."""
         cfg = PipelineConfig()
-        assert cfg.permission_mode == "bypassPermissions"
+        assert cfg.permission_mode == "dangerously-skip-permissions"
 
     def test_model_default(self) -> None:
         """Model defaults to 'sonnet' (REQ-OR-044)."""
@@ -543,7 +533,6 @@ class TestPipelineConfigSerialization:
             time_limit_seconds=3600,
             subsample_limit=5000,
             max_debug_attempts=5,
-            max_budget_usd=100.0,
             permission_mode="askUser",
             model="opus",
             log_level="DEBUG",
@@ -566,7 +555,6 @@ class TestPipelineConfigSerialization:
         assert restored.time_limit_seconds == 3600
         assert restored.subsample_limit == 5000
         assert restored.max_debug_attempts == 5
-        assert restored.max_budget_usd == 100.0
         assert restored.permission_mode == "askUser"
         assert restored.model == "opus"
         assert restored.log_level == "DEBUG"
@@ -580,7 +568,6 @@ class TestPipelineConfigSerialization:
         json_str = original.model_dump_json()
         restored = PipelineConfig.model_validate_json(json_str)
 
-        assert restored.max_budget_usd is None
         assert restored.log_file is None
         assert restored.phase_time_budget is None
 
@@ -618,7 +605,7 @@ class TestPipelineConfigFrozen:
         """Assignment to an optional field raises an error."""
         cfg = PipelineConfig()
         with pytest.raises(ValidationError):
-            cfg.max_budget_usd = 42.0  # type: ignore[misc]
+            cfg.log_file = "/tmp/x"  # type: ignore[misc]
 
 
 # ===========================================================================
@@ -680,6 +667,11 @@ class TestTaskDescriptionDefaults:
         td = _make_task_description()
         assert td.output_dir == "./final"
 
+    def test_target_column_default_is_none(self) -> None:
+        """target_column defaults to None."""
+        td = _make_task_description()
+        assert td.target_column is None
+
     def test_data_dir_override(self) -> None:
         """data_dir can be overridden."""
         td = _make_task_description(data_dir="/custom/data")
@@ -727,6 +719,39 @@ class TestTaskDescriptionEnumFields:
         """Invalid metric_direction string raises ValidationError."""
         with pytest.raises(ValidationError):
             _make_task_description(metric_direction="bogus_direction")
+
+
+@pytest.mark.unit
+class TestTaskDescriptionTargetColumn:
+    """TaskDescription.target_column is an optional string field."""
+
+    def test_default_is_none(self) -> None:
+        """target_column defaults to None when not provided."""
+        td = _make_task_description()
+        assert td.target_column is None
+
+    def test_accepts_string(self) -> None:
+        """target_column accepts an explicit string value."""
+        td = _make_task_description(target_column="Survived")
+        assert td.target_column == "Survived"
+
+    def test_frozen_prevents_mutation(self) -> None:
+        """target_column cannot be mutated on a frozen model."""
+        td = _make_task_description(target_column="Survived")
+        with pytest.raises(ValidationError):
+            td.target_column = "Other"  # type: ignore[misc]
+
+    def test_json_round_trip_with_value(self) -> None:
+        """JSON round-trip preserves target_column string value."""
+        original = _make_task_description(target_column="Transported")
+        restored = TaskDescription.model_validate_json(original.model_dump_json())
+        assert restored.target_column == "Transported"
+
+    def test_json_round_trip_with_none(self) -> None:
+        """JSON round-trip preserves target_column=None."""
+        original = _make_task_description()
+        restored = TaskDescription.model_validate_json(original.model_dump_json())
+        assert restored.target_column is None
 
 
 @pytest.mark.unit

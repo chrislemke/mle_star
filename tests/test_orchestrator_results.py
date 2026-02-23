@@ -145,7 +145,6 @@ def _make_final_result(
         "final_solution": _make_solution(phase=SolutionPhase.FINAL),
         "submission_path": "/output/submission.csv",
         "total_duration_seconds": 100.0,
-        "total_cost_usd": None,
     }
     defaults.update(overrides)
     return FinalResult(**defaults)
@@ -160,11 +159,8 @@ def _make_data_dir(tmp_path: Path) -> Path:
 
 
 def _make_mock_client() -> AsyncMock:
-    """Build a mock ClaudeSDKClient with connect/disconnect stubs."""
-    mock_client = AsyncMock()
-    mock_client.connect = AsyncMock()
-    mock_client.disconnect = AsyncMock()
-    return mock_client
+    """Build a mock ClaudeCodeClient."""
+    return AsyncMock()
 
 
 # ===========================================================================
@@ -688,22 +684,19 @@ class TestFinalizeWithRecovery:
 
     async def test_success_returns_final_result_with_updated_duration(self) -> None:
         """On success, total_duration_seconds is updated to pipeline wall-clock time."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
         p1_result = _make_phase1_result()
         p2_results = [_make_phase2_result()]
         best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
-        cost_tracker.accumulate(5.50)
 
         # Finalization returns result with finalization-only duration
         finalization_fr = _make_final_result(
             task=task,
             config=config,
             total_duration_seconds=10.0,  # finalization-only
-            total_cost_usd=None,
         )
 
         mock_time = Mock()
@@ -727,58 +720,13 @@ class TestFinalizeWithRecovery:
                 phase2_results=p2_results,
                 phase3_result=None,
                 pipeline_start=100.0,
-                cost_tracker=cost_tracker,
             )
 
         assert result.total_duration_seconds == pytest.approx(100.0)
 
-    async def test_success_returns_final_result_with_total_cost(self) -> None:
-        """On success, total_cost_usd is set from CostTracker's total."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
-
-        task = _make_task()
-        config = _make_config()
-        p1_result = _make_phase1_result()
-        p2_results = [_make_phase2_result()]
-        best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
-        cost_tracker.accumulate(3.25)
-        cost_tracker.accumulate(1.75)
-
-        finalization_fr = _make_final_result(
-            task=task,
-            config=config,
-            total_cost_usd=None,
-        )
-
-        mock_time = Mock()
-        mock_time.monotonic = Mock(return_value=50.0)
-
-        with (
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=finalization_fr,
-            ),
-            patch(f"{_MODULE}.time", mock_time),
-        ):
-            result = await _finalize_with_recovery(
-                client=_make_mock_client(),
-                best_solution=best_solution,
-                task=task,
-                config=config,
-                phase1_result=p1_result,
-                phase2_results=p2_results,
-                phase3_result=None,
-                pipeline_start=0.0,
-                cost_tracker=cost_tracker,
-            )
-
-        assert result.total_cost_usd == pytest.approx(5.0)
-
     async def test_failure_returns_best_effort_final_result(self) -> None:
         """On run_finalization failure, a best-effort FinalResult is constructed."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
@@ -787,8 +735,6 @@ class TestFinalizeWithRecovery:
         best_solution = _make_solution(
             content="best_available_code", phase=SolutionPhase.REFINED
         )
-        cost_tracker = CostTracker()
-        cost_tracker.accumulate(2.00)
 
         mock_time = Mock()
         mock_time.monotonic = Mock(return_value=150.0)
@@ -810,17 +756,15 @@ class TestFinalizeWithRecovery:
                 phase2_results=p2_results,
                 phase3_result=None,
                 pipeline_start=50.0,
-                cost_tracker=cost_tracker,
             )
 
         assert isinstance(result, FinalResult)
         assert result.submission_path == ""
         assert result.total_duration_seconds == pytest.approx(100.0)
-        assert result.total_cost_usd == pytest.approx(2.0)
 
     async def test_failure_preserves_phase_results(self) -> None:
         """On failure, the best-effort FinalResult contains all phase results."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
@@ -828,7 +772,6 @@ class TestFinalizeWithRecovery:
         p2_result = _make_phase2_result()
         p3_result = _make_phase3_result()
         best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
 
         mock_time = Mock()
         mock_time.monotonic = Mock(return_value=100.0)
@@ -850,7 +793,6 @@ class TestFinalizeWithRecovery:
                 phase2_results=[p2_result],
                 phase3_result=p3_result,
                 pipeline_start=0.0,
-                cost_tracker=cost_tracker,
             )
 
         assert result.phase1 is p1_result
@@ -859,7 +801,7 @@ class TestFinalizeWithRecovery:
 
     async def test_failure_uses_best_solution_as_final(self) -> None:
         """On failure, the best available solution becomes final_solution."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
@@ -867,7 +809,6 @@ class TestFinalizeWithRecovery:
         best_solution = _make_solution(
             content="the_best_solution_available", phase=SolutionPhase.REFINED
         )
-        cost_tracker = CostTracker()
 
         mock_time = Mock()
         mock_time.monotonic = Mock(return_value=100.0)
@@ -889,20 +830,18 @@ class TestFinalizeWithRecovery:
                 phase2_results=[],
                 phase3_result=None,
                 pipeline_start=0.0,
-                cost_tracker=cost_tracker,
             )
 
         assert result.final_solution.content == "the_best_solution_available"
 
     async def test_failure_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         """On failure, a warning is logged about the finalization failure."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
         p1_result = _make_phase1_result()
         best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
 
         mock_time = Mock()
         mock_time.monotonic = Mock(return_value=100.0)
@@ -925,7 +864,6 @@ class TestFinalizeWithRecovery:
                 phase2_results=[],
                 phase3_result=None,
                 pipeline_start=0.0,
-                cost_tracker=cost_tracker,
             )
 
         log_text = " ".join(r.message for r in caplog.records)
@@ -934,59 +872,21 @@ class TestFinalizeWithRecovery:
             or "finalization_error" in log_text.lower()
         )
 
-    async def test_failure_with_zero_cost(self) -> None:
-        """On failure with no accumulated cost, total_cost_usd is 0.0."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
-
-        task = _make_task()
-        config = _make_config()
-        p1_result = _make_phase1_result()
-        best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
-
-        mock_time = Mock()
-        mock_time.monotonic = Mock(return_value=10.0)
-
-        with (
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("boom"),
-            ),
-            patch(f"{_MODULE}.time", mock_time),
-        ):
-            result = await _finalize_with_recovery(
-                client=_make_mock_client(),
-                best_solution=best_solution,
-                task=task,
-                config=config,
-                phase1_result=p1_result,
-                phase2_results=[],
-                phase3_result=None,
-                pipeline_start=0.0,
-                cost_tracker=cost_tracker,
-            )
-
-        assert result.total_cost_usd == pytest.approx(0.0)
-
     @given(
-        cost=st.floats(min_value=0.0, max_value=1000.0),
         start=st.floats(min_value=0.0, max_value=10000.0),
         end_offset=st.floats(min_value=0.01, max_value=10000.0),
     )
     @settings(max_examples=15, deadline=5000)
-    async def test_duration_and_cost_always_set_on_failure(
-        self, cost: float, start: float, end_offset: float
+    async def test_duration_always_set_on_failure(
+        self, start: float, end_offset: float
     ) -> None:
-        """On failure, duration and cost are always populated."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        """On failure, duration is always populated."""
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
         p1_result = _make_phase1_result()
         best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
-        cost_tracker.accumulate(cost)
 
         end_time = start + end_offset
         mock_time = Mock()
@@ -1009,11 +909,9 @@ class TestFinalizeWithRecovery:
                 phase2_results=[],
                 phase3_result=None,
                 pipeline_start=start,
-                cost_tracker=cost_tracker,
             )
 
         assert result.total_duration_seconds == pytest.approx(end_offset)
-        assert result.total_cost_usd == pytest.approx(cost)
 
 
 # ===========================================================================
@@ -1023,7 +921,7 @@ class TestFinalizeWithRecovery:
 
 @pytest.mark.unit
 class TestFinalResultAssembly:
-    """run_pipeline sets total_duration_seconds and total_cost_usd (REQ-OR-036)."""
+    """run_pipeline sets total_duration_seconds (REQ-OR-036)."""
 
     async def test_total_duration_is_pipeline_wall_clock(self, tmp_path: Path) -> None:
         """total_duration_seconds reflects full pipeline time, not finalization time."""
@@ -1042,15 +940,13 @@ class TestFinalResultAssembly:
             task=task,
             config=config,
             total_duration_seconds=5.0,  # finalization-only
-            total_cost_usd=None,
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1074,88 +970,16 @@ class TestFinalResultAssembly:
         # unless the pipeline happened to take exactly 5.0s, which is highly unlikely)
         assert result.total_duration_seconds >= 0
 
-    async def test_total_cost_from_cost_tracker(self, tmp_path: Path) -> None:
-        """total_cost_usd is sourced from CostTracker's accumulated total."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config(time_limit_seconds=86400, max_budget_usd=100.0)
-
-        mock_client = _make_mock_client()
-        p1_result = _make_phase1_result()
-        p2_result = _make_phase2_result()
-        fr = _make_final_result(
-            task=task,
-            config=config,
-            total_cost_usd=None,
-        )
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=p1_result,
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=p2_result,
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=fr,
-            ),
-        ):
-            result = await run_pipeline(task, config)
-
-        # The result should have total_cost_usd set (possibly 0.0 since no
-        # real API calls were made, but NOT None)
-        assert isinstance(result, FinalResult)
-        assert result.total_cost_usd is not None
-        assert result.total_cost_usd >= 0.0
 
 
 # ===========================================================================
-# REQ-OR-037: _log_phase_summary -- per-phase cost breakdown
+# REQ-OR-037: _log_phase_summary -- per-phase duration breakdown
 # ===========================================================================
 
 
 @pytest.mark.unit
 class TestLogPhaseSummary:
-    """_log_phase_summary logs cost and duration breakdowns (REQ-OR-037, REQ-OR-038)."""
-
-    def test_logs_cost_breakdown(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Phase costs are logged in the summary."""
-        from mle_star.orchestrator import _log_phase_summary
-
-        phase_durations = {
-            "phase1": 10.0,
-            "phase2": 50.0,
-            "phase3": 15.0,
-            "finalization": 5.0,
-            "total": 80.0,
-        }
-        phase_costs = {
-            "phase1": 1.0,
-            "phase2": 3.0,
-            "phase3": 0.5,
-            "finalization": 0.2,
-            "total": 4.7,
-        }
-
-        with caplog.at_level(logging.INFO):
-            _log_phase_summary(phase_durations, phase_costs)
-
-        log_text = " ".join(r.message for r in caplog.records)
-        # Should contain cost information
-        assert "cost" in log_text.lower() or "phase1" in log_text.lower()
+    """_log_phase_summary logs duration breakdowns (REQ-OR-037)."""
 
     def test_logs_duration_breakdown(self, caplog: pytest.LogCaptureFixture) -> None:
         """Phase durations are logged in the summary."""
@@ -1168,16 +992,9 @@ class TestLogPhaseSummary:
             "finalization": 5.0,
             "total": 80.0,
         }
-        phase_costs = {
-            "phase1": 1.0,
-            "phase2": 3.0,
-            "phase3": 0.5,
-            "finalization": 0.2,
-            "total": 4.7,
-        }
 
         with caplog.at_level(logging.INFO):
-            _log_phase_summary(phase_durations, phase_costs)
+            _log_phase_summary(phase_durations)
 
         log_text = " ".join(r.message for r in caplog.records)
         assert "duration" in log_text.lower() or "phase1" in log_text.lower()
@@ -1187,33 +1004,31 @@ class TestLogPhaseSummary:
         from mle_star.orchestrator import _log_phase_summary
 
         phase_durations = {"phase1": 10.0, "total": 10.0}
-        phase_costs = {"phase1": 1.0, "total": 1.0}
 
         with caplog.at_level(logging.INFO):
-            _log_phase_summary(phase_durations, phase_costs)
+            _log_phase_summary(phase_durations)
 
         assert len(caplog.records) >= 1
         assert all(r.levelno >= logging.INFO for r in caplog.records)
 
-    def test_handles_empty_dicts(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Empty phase_durations and phase_costs do not raise."""
+    def test_handles_empty_dict(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Empty phase_durations does not raise."""
         from mle_star.orchestrator import _log_phase_summary
 
         with caplog.at_level(logging.INFO):
-            _log_phase_summary({}, {})
+            _log_phase_summary({})
 
         # Should not raise; may or may not produce log output
         # The test passes if no exception is raised
 
     def test_includes_total(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Summary includes the total cost and duration."""
+        """Summary includes the total duration."""
         from mle_star.orchestrator import _log_phase_summary
 
         phase_durations = {"phase1": 10.0, "total": 10.0}
-        phase_costs = {"phase1": 1.0, "total": 1.0}
 
         with caplog.at_level(logging.INFO):
-            _log_phase_summary(phase_durations, phase_costs)
+            _log_phase_summary(phase_durations)
 
         log_text = " ".join(r.message for r in caplog.records)
         assert "total" in log_text.lower() or "10" in log_text
@@ -1244,11 +1059,10 @@ class TestPhaseDurationBreakdown:
         fr = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1417,11 +1231,10 @@ class TestPhase1FailurePipelineError:
         mock_client = _make_mock_client()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1483,11 +1296,10 @@ class TestFinalizationFailureIntegration:
         p2_result = _make_phase2_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1525,11 +1337,10 @@ class TestFinalizationFailureIntegration:
         p3_result = _make_phase3_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1558,10 +1369,10 @@ class TestFinalizationFailureIntegration:
         assert len(result.phase2_results) == 2
         assert result.phase3 is p3_result
 
-    async def test_finalization_failure_sets_duration_and_cost(
+    async def test_finalization_failure_sets_duration(
         self, tmp_path: Path
     ) -> None:
-        """Best-effort result on finalization failure has duration and cost set."""
+        """Best-effort result on finalization failure has duration set."""
         from mle_star.orchestrator import run_pipeline
 
         data_dir = _make_data_dir(tmp_path)
@@ -1573,11 +1384,10 @@ class TestFinalizationFailureIntegration:
         p2_result = _make_phase2_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1597,8 +1407,6 @@ class TestFinalizationFailureIntegration:
             result = await run_pipeline(task, config)
 
         assert result.total_duration_seconds >= 0
-        assert result.total_cost_usd is not None
-        assert result.total_cost_usd >= 0.0
 
     async def test_finalization_failure_logged(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -1615,11 +1423,10 @@ class TestFinalizationFailureIntegration:
         p2_result = _make_phase2_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1752,27 +1559,23 @@ class TestResultAssemblyProperties:
 
     @given(
         duration=st.floats(min_value=0.01, max_value=10000.0),
-        cost=st.floats(min_value=0.0, max_value=5000.0),
     )
     @settings(max_examples=15, deadline=5000)
-    async def test_finalize_with_recovery_success_always_sets_duration_and_cost(
-        self, duration: float, cost: float
+    async def test_finalize_with_recovery_success_always_sets_duration(
+        self, duration: float
     ) -> None:
-        """Successful finalization always has duration and cost from pipeline context."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        """Successful finalization always has duration from pipeline context."""
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
         p1_result = _make_phase1_result()
         best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
-        cost_tracker.accumulate(cost)
 
         fr = _make_final_result(
             task=task,
             config=config,
             total_duration_seconds=1.0,
-            total_cost_usd=None,
         )
 
         pipeline_start = 0.0
@@ -1798,11 +1601,9 @@ class TestResultAssemblyProperties:
                 phase2_results=[],
                 phase3_result=None,
                 pipeline_start=pipeline_start,
-                cost_tracker=cost_tracker,
             )
 
         assert result.total_duration_seconds == pytest.approx(duration)
-        assert result.total_cost_usd == pytest.approx(cost)
 
 
 # ===========================================================================
@@ -1863,13 +1664,12 @@ class TestEdgeCases:
 
     async def test_finalize_with_recovery_catches_keyboard_interrupt(self) -> None:
         """KeyboardInterrupt propagates (not caught by recovery)."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
         p1_result = _make_phase1_result()
         best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
 
         mock_time = Mock()
         mock_time.monotonic = Mock(return_value=100.0)
@@ -1892,18 +1692,16 @@ class TestEdgeCases:
                 phase2_results=[],
                 phase3_result=None,
                 pipeline_start=0.0,
-                cost_tracker=cost_tracker,
             )
 
     async def test_finalize_with_recovery_catches_os_error(self) -> None:
         """OSError during finalization is caught and produces best-effort result."""
-        from mle_star.orchestrator import CostTracker, _finalize_with_recovery
+        from mle_star.orchestrator import _finalize_with_recovery
 
         task = _make_task()
         config = _make_config()
         p1_result = _make_phase1_result()
         best_solution = _make_solution(phase=SolutionPhase.REFINED)
-        cost_tracker = CostTracker()
 
         mock_time = Mock()
         mock_time.monotonic = Mock(return_value=100.0)
@@ -1925,7 +1723,6 @@ class TestEdgeCases:
                 phase2_results=[],
                 phase3_result=None,
                 pipeline_start=0.0,
-                cost_tracker=cost_tracker,
             )
 
         assert isinstance(result, FinalResult)

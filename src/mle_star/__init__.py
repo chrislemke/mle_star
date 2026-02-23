@@ -1,4 +1,4 @@
-"""mle_star CLI application."""
+"""mle_star — automated ML pipeline for Kaggle competitions."""
 
 from mle_star.models import (
     AgentConfig,
@@ -62,4 +62,9 @@ __all__ = [
     "TaskDescription",
     "TaskType",
     "build_default_agent_configs",
+    "PipelineError",
+    "run_pipeline",
+    "run_pipeline_sync",
 ]
+
+from mle_star.orchestrator import PipelineError, run_pipeline, run_pipeline_sync

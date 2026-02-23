@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mle_star.execution import (
     evaluate_with_retry,
@@ -43,11 +43,14 @@ from mle_star.safety import (
     make_debug_callback,
 )
 
+if TYPE_CHECKING:
+    from mle_star.orchestrator import ClaudeCodeClient
+
 logger = logging.getLogger(__name__)
 
 
 async def remove_subsampling(
-    client: Any,
+    client: ClaudeCodeClient,
     solution: SolutionScript,
     task: TaskDescription,
 ) -> SolutionScript:
@@ -83,7 +86,7 @@ async def remove_subsampling(
 
 
 async def _remove_subsampling_impl(
-    client: Any,
+    client: ClaudeCodeClient,
     solution: SolutionScript,
     task: TaskDescription,
 ) -> SolutionScript:
@@ -101,8 +104,6 @@ async def _remove_subsampling_impl(
         The (potentially updated) ``SolutionScript``.
     """
     registry = PromptRegistry()
-    agent_type_str = str(AgentType.TEST)
-
     # ------------------------------------------------------------------
     # Step 1 — Extract the subsampling code block (REQ-FN-001).
     # ------------------------------------------------------------------
@@ -117,7 +118,7 @@ async def _remove_subsampling_impl(
     )
 
     extraction_response: str = await client.send_message(
-        agent_type=agent_type_str,
+        agent_type=AgentType.TEST,
         message=extraction_prompt,
     )
 
@@ -155,7 +156,7 @@ async def _remove_subsampling_impl(
     )
 
     removal_response: str = await client.send_message(
-        agent_type=agent_type_str,
+        agent_type=AgentType.TEST,
         message=removal_prompt,
     )
 
@@ -187,7 +188,7 @@ async def _remove_subsampling_impl(
 
 
 async def generate_test_submission(
-    client: Any,
+    client: ClaudeCodeClient,
     task: TaskDescription,
     solution: SolutionScript,
 ) -> SolutionScript:
@@ -220,6 +221,7 @@ async def generate_test_submission(
 
     prompt = template.render(
         task_description=task.description,
+        target_column=task.target_column or "Not specified",
         final_solution=solution.content,
     )
 
@@ -230,7 +232,7 @@ async def generate_test_submission(
     )
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.TEST),
+        agent_type=AgentType.TEST,
         message=prompt,
     )
 
@@ -262,7 +264,7 @@ async def generate_test_submission(
 
 
 async def check_contamination(
-    client: Any,
+    client: ClaudeCodeClient,
     solution: SolutionScript,
     reference_discussions: list[str] | None,
 ) -> DataContaminationResult | None:
@@ -301,7 +303,7 @@ async def check_contamination(
 
 
 async def _check_contamination_impl(
-    client: Any,
+    client: ClaudeCodeClient,
     solution: SolutionScript,
     reference_discussions: list[str],
 ) -> DataContaminationResult:
@@ -320,11 +322,6 @@ async def _check_contamination_impl(
     """
     registry = PromptRegistry()
     template = registry.get(AgentType.TEST, variant="contamination_check")
-    output_format = {
-        "type": "json_schema",
-        "schema": DataContaminationResult.model_json_schema(),
-    }
-
     verdicts: list[str] = []
     for ref in reference_discussions:
         prompt = template.render(
@@ -332,9 +329,9 @@ async def _check_contamination_impl(
             final_solution=solution.content,
         )
         response: str = await client.send_message(
-            agent_type=str(AgentType.TEST),
+            agent_type=AgentType.TEST,
             message=prompt,
-            output_format=output_format,
+            output_schema=DataContaminationResult,
         )
         result = DataContaminationResult.model_validate_json(response)
         verdicts.append(result.verdict)
@@ -357,7 +354,7 @@ async def _check_contamination_impl(
 
 
 async def run_finalization(
-    client: Any,
+    client: ClaudeCodeClient,
     solution: SolutionScript,
     task: TaskDescription,
     config: PipelineConfig,
@@ -456,7 +453,6 @@ async def run_finalization(
         final_solution=final_sol,
         submission_path=sub_path,
         total_duration_seconds=duration,
-        total_cost_usd=None,
     )
 
 

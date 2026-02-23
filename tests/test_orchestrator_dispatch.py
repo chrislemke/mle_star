@@ -197,7 +197,6 @@ def _make_final_result(
         "final_solution": _make_solution(phase=SolutionPhase.FINAL),
         "submission_path": "/output/submission.csv",
         "total_duration_seconds": 100.0,
-        "total_cost_usd": None,
     }
     defaults.update(overrides)
     return FinalResult(**defaults)
@@ -219,15 +218,12 @@ def _make_data_dir(tmp_path: Path) -> Path:
 
 
 def _make_mock_client() -> AsyncMock:
-    """Build a mock ClaudeSDKClient with connect/disconnect stubs.
+    """Build a mock ClaudeCodeClient.
 
     Returns:
-        An AsyncMock simulating a ClaudeSDKClient.
+        An AsyncMock simulating a ClaudeCodeClient.
     """
-    mock_client = AsyncMock()
-    mock_client.connect = AsyncMock()
-    mock_client.disconnect = AsyncMock()
-    return mock_client
+    return AsyncMock()
 
 
 def _standard_patches(
@@ -336,11 +332,9 @@ class TestPhaseOrdering:
             return ctx["final_result"]
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(f"{_MODULE}.run_phase1", side_effect=_track_phase1),
             patch(f"{_MODULE}.run_phase2_outer_loop", side_effect=_track_phase2),
             patch(f"{_MODULE}.run_phase3", side_effect=_track_phase3, create=True),
@@ -381,11 +375,9 @@ class TestPhaseOrdering:
             return ctx["phase2_result"]
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(f"{_MODULE}.run_phase1", side_effect=_phase1_completes),
             patch(f"{_MODULE}.run_phase2_outer_loop", side_effect=_phase2_checks),
             patch(
@@ -426,11 +418,9 @@ class TestPhaseOrdering:
             return ctx["phase3_result"]
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -468,11 +458,9 @@ class TestPhase2Dispatch:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -512,11 +500,9 @@ class TestPhase2Dispatch:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1", new_callable=AsyncMock, return_value=p1_result
             ),
@@ -560,11 +546,9 @@ class TestPhase2Dispatch:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1", new_callable=AsyncMock, return_value=p1_result
             ),
@@ -611,11 +595,9 @@ class TestPhase2Dispatch:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -652,11 +634,9 @@ class TestPhase2Dispatch:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -708,11 +688,9 @@ class TestPhase3SkipCondition:
         phase3_mock = AsyncMock(return_value=_make_phase3_result())
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -748,11 +726,9 @@ class TestPhase3SkipCondition:
         phase3_mock = AsyncMock(return_value=p3_result)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -799,11 +775,9 @@ class TestPhase3SkipCondition:
         phase3_mock = AsyncMock(return_value=p3_result)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -852,11 +826,9 @@ class TestFinalizationReceivesBestSolution:
         ctx = _standard_patches(tmp_path, config=config, phase3_result=p3_result)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -895,11 +867,9 @@ class TestFinalizationReceivesBestSolution:
         ctx = _standard_patches(tmp_path, config=config, phase2_result=p2_result)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -936,11 +906,9 @@ class TestFinalizationReceivesBestSolution:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1", new_callable=AsyncMock, return_value=p1_result
             ),
@@ -1000,11 +968,9 @@ class TestPhaseDurationRecording:
         ctx = _standard_patches(tmp_path, config=config, final_result=fr)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1044,11 +1010,9 @@ class TestPhaseDurationRecording:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1128,11 +1092,9 @@ class TestPhase2FailureHandling:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1", new_callable=AsyncMock, return_value=p1_result
             ),
@@ -1197,11 +1159,9 @@ class TestPhase2FailureHandling:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1", new_callable=AsyncMock, return_value=p1_result
             ),
@@ -1248,11 +1208,9 @@ class TestBestSolutionSelection:
         ctx = _standard_patches(tmp_path, config=config, phase2_result=p2_result)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1286,11 +1244,9 @@ class TestBestSolutionSelection:
         ctx = _standard_patches(tmp_path, config=config, phase3_result=p3_result)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1334,11 +1290,9 @@ class TestPhase2DispatchParametrized:
         ctx = _standard_patches(tmp_path, config=config, phase3_result=p3_result)
 
         patches = [
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1406,11 +1360,9 @@ class TestPhase2GatherReturnExceptions:
         fr = _make_final_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=_make_mock_client()),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=_make_mock_client()),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1", new_callable=AsyncMock, return_value=p1_result
             ),
@@ -1463,11 +1415,9 @@ class TestSinglePathPipeline:
         task = _make_task(data_dir=str(data_dir))
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=_make_mock_client()),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=_make_mock_client()),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(f"{_MODULE}.run_phase1", phase1_mock),
             patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock),
             patch(f"{_MODULE}.run_phase3", phase3_mock, create=True),
@@ -1491,11 +1441,9 @@ class TestSinglePathPipeline:
         ctx = _standard_patches(tmp_path, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=ctx["mock_client"]),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=ctx["mock_client"]),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -1557,11 +1505,9 @@ class TestPhase2BestSolutionSelection:
         task = _make_task(data_dir=str(data_dir))
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=_make_mock_client()),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=_make_mock_client()),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,

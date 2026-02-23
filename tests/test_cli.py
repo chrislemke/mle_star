@@ -147,7 +147,6 @@ def _make_final_result(**overrides: Any) -> FinalResult:
         "final_solution": solution,
         "submission_path": "/path/to/submission.csv",
         "total_duration_seconds": 120.5,
-        "total_cost_usd": 3.50,
     }
     defaults.update(overrides)
     return FinalResult(**defaults)
@@ -841,27 +840,6 @@ class TestCliSuccessOutput:
         captured = capsys.readouterr()
         assert "0.9123" in captured.out
 
-    def test_success_prints_cost_when_tracked(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """When total_cost_usd is set, it appears in stdout."""
-        from mle_star.cli import main
-
-        # Arrange
-        task_file = tmp_path / "task.yaml"
-        _write_yaml(task_file, _task_yaml_data())
-
-        mock_result = _make_final_result(total_cost_usd=5.25)
-
-        with (
-            patch(f"{_MODULE}.run_pipeline_sync", return_value=mock_result),
-            patch("sys.argv", ["mle_star", "--task", str(task_file)]),
-        ):
-            main()
-
-        # Assert
-        captured = capsys.readouterr()
-        assert "5.25" in captured.out
 
 
 # ===========================================================================

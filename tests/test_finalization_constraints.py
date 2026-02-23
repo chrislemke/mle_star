@@ -1367,6 +1367,7 @@ class TestSubmissionFilePathConvention:
         template = registry.get(AgentType.TEST)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             final_solution="print('hello')",
         )
         assert "./final/submission.csv" in rendered or (
@@ -1381,6 +1382,7 @@ class TestSubmissionFilePathConvention:
         template = registry.get(AgentType.TEST)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             final_solution="print('hello')",
         )
         assert "./final" in rendered
@@ -1393,6 +1395,7 @@ class TestSubmissionFilePathConvention:
         template = registry.get(AgentType.TEST)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             final_solution="print('hello')",
         )
         assert "submission.csv" in rendered
@@ -1415,6 +1418,7 @@ class TestNoExitInTestScript:
         template = registry.get(AgentType.TEST)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             final_solution="print('hello')",
         )
         assert "exit()" in rendered
@@ -1427,6 +1431,7 @@ class TestNoExitInTestScript:
         template = registry.get(AgentType.TEST)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             final_solution="print('hello')",
         )
         # The prompt should instruct not to use exit()
@@ -1465,6 +1470,7 @@ class TestNoErrorMaskingInTestScript:
         template = registry.get(AgentType.TEST)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             final_solution="print('hello')",
         )
         assert "try:" in rendered and "except:" in rendered
@@ -1477,6 +1483,7 @@ class TestNoErrorMaskingInTestScript:
         template = registry.get(AgentType.TEST)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             final_solution="print('hello')",
         )
         assert "unintended" in rendered.lower() or "ignore" in rendered.lower()

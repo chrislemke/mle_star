@@ -1,0 +1,78 @@
+# =============================================================================
+# MLE-STAR Task Description — Spaceship Titanic Example
+# =============================================================================
+# This file defines a single Kaggle competition task for the MLE-STAR pipeline.
+# Load with:  mle_star --task tasks/task_example.yaml
+#
+# All fields map to the TaskDescription Pydantic model in src/mle_star/models.py.
+
+# ---------------------------------------------------------------------------
+# Required fields
+# ---------------------------------------------------------------------------
+
+# Unique Kaggle competition identifier (slug from the competition URL).
+competition_id: spaceship-titanic
+
+# Type of ML task.
+# Valid values: classification, regression, image_classification,
+#               image_to_image, text_classification, audio_classification,
+#               sequence_to_sequence, tabular
+task_type: classification
+
+# Primary data modality of the competition dataset.
+# Valid values: tabular, image, text, audio, mixed
+data_modality: tabular
+
+# Name of the evaluation metric used to score submissions.
+evaluation_metric: accuracy
+
+# Whether the metric should be maximized or minimized.
+# Valid values: maximize, minimize
+metric_direction: maximize
+
+# Full task description text (T_task) fed to all agents as context.
+# Use YAML block scalar (|) for multi-line descriptions.
+description: |
+  Spaceship Titanic — Binary Classification
+
+  Predict which passengers were transported to an alternate dimension during
+  the Spaceship Titanic's collision with a spacetime anomaly.
+
+  Files:
+    - train.csv: Training set with labels (~8700 rows)
+    - test.csv:  Test set without labels (~4300 rows)
+    - sample_submission.csv: Example submission in the correct format
+
+  Key columns:
+    - PassengerId: Unique ID for each passenger (format: gggg_pp)
+    - HomePlanet: Planet of departure (Earth, Europa, Mars)
+    - CryoSleep: Whether the passenger was in suspended animation
+    - Cabin: Cabin number (format: deck/num/side)
+    - Destination: Planet passenger is travelling to
+    - Age: Age of the passenger
+    - VIP: Whether the passenger paid for VIP service
+    - RoomService, FoodCourt, ShoppingMall, Spa, VRDeck: Luxury amenity charges
+    - Name: First and last name
+    - Transported: Target variable (True = transported, False = not)
+
+  Submission format:
+    CSV with two columns: PassengerId, Transported (True/False).
+    See sample_submission.csv for the exact format.
+
+# ---------------------------------------------------------------------------
+# Optional fields (shown with their defaults)
+# ---------------------------------------------------------------------------
+
+# Name of the target column to predict. Passed to agent prompts as structured
+# context alongside the free-text description. Set to null or omit to leave
+# unspecified (agents will rely on the description alone).
+target_column: "Transported"
+
+# Path to the directory containing competition data files.
+# Must already exist and contain the dataset before running the pipeline.
+# Default: "./input"
+data_dir: "./input"
+
+# Path for final submission output files.
+# Default: "./final"
+output_dir: "./final"

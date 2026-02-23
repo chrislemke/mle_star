@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import shutil
 import sys
 from typing import Any
 
@@ -75,6 +76,21 @@ def _load_yaml(path: str, label: str) -> dict[str, Any]:
     return data
 
 
+def _check_claude_cli() -> None:
+    """Check that the ``claude`` CLI is available on PATH.
+
+    Raises:
+        SystemExit: If ``claude`` is not found.
+    """
+    if shutil.which("claude") is None:
+        print(
+            "Error: Claude Code CLI ('claude') not found on PATH. "
+            "Install it from https://docs.anthropic.com/en/docs/claude-code",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def main() -> int:
     """Entry point for the mle_star CLI application.
 
@@ -87,6 +103,8 @@ def main() -> int:
     """
     parser = _build_parser()
     args = parser.parse_args()
+
+    _check_claude_cli()
 
     try:
         # Load and validate task description
@@ -108,8 +126,6 @@ def main() -> int:
         print(f"Total duration: {result.total_duration_seconds}s")
         if result.final_solution.score is not None:
             print(f"Final score: {result.final_solution.score}")
-        if result.total_cost_usd is not None:
-            print(f"Total cost: ${result.total_cost_usd}")
 
     except PipelineError as exc:
         print(f"Pipeline error: {exc}", file=sys.stderr)

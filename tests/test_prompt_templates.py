@@ -64,8 +64,8 @@ MULTI_TEMPLATE_AGENTS: list[str] = [
 
 # Expected variables for each agent type / variant
 EXPECTED_VARIABLES: dict[tuple[str, str | None], list[str]] = {
-    ("retriever", None): ["task_description", "M"],
-    ("init", None): ["task_description", "model_name", "example_code"],
+    ("retriever", None): ["task_description", "target_column", "M"],
+    ("init", None): ["task_description", "target_column", "model_name", "example_code"],
     ("merger", None): ["base_code", "reference_code"],
     ("ablation", None): ["solution_script", "previous_ablations"],
     ("summarize", None): ["ablation_code", "raw_result"],
@@ -81,8 +81,8 @@ EXPECTED_VARIABLES: dict[tuple[str, str | None], list[str]] = {
     ("debugger", None): ["code", "bug"],
     ("leakage", "detection"): ["code"],
     ("leakage", "correction"): ["code"],
-    ("data", None): ["initial_solution", "task_description"],
-    ("test", None): ["task_description", "final_solution"],
+    ("data", None): ["initial_solution", "task_description", "target_column"],
+    ("test", None): ["task_description", "target_column", "final_solution"],
     ("test", "subsampling_extract"): ["final_solution"],
     ("test", "subsampling_remove"): ["code_block_with_subsampling"],
     ("test", "contamination_check"): ["reference_discussion", "final_solution"],

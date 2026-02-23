@@ -10,6 +10,7 @@ template: |
 
   # Task description
   {task_description}
+  - The target column to predict is: {target_column}
 
   # Your task
   - If the above solution code does not use the information provided, try to incorporate all. Do not bypass using try-except.
@@ -23,3 +24,4 @@ template: |
 variables:
   - initial_solution
   - task_description
+  - target_column

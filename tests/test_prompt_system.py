@@ -562,10 +562,12 @@ class TestPromptRegistryRetrieverContent:
         assert pt.figure_ref == "Figure 9"
 
     def test_retriever_variables(self) -> None:
-        """Retriever template has variables ['task_description', 'M']."""
+        """Retriever template has variables ['task_description', 'target_column', 'M']."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
-        assert sorted(pt.variables) == sorted(["task_description", "M"])
+        assert sorted(pt.variables) == sorted(
+            ["task_description", "target_column", "M"]
+        )
 
     def test_retriever_template_contains_placeholders(self) -> None:
         """Retriever template text contains {task_description} and {M}."""
@@ -578,7 +580,9 @@ class TestPromptRegistryRetrieverContent:
         """Rendering the retriever template produces expected substitutions."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
-        rendered = pt.render(task_description="classify images", M=4)
+        rendered = pt.render(
+            task_description="classify images", target_column="label", M=4
+        )
         assert "classify images" in rendered
         assert "4" in rendered
 
@@ -906,17 +910,19 @@ class TestPromptRegistryVariables:
     """Templates have correct variable lists matching their YAML definitions."""
 
     def test_retriever_variables_are_task_description_and_m(self) -> None:
-        """Retriever template declares variables task_description and M."""
+        """Retriever template declares variables task_description, target_column, and M."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
-        assert sorted(pt.variables) == sorted(["task_description", "M"])
+        assert sorted(pt.variables) == sorted(
+            ["task_description", "target_column", "M"]
+        )
 
     def test_init_variables(self) -> None:
-        """Init template declares variables task_description, model_name, example_code."""
+        """Init template declares variables task_description, target_column, model_name, example_code."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.INIT)
         assert sorted(pt.variables) == sorted(
-            ["task_description", "model_name", "example_code"]
+            ["task_description", "target_column", "model_name", "example_code"]
         )
 
     def test_merger_variables(self) -> None:
@@ -938,10 +944,12 @@ class TestPromptRegistryVariables:
         assert sorted(pt.variables) == sorted(["code", "bug"])
 
     def test_data_variables(self) -> None:
-        """Data template declares variables initial_solution and task_description."""
+        """Data template declares variables initial_solution, task_description, and target_column."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.DATA)
-        assert sorted(pt.variables) == sorted(["initial_solution", "task_description"])
+        assert sorted(pt.variables) == sorted(
+            ["initial_solution", "task_description", "target_column"]
+        )
 
 
 # ===========================================================================
@@ -957,7 +965,9 @@ class TestPromptRegistryRenderIntegration:
         """Load retriever template and render with actual values."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
-        rendered = pt.render(task_description="Predict house prices", M=4)
+        rendered = pt.render(
+            task_description="Predict house prices", target_column="price", M=4
+        )
         assert "Predict house prices" in rendered
         assert "4" in rendered
 
@@ -974,6 +984,7 @@ class TestPromptRegistryRenderIntegration:
         pt = registry.get(AgentType.TEST)
         rendered = pt.render(
             task_description="Classify images",
+            target_column="label",
             final_solution="import torch\n",
         )
         assert "Classify images" in rendered
@@ -994,6 +1005,7 @@ class TestPromptRegistryRenderIntegration:
         rendered = pt.render(
             initial_solution="import pandas as pd\n",
             task_description="Predict survival",
+            target_column="Survived",
         )
         assert "import pandas as pd" in rendered
         assert "Predict survival" in rendered

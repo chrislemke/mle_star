@@ -2,7 +2,7 @@
 
 Validates non-functional requirements for the orchestrator module:
 orchestration overhead budget, memory efficiency, idempotent retry safety,
-SDK reconnection on transient failure, SDK version checking, concurrent
+CLI retry on transient failure, CLI version checking, concurrent
 session limiting, and agent name uniqueness.
 
 Tests are written TDD-first and serve as the executable specification for
@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
+import subprocess
 import time
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from hypothesis import HealthCheck, given, settings, strategies as st
 from mle_star.models import (
@@ -38,6 +38,7 @@ from mle_star.models import (
     SolutionScript,
     TaskDescription,
     TaskType,
+    build_default_agent_configs,
 )
 import pytest
 
@@ -139,7 +140,6 @@ def _make_final_result(
         "final_solution": _make_solution(phase=SolutionPhase.FINAL),
         "submission_path": "/output/submission.csv",
         "total_duration_seconds": 10.0,
-        "total_cost_usd": None,
     }
     defaults.update(overrides)
     return FinalResult(**defaults)
@@ -175,57 +175,6 @@ class TestOrchestratorOverhead:
         assert "phase3" in result
         assert "finalization" in result
         assert "phase2_per_path" in result
-
-    def test_build_hooks_under_100ms(self) -> None:
-        """build_hooks completes in under 100ms."""
-        from mle_star.orchestrator import CostTracker, build_hooks
-
-        # Arrange
-        pipeline_start = time.monotonic()
-        deadline = pipeline_start + 86400
-        cost_tracker = CostTracker(max_budget=100.0)
-        finalize_flag = threading.Event()
-        failure_counts: dict[str, int] = {}
-        failure_lock = threading.Lock()
-        session_agent_map: dict[str, str] = {}
-
-        # Act
-        start = time.monotonic()
-        hooks = build_hooks(
-            pipeline_start=pipeline_start,
-            deadline=deadline,
-            time_limit=86400,
-            cost_tracker=cost_tracker,
-            work_dir="/tmp/test",
-            finalize_flag=finalize_flag,
-            failure_counts=failure_counts,
-            failure_lock=failure_lock,
-            session_agent_map=session_agent_map,
-        )
-        elapsed_ms = (time.monotonic() - start) * 1000
-
-        # Assert
-        assert elapsed_ms < 100.0, (
-            f"build_hooks took {elapsed_ms:.2f}ms, exceeds 100ms budget"
-        )
-        assert isinstance(hooks, dict)
-        assert len(hooks) >= 4  # Multiple event types registered
-
-    def test_build_agents_dict_under_100ms(self) -> None:
-        """_build_agents_dict completes in under 100ms."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        # Act
-        start = time.monotonic()
-        agents = _build_agents_dict()
-        elapsed_ms = (time.monotonic() - start) * 1000
-
-        # Assert
-        assert elapsed_ms < 100.0, (
-            f"_build_agents_dict took {elapsed_ms:.2f}ms, exceeds 100ms budget"
-        )
-        assert isinstance(agents, dict)
-        assert len(agents) == 14
 
     def test_collect_phase2_results_under_100ms(self) -> None:
         """_collect_phase2_results completes in under 100ms for typical inputs."""
@@ -300,6 +249,28 @@ class TestOrchestratorOverhead:
         assert elapsed_ms < 100.0
         assert len(phase2_results) == num_results
         assert len(solutions) == num_results
+
+    def test_create_client_under_100ms(self) -> None:
+        """_create_client completes in under 100ms."""
+        from mle_star.orchestrator import _create_client
+
+        config = _make_config()
+        task = _make_task()
+
+        start = time.monotonic()
+        with patch(
+            f"{_MODULE}.detect_gpu_info",
+            return_value={"cuda_available": False},
+        ):
+            client = _create_client(config, task)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        assert elapsed_ms < 100.0, (
+            f"_create_client took {elapsed_ms:.2f}ms, exceeds 100ms budget"
+        )
+        from mle_star.orchestrator import ClaudeCodeClient
+
+        assert isinstance(client, ClaudeCodeClient)
 
 
 # ===========================================================================
@@ -400,334 +371,70 @@ class TestMemoryEfficiency:
 class TestIdempotentRetrySafety:
     """Each run_pipeline() call creates fresh state (REQ-OR-051)."""
 
-    async def test_run_pipeline_creates_fresh_cost_tracker(
-        self, tmp_path: Path
-    ) -> None:
-        """Each run_pipeline call creates a new CostTracker."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config(num_parallel_solutions=1)
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        p1_result = _make_phase1_result()
-        p2_result = _make_phase2_result()
-        fr = _make_final_result(task, config)
-
-        cost_trackers: list[Any] = []
-
-        original_build_hooks = None
-
-        def _capture_cost_tracker(**kwargs: Any) -> Any:
-            cost_trackers.append(kwargs.get("cost_tracker"))
-            return original_build_hooks(**kwargs)
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=p1_result,
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=p2_result,
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=fr,
-            ),
-        ):
-            # We need to capture the CostTracker created in each call.
-            # The CostTracker is created inside run_pipeline as a local variable,
-            # so we verify indirectly by checking that each call produces
-            # independent results.
-            result1 = await run_pipeline(task, config)
-            result2 = await run_pipeline(task, config)
-
-        # Both calls should succeed independently
-        assert isinstance(result1, FinalResult)
-        assert isinstance(result2, FinalResult)
-
-    async def test_run_pipeline_creates_fresh_session_maps(
-        self, tmp_path: Path
-    ) -> None:
-        """Each run_pipeline call creates fresh session-to-agent maps."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config(num_parallel_solutions=1)
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        p1_result = _make_phase1_result()
-        p2_result = _make_phase2_result()
-        fr = _make_final_result(task, config)
-
-        captured_hooks: list[dict[str, Any]] = []
-        real_build_hooks = None
-
-        def _capture_hooks(**kwargs: Any) -> dict[str, Any]:
-            nonlocal real_build_hooks
-            captured_hooks.append(kwargs)
-            return real_build_hooks(**kwargs)  # type: ignore[misc]
-
-        import mle_star.orchestrator as orch_mod
-
-        real_build_hooks = orch_mod.build_hooks
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=p1_result,
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=p2_result,
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=fr,
-            ),
-            patch(f"{_MODULE}.build_hooks", side_effect=_capture_hooks),
-        ):
-            await run_pipeline(task, config)
-            await run_pipeline(task, config)
-
-        # Two calls should have been made to build_hooks
-        assert len(captured_hooks) == 2
-        # Each call should have a distinct session_agent_map (fresh dict)
-        map1 = captured_hooks[0]["session_agent_map"]
-        map2 = captured_hooks[1]["session_agent_map"]
-        assert map1 is not map2, "Session maps should be distinct objects per call"
-
-    async def test_run_pipeline_creates_fresh_failure_counts(
-        self, tmp_path: Path
-    ) -> None:
-        """Each run_pipeline call creates fresh failure_counts dict."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config(num_parallel_solutions=1)
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        p1_result = _make_phase1_result()
-        p2_result = _make_phase2_result()
-        fr = _make_final_result(task, config)
-
-        captured_hooks: list[dict[str, Any]] = []
-        real_build_hooks = None
-
-        def _capture_hooks(**kwargs: Any) -> dict[str, Any]:
-            nonlocal real_build_hooks
-            captured_hooks.append(kwargs)
-            return real_build_hooks(**kwargs)  # type: ignore[misc]
-
-        import mle_star.orchestrator as orch_mod
-
-        real_build_hooks = orch_mod.build_hooks
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=p1_result,
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=p2_result,
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=fr,
-            ),
-            patch(f"{_MODULE}.build_hooks", side_effect=_capture_hooks),
-        ):
-            await run_pipeline(task, config)
-            await run_pipeline(task, config)
-
-        # Two calls should have distinct failure_counts dicts
-        assert len(captured_hooks) == 2
-        fc1 = captured_hooks[0]["failure_counts"]
-        fc2 = captured_hooks[1]["failure_counts"]
-        assert fc1 is not fc2, "Failure counts should be distinct objects per call"
-
-    async def test_run_pipeline_creates_fresh_finalize_flag(
-        self, tmp_path: Path
-    ) -> None:
-        """Each run_pipeline call creates a fresh finalize_flag Event."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config(num_parallel_solutions=1)
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        p1_result = _make_phase1_result()
-        p2_result = _make_phase2_result()
-        fr = _make_final_result(task, config)
-
-        captured_hooks: list[dict[str, Any]] = []
-        real_build_hooks = None
-
-        def _capture_hooks(**kwargs: Any) -> dict[str, Any]:
-            nonlocal real_build_hooks
-            captured_hooks.append(kwargs)
-            return real_build_hooks(**kwargs)  # type: ignore[misc]
-
-        import mle_star.orchestrator as orch_mod
-
-        real_build_hooks = orch_mod.build_hooks
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=p1_result,
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=p2_result,
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=fr,
-            ),
-            patch(f"{_MODULE}.build_hooks", side_effect=_capture_hooks),
-        ):
-            await run_pipeline(task, config)
-            await run_pipeline(task, config)
-
-        # Two calls should have distinct finalize flags
-        assert len(captured_hooks) == 2
-        flag1 = captured_hooks[0]["finalize_flag"]
-        flag2 = captured_hooks[1]["finalize_flag"]
-        assert flag1 is not flag2, "Finalize flags should be distinct per call"
-
-    def test_cost_tracker_starts_at_zero(self) -> None:
-        """A freshly created CostTracker starts at zero cost."""
-        from mle_star.orchestrator import CostTracker
-
-        # Act
-        tracker = CostTracker(max_budget=100.0)
-
-        # Assert
-        assert tracker.total == 0.0
-        assert not tracker.exceeded
-
-    def test_cost_tracker_instances_are_independent(self) -> None:
-        """Two CostTracker instances do not share state."""
-        from mle_star.orchestrator import CostTracker
-
-        # Arrange
-        tracker1 = CostTracker(max_budget=100.0)
-        tracker2 = CostTracker(max_budget=100.0)
-
-        # Act
-        tracker1.accumulate(50.0)
-
-        # Assert
-        assert tracker1.total == 50.0
-        assert tracker2.total == 0.0  # Independent
+    pass
 
 
 # ===========================================================================
-# REQ-OR-052: SDK reconnection on transient failure
+# REQ-OR-052: Retry on transient failure with exponential backoff
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestSDKReconnection:
-    """SDK client reconnects on transient failure with exponential backoff (REQ-OR-052)."""
+class TestRetryWithBackoff:
+    """Agent invocations are retried on transient failure with exponential backoff (REQ-OR-052)."""
 
-    async def test_reconnect_retries_up_to_three_times(self) -> None:
-        """reconnect_with_backoff retries connection up to max_retries times."""
-        from mle_star.orchestrator import reconnect_with_backoff
+    async def test_retry_retries_up_to_three_times(self) -> None:
+        """retry_with_backoff retries send_message up to max_retries times."""
+        from mle_star.orchestrator import retry_with_backoff
 
         # Arrange
         mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(
+        mock_client.send_message = AsyncMock(
             side_effect=[
-                ConnectionError("transient 1"),
-                ConnectionError("transient 2"),
-                None,  # Third attempt succeeds
+                RuntimeError("transient 1"),
+                RuntimeError("transient 2"),
+                "success response",  # Third attempt succeeds
             ]
         )
 
         # Act
         with patch("asyncio.sleep", new_callable=AsyncMock):
-            await reconnect_with_backoff(mock_client, "session-123", max_retries=3)
+            result = await retry_with_backoff(
+                mock_client, AgentType.CODER, "test message", max_retries=3
+            )
 
         # Assert
-        assert mock_client.connect.await_count == 3
+        assert result == "success response"
+        assert mock_client.send_message.await_count == 3
 
-    async def test_reconnect_succeeds_on_first_try(self) -> None:
-        """When connection succeeds immediately, only one attempt is made."""
-        from mle_star.orchestrator import reconnect_with_backoff
+    async def test_retry_succeeds_on_first_try(self) -> None:
+        """When send_message succeeds immediately, only one attempt is made."""
+        from mle_star.orchestrator import retry_with_backoff
 
         # Arrange
         mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(return_value=None)
+        mock_client.send_message = AsyncMock(return_value="immediate success")
 
         # Act
-        await reconnect_with_backoff(mock_client, "session-456", max_retries=3)
+        result = await retry_with_backoff(
+            mock_client, AgentType.PLANNER, "test msg", max_retries=3
+        )
 
         # Assert
-        assert mock_client.connect.await_count == 1
+        assert result == "immediate success"
+        assert mock_client.send_message.await_count == 1
 
-    async def test_reconnect_uses_exponential_backoff(self) -> None:
+    async def test_retry_uses_exponential_backoff(self) -> None:
         """Delays between retries follow exponential backoff: 1s, 2s, 4s."""
-        from mle_star.orchestrator import reconnect_with_backoff
+        from mle_star.orchestrator import retry_with_backoff
 
         # Arrange
         mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(
+        mock_client.send_message = AsyncMock(
             side_effect=[
-                ConnectionError("fail 1"),
-                ConnectionError("fail 2"),
-                None,  # Third attempt succeeds
+                RuntimeError("fail 1"),
+                RuntimeError("fail 2"),
+                "ok",  # Third attempt succeeds
             ]
         )
 
@@ -738,66 +445,86 @@ class TestSDKReconnection:
 
         # Act
         with patch("asyncio.sleep", side_effect=_mock_sleep):
-            await reconnect_with_backoff(mock_client, "session-789", max_retries=3)
+            await retry_with_backoff(mock_client, AgentType.CODER, "msg", max_retries=3)
 
         # Assert -- exponential backoff: 1, 2 seconds
         assert len(sleep_calls) == 2
         assert sleep_calls[0] == pytest.approx(1.0)
         assert sleep_calls[1] == pytest.approx(2.0)
 
-    async def test_reconnect_passes_session_id_as_resume(self) -> None:
-        """Reconnection uses resume=session_id parameter."""
-        from mle_star.orchestrator import reconnect_with_backoff
+    async def test_retry_passes_agent_type_and_message(self) -> None:
+        """retry_with_backoff passes agent_type and message to send_message."""
+        from mle_star.orchestrator import retry_with_backoff
 
         # Arrange
         mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(return_value=None)
+        mock_client.send_message = AsyncMock(return_value="response")
 
         # Act
-        await reconnect_with_backoff(mock_client, "my-session-42", max_retries=3)
+        await retry_with_backoff(
+            mock_client, AgentType.DEBUGGER, "debug this", max_retries=3
+        )
 
-        # Assert -- connect called with resume=session_id
-        mock_client.connect.assert_awaited_once()
-        call_kwargs = mock_client.connect.call_args
-        # The session_id should be passed as resume parameter
+        # Assert
+        mock_client.send_message.assert_awaited_once()
+        call_kwargs = mock_client.send_message.call_args
         assert call_kwargs is not None
-        # Either as a keyword argument or it was used somehow
-        if call_kwargs.kwargs:
-            assert call_kwargs.kwargs.get("resume") == "my-session-42"
-        elif call_kwargs.args:
-            assert "my-session-42" in str(call_kwargs.args)
+        assert call_kwargs.kwargs.get("agent_type") == AgentType.DEBUGGER
+        assert call_kwargs.kwargs.get("message") == "debug this"
 
-    async def test_reconnect_raises_after_max_retries_exhausted(self) -> None:
-        """After max_retries failures, raises ConnectionError."""
-        from mle_star.orchestrator import reconnect_with_backoff
+    async def test_retry_passes_session_id(self) -> None:
+        """retry_with_backoff passes session_id to send_message."""
+        from mle_star.orchestrator import retry_with_backoff
 
         # Arrange
         mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(
-            side_effect=ConnectionError("persistent failure")
+        mock_client.send_message = AsyncMock(return_value="response")
+
+        # Act
+        await retry_with_backoff(
+            mock_client,
+            AgentType.CODER,
+            "msg",
+            max_retries=3,
+            session_id="my-session-42",
+        )
+
+        # Assert
+        call_kwargs = mock_client.send_message.call_args
+        assert call_kwargs is not None
+        assert call_kwargs.kwargs.get("session_id") == "my-session-42"
+
+    async def test_retry_raises_after_max_retries_exhausted(self) -> None:
+        """After max_retries failures, raises RuntimeError."""
+        from mle_star.orchestrator import retry_with_backoff
+
+        # Arrange
+        mock_client = AsyncMock()
+        mock_client.send_message = AsyncMock(
+            side_effect=RuntimeError("persistent failure")
         )
 
         # Act & Assert
         with (
             patch("asyncio.sleep", new_callable=AsyncMock),
-            pytest.raises(ConnectionError, match="persistent failure"),
+            pytest.raises(RuntimeError, match="persistent failure"),
         ):
-            await reconnect_with_backoff(mock_client, "session-fail", max_retries=3)
+            await retry_with_backoff(mock_client, AgentType.CODER, "msg", max_retries=3)
 
-        assert mock_client.connect.await_count == 3
+        assert mock_client.send_message.await_count == 3
 
-    async def test_reconnect_logs_each_retry_attempt(
+    async def test_retry_logs_each_retry_attempt(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Each retry attempt is logged at WARNING level."""
-        from mle_star.orchestrator import reconnect_with_backoff
+        from mle_star.orchestrator import retry_with_backoff
 
         # Arrange
         mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(
+        mock_client.send_message = AsyncMock(
             side_effect=[
-                ConnectionError("fail 1"),
-                None,
+                RuntimeError("fail 1"),
+                "ok",
             ]
         )
 
@@ -806,27 +533,26 @@ class TestSDKReconnection:
             patch("asyncio.sleep", new_callable=AsyncMock),
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
-            await reconnect_with_backoff(mock_client, "session-log", max_retries=3)
+            await retry_with_backoff(mock_client, AgentType.CODER, "msg", max_retries=3)
 
         # Assert -- at least one warning about retry
         warning_msgs = [r for r in caplog.records if r.levelno >= logging.WARNING]
         all_text = " ".join(r.message for r in warning_msgs)
-        assert "retry" in all_text.lower() or "reconnect" in all_text.lower()
+        assert "retry" in all_text.lower() or "failed" in all_text.lower()
 
-    async def test_reconnect_with_zero_retries_raises_immediately(self) -> None:
+    async def test_retry_with_zero_retries_raises_immediately(self) -> None:
         """With max_retries=0, no attempt is made and error propagates."""
-        from mle_star.orchestrator import reconnect_with_backoff
-
-        # Arrange
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(side_effect=ConnectionError("immediate fail"))
+        from mle_star.orchestrator import retry_with_backoff
 
         # Act & Assert
+        mock_client = AsyncMock()
+        mock_client.send_message = AsyncMock(side_effect=RuntimeError("immediate"))
+
         with (
             patch("asyncio.sleep", new_callable=AsyncMock),
-            pytest.raises(ConnectionError),
+            pytest.raises(RuntimeError),
         ):
-            await reconnect_with_backoff(mock_client, "session-0", max_retries=0)
+            await retry_with_backoff(mock_client, AgentType.CODER, "msg", max_retries=0)
 
     @given(max_retries=st.integers(min_value=1, max_value=5))
     @settings(
@@ -834,15 +560,15 @@ class TestSDKReconnection:
         deadline=10000,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    async def test_reconnect_backoff_delays_are_powers_of_two(
+    async def test_retry_backoff_delays_are_powers_of_two(
         self, max_retries: int
     ) -> None:
         """Backoff delays follow 2^i pattern: 1, 2, 4, 8, 16..."""
-        from mle_star.orchestrator import reconnect_with_backoff
+        from mle_star.orchestrator import retry_with_backoff
 
         # Arrange -- all attempts fail
         mock_client = AsyncMock()
-        mock_client.connect = AsyncMock(side_effect=ConnectionError("always fails"))
+        mock_client.send_message = AsyncMock(side_effect=RuntimeError("always fails"))
 
         sleep_calls: list[float] = []
 
@@ -852,10 +578,10 @@ class TestSDKReconnection:
         # Act
         with (
             patch("asyncio.sleep", side_effect=_mock_sleep),
-            pytest.raises(ConnectionError),
+            pytest.raises(RuntimeError),
         ):
-            await reconnect_with_backoff(
-                mock_client, "session-exp", max_retries=max_retries
+            await retry_with_backoff(
+                mock_client, AgentType.CODER, "msg", max_retries=max_retries
             )
 
         # Assert -- delays should be 1, 2, 4, 8, ...
@@ -867,90 +593,153 @@ class TestSDKReconnection:
 
 
 # ===========================================================================
-# REQ-OR-054: SDK version check
+# REQ-OR-054: Claude CLI version check
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestSDKVersionCheck:
-    """Importing orchestrator checks SDK version >= 0.1.39 (REQ-OR-054)."""
+class TestClaudeCLIVersionCheck:
+    """check_claude_cli_version verifies Claude CLI presence and version (REQ-OR-054)."""
 
-    def test_check_sdk_version_passes_with_valid_version(self) -> None:
-        """check_sdk_version succeeds when SDK version >= 0.1.39."""
-        from mle_star.orchestrator import check_sdk_version
+    def test_check_cli_version_passes_with_valid_version(self) -> None:
+        """check_claude_cli_version succeeds when CLI version >= 1.0.0."""
+        from mle_star.orchestrator import check_claude_cli_version
 
-        # Act & Assert -- should not raise with the actual SDK version
-        with patch("claude_agent_sdk.__version__", "0.1.39"):
-            check_sdk_version()  # No exception
-
-    def test_check_sdk_version_passes_with_higher_version(self) -> None:
-        """check_sdk_version succeeds when SDK version > 0.1.39."""
-        from mle_star.orchestrator import check_sdk_version
-
-        with patch("claude_agent_sdk.__version__", "0.2.0"):
-            check_sdk_version()  # No exception
-
-    def test_check_sdk_version_passes_with_patch_version(self) -> None:
-        """check_sdk_version succeeds when SDK version is 0.1.40."""
-        from mle_star.orchestrator import check_sdk_version
-
-        with patch("claude_agent_sdk.__version__", "0.1.40"):
-            check_sdk_version()  # No exception
-
-    def test_check_sdk_version_raises_for_old_version(self) -> None:
-        """check_sdk_version raises ImportError when SDK version < 0.1.39."""
-        from mle_star.orchestrator import check_sdk_version
+        mock_result = MagicMock()
+        mock_result.stdout = "claude 1.0.0\n"
 
         with (
-            patch("claude_agent_sdk.__version__", "0.1.38"),
-            pytest.raises(ImportError, match=r"0\.1\.39"),
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(f"{_MODULE}._subprocess_mod.run", return_value=mock_result),
         ):
-            check_sdk_version()
+            check_claude_cli_version()  # No exception
 
-    def test_check_sdk_version_raises_for_much_older_version(self) -> None:
-        """check_sdk_version raises ImportError for very old version."""
-        from mle_star.orchestrator import check_sdk_version
+    def test_check_cli_version_passes_with_higher_version(self) -> None:
+        """check_claude_cli_version succeeds when CLI version > 1.0.0."""
+        from mle_star.orchestrator import check_claude_cli_version
+
+        mock_result = MagicMock()
+        mock_result.stdout = "claude 2.0.0\n"
 
         with (
-            patch("claude_agent_sdk.__version__", "0.0.1"),
-            pytest.raises(ImportError, match=r"0\.1\.39"),
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(f"{_MODULE}._subprocess_mod.run", return_value=mock_result),
         ):
-            check_sdk_version()
+            check_claude_cli_version()  # No exception
+
+    def test_check_cli_version_passes_with_patch_version(self) -> None:
+        """check_claude_cli_version succeeds when CLI version is 1.0.1."""
+        from mle_star.orchestrator import check_claude_cli_version
+
+        mock_result = MagicMock()
+        mock_result.stdout = "claude 1.0.1\n"
+
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(f"{_MODULE}._subprocess_mod.run", return_value=mock_result),
+        ):
+            check_claude_cli_version()  # No exception
+
+    def test_check_cli_version_raises_for_old_version(self) -> None:
+        """check_claude_cli_version raises ImportError when CLI version < 1.0.0."""
+        from mle_star.orchestrator import check_claude_cli_version
+
+        mock_result = MagicMock()
+        mock_result.stdout = "claude 0.9.0\n"
+
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(f"{_MODULE}._subprocess_mod.run", return_value=mock_result),
+            pytest.raises(ImportError, match=r"1\.0\.0"),
+        ):
+            check_claude_cli_version()
+
+    def test_check_cli_version_raises_when_not_on_path(self) -> None:
+        """check_claude_cli_version raises FileNotFoundError when claude not on PATH."""
+        from mle_star.orchestrator import check_claude_cli_version
+
+        with (
+            patch("shutil.which", return_value=None),
+            pytest.raises(FileNotFoundError),
+        ):
+            check_claude_cli_version()
+
+    def test_check_cli_version_raises_for_much_older_version(self) -> None:
+        """check_claude_cli_version raises ImportError for very old version."""
+        from mle_star.orchestrator import check_claude_cli_version
+
+        mock_result = MagicMock()
+        mock_result.stdout = "claude 0.0.1\n"
+
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(f"{_MODULE}._subprocess_mod.run", return_value=mock_result),
+            pytest.raises(ImportError, match=r"1\.0\.0"),
+        ):
+            check_claude_cli_version()
 
     @pytest.mark.parametrize(
         "version",
-        ["0.1.37", "0.1.38", "0.1.0", "0.0.99"],
+        ["0.1.37", "0.9.0", "0.1.0", "0.0.99"],
     )
-    def test_check_sdk_version_rejects_old_versions(self, version: str) -> None:
-        """check_sdk_version rejects all versions below 0.1.39."""
-        from mle_star.orchestrator import check_sdk_version
+    def test_check_cli_version_rejects_old_versions(self, version: str) -> None:
+        """check_claude_cli_version rejects all versions below 1.0.0."""
+        from mle_star.orchestrator import check_claude_cli_version
+
+        mock_result = MagicMock()
+        mock_result.stdout = f"claude {version}\n"
 
         with (
-            patch("claude_agent_sdk.__version__", version),
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(f"{_MODULE}._subprocess_mod.run", return_value=mock_result),
             pytest.raises(ImportError),
         ):
-            check_sdk_version()
+            check_claude_cli_version()
 
     @pytest.mark.parametrize(
         "version",
-        ["0.1.39", "0.1.40", "0.2.0", "1.0.0"],
+        ["1.0.0", "1.0.1", "1.1.0", "2.0.0"],
     )
-    def test_check_sdk_version_accepts_valid_versions(self, version: str) -> None:
-        """check_sdk_version accepts all versions >= 0.1.39."""
-        from mle_star.orchestrator import check_sdk_version
+    def test_check_cli_version_accepts_valid_versions(self, version: str) -> None:
+        """check_claude_cli_version accepts all versions >= 1.0.0."""
+        from mle_star.orchestrator import check_claude_cli_version
 
-        with patch("claude_agent_sdk.__version__", version):
-            check_sdk_version()  # No exception
-
-    def test_check_sdk_version_error_message_includes_found_version(self) -> None:
-        """ImportError message includes the version that was found."""
-        from mle_star.orchestrator import check_sdk_version
+        mock_result = MagicMock()
+        mock_result.stdout = f"claude {version}\n"
 
         with (
-            patch("claude_agent_sdk.__version__", "0.1.38"),
-            pytest.raises(ImportError, match=r"0\.1\.38"),
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(f"{_MODULE}._subprocess_mod.run", return_value=mock_result),
         ):
-            check_sdk_version()
+            check_claude_cli_version()  # No exception
+
+    def test_check_cli_version_error_message_includes_found_version(self) -> None:
+        """ImportError message includes the version that was found."""
+        from mle_star.orchestrator import check_claude_cli_version
+
+        mock_result = MagicMock()
+        mock_result.stdout = "claude 0.9.0\n"
+
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(f"{_MODULE}._subprocess_mod.run", return_value=mock_result),
+            pytest.raises(ImportError, match=r"0\.9\.0"),
+        ):
+            check_claude_cli_version()
+
+    def test_check_cli_version_handles_timeout(self) -> None:
+        """check_claude_cli_version raises FileNotFoundError on subprocess timeout."""
+        from mle_star.orchestrator import check_claude_cli_version
+
+        with (
+            patch("shutil.which", return_value="/usr/local/bin/claude"),
+            patch(
+                f"{_MODULE}._subprocess_mod.run",
+                side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=10),
+            ),
+            pytest.raises(FileNotFoundError),
+        ):
+            check_claude_cli_version()
 
 
 # ===========================================================================
@@ -971,7 +760,7 @@ class TestConcurrentSessionLimit:
         config = _make_config(num_parallel_solutions=4)
         p1_result = _make_phase1_result()
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         phase2_mock = AsyncMock(return_value=_make_phase2_result())
 
         with patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock):
@@ -996,7 +785,7 @@ class TestConcurrentSessionLimit:
         config = _make_config(num_parallel_solutions=3)
         p1_result = _make_phase1_result()
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         phase2_mock = AsyncMock(return_value=_make_phase2_result())
 
         with patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock):
@@ -1022,7 +811,7 @@ class TestConcurrentSessionLimit:
         config = _make_config(num_parallel_solutions=4)
         p1_result = _make_phase1_result()
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         phase2_mock = AsyncMock(return_value=_make_phase2_result())
 
         with (
@@ -1057,7 +846,7 @@ class TestConcurrentSessionLimit:
         config = _make_config(num_parallel_solutions=2)
         p1_result = _make_phase1_result()
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         phase2_mock = AsyncMock(return_value=_make_phase2_result())
 
         with (
@@ -1094,7 +883,7 @@ class TestConcurrentSessionLimit:
         config = _make_config(num_parallel_solutions=3)
         p1_result = _make_phase1_result()
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
 
         execution_order: list[str] = []
 
@@ -1146,7 +935,7 @@ class TestConcurrentSessionLimit:
         config = _make_config(num_parallel_solutions=num_paths)
         p1_result = _make_phase1_result()
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         phase2_mock = AsyncMock(return_value=_make_phase2_result())
 
         with patch(f"{_MODULE}.run_phase2_outer_loop", phase2_mock):
@@ -1168,38 +957,32 @@ class TestConcurrentSessionLimit:
 
 @pytest.mark.unit
 class TestAgentNameUniqueness:
-    """All 14 agent names from _build_agents_dict are unique (REQ-OR-057)."""
+    """All 14 agent names from build_default_agent_configs are unique (REQ-OR-057)."""
 
-    def test_agents_dict_has_14_entries(self) -> None:
-        """_build_agents_dict returns exactly 14 agent definitions."""
-        from mle_star.orchestrator import _build_agents_dict
-
+    def test_agent_configs_has_14_entries(self) -> None:
+        """build_default_agent_configs returns exactly 14 agent definitions."""
         # Act
-        agents = _build_agents_dict()
+        agents = build_default_agent_configs()
 
         # Assert
         assert len(agents) == 14
 
     def test_all_agent_names_are_unique(self) -> None:
         """All 14 agent names (keys) are unique."""
-        from mle_star.orchestrator import _build_agents_dict
-
         # Act
-        agents = _build_agents_dict()
+        agents = build_default_agent_configs()
 
         # Assert -- dict keys are inherently unique, but verify count
-        agent_names = list(agents.keys())
+        agent_names = [str(k) for k in agents]
         assert len(agent_names) == len(set(agent_names))
 
     def test_agent_names_match_agent_type_enum(self) -> None:
-        """Every key in _build_agents_dict matches an AgentType value."""
-        from mle_star.orchestrator import _build_agents_dict
-
+        """Every key in build_default_agent_configs matches an AgentType value."""
         # Arrange
-        expected_names = {str(agent_type) for agent_type in AgentType}
+        expected_names = {agent_type for agent_type in AgentType}
 
         # Act
-        agents = _build_agents_dict()
+        agents = build_default_agent_configs()
         actual_names = set(agents.keys())
 
         # Assert
@@ -1207,42 +990,39 @@ class TestAgentNameUniqueness:
 
     def test_every_agent_type_has_a_definition(self) -> None:
         """Every AgentType enum member has a corresponding agent definition."""
-        from mle_star.orchestrator import _build_agents_dict
-
         # Act
-        agents = _build_agents_dict()
+        agents = build_default_agent_configs()
 
         # Assert
         for agent_type in AgentType:
-            assert str(agent_type) in agents, (
+            assert agent_type in agents, (
                 f"AgentType.{agent_type.name} ({agent_type.value}) "
                 f"missing from agents dict"
             )
 
     def test_agent_definitions_have_required_fields(self) -> None:
-        """Each agent definition dict contains essential configuration fields."""
-        from mle_star.orchestrator import _build_agents_dict
-
+        """Each agent definition is a non-empty AgentConfig."""
         # Act
-        agents = _build_agents_dict()
+        agents = build_default_agent_configs()
 
-        # Assert -- each definition should be a non-empty dict
-        for name, defn in agents.items():
-            assert isinstance(defn, dict), f"Agent {name} definition is not a dict"
-            assert len(defn) > 0, f"Agent {name} has empty definition"
+        # Assert -- each definition should be a non-None AgentConfig
+        for name, config in agents.items():
+            from mle_star.models import AgentConfig
+
+            assert isinstance(config, AgentConfig), (
+                f"Agent {name} config is not an AgentConfig"
+            )
 
     def test_agent_names_are_all_lowercase(self) -> None:
         """All agent names are lowercase strings matching StrEnum convention."""
-        from mle_star.orchestrator import _build_agents_dict
-
         # Act
-        agents = _build_agents_dict()
+        agents = build_default_agent_configs()
 
         # Assert
         for name in agents:
-            assert name == name.lower(), f"Agent name '{name}' is not lowercase"
-            assert name.isidentifier() or "_" in name, (
-                f"Agent name '{name}' is not a valid identifier"
+            name_str = str(name)
+            assert name_str == name_str.lower(), (
+                f"Agent name '{name_str}' is not lowercase"
             )
 
     @pytest.mark.parametrize(
@@ -1252,20 +1032,16 @@ class TestAgentNameUniqueness:
     )
     def test_individual_agent_type_present(self, agent_type: AgentType) -> None:
         """Each individual AgentType is present in the agents dict."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        agents = _build_agents_dict()
-        assert str(agent_type) in agents
+        agents = build_default_agent_configs()
+        assert agent_type in agents
 
     def test_no_extra_agents_beyond_enum(self) -> None:
         """Agents dict does not contain keys not in AgentType enum."""
-        from mle_star.orchestrator import _build_agents_dict
-
         # Arrange
-        valid_names = {str(agent_type) for agent_type in AgentType}
+        valid_names = set(AgentType)
 
         # Act
-        agents = _build_agents_dict()
+        agents = build_default_agent_configs()
 
         # Assert
         for name in agents:
@@ -1332,79 +1108,9 @@ class TestOrchestratorConstraintProperties:
     @settings(max_examples=3, deadline=5000)
     def test_agent_count_invariant(self, num_agents: int) -> None:
         """Agent count is always exactly 14."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        agents = _build_agents_dict()
+        agents = build_default_agent_configs()
         assert len(agents) == num_agents
 
-    @given(
-        max_budget=st.one_of(
-            st.none(),
-            st.floats(
-                min_value=0.01,
-                max_value=10000.0,
-                allow_nan=False,
-                allow_infinity=False,
-            ),
-        ),
-    )
-    @settings(max_examples=15, deadline=5000)
-    def test_cost_tracker_fresh_state_property(self, max_budget: float | None) -> None:
-        """A new CostTracker always starts with zero cost and not exceeded."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=max_budget)
-        assert tracker.total == 0.0
-        assert not tracker.exceeded
-
-    @given(
-        amount=st.floats(
-            min_value=0.0,
-            max_value=1000.0,
-            allow_nan=False,
-            allow_infinity=False,
-        ),
-        max_budget=st.floats(
-            min_value=0.01,
-            max_value=10000.0,
-            allow_nan=False,
-            allow_infinity=False,
-        ),
-    )
-    @settings(max_examples=20, deadline=5000)
-    def test_cost_tracker_accumulate_monotonic(
-        self, amount: float, max_budget: float
-    ) -> None:
-        """CostTracker.total is monotonically non-decreasing after accumulate."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=max_budget)
-        before = tracker.total
-        tracker.accumulate(amount)
-        after = tracker.total
-        assert after >= before
-
-    @given(
-        amount=st.floats(
-            min_value=0.0,
-            max_value=1000.0,
-            allow_nan=False,
-            allow_infinity=False,
-        ),
-    )
-    @settings(max_examples=10, deadline=5000)
-    def test_cost_tracker_exceeded_property(self, amount: float) -> None:
-        """CostTracker.exceeded is True iff total >= max_budget."""
-        from mle_star.orchestrator import CostTracker
-
-        budget = 10.0
-        tracker = CostTracker(max_budget=budget)
-        tracker.accumulate(amount)
-
-        if amount >= budget:
-            assert tracker.exceeded
-        else:
-            assert not tracker.exceeded
 
 
 # ===========================================================================
@@ -1426,19 +1132,16 @@ class TestOrchestratorConstraintsIntegration:
         task = _make_task(data_dir=str(data_dir))
         config = _make_config(num_parallel_solutions=1)
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
         p1_result = _make_phase1_result()
         p2_result = _make_phase2_result()
         fr = _make_final_result(task, config)
 
+        mock_client = MagicMock()
+
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
             patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False},
+                f"{_MODULE}.check_claude_cli_version",
             ),
             patch(
                 f"{_MODULE}.run_phase1",
@@ -1466,35 +1169,25 @@ class TestOrchestratorConstraintsIntegration:
     def test_all_helpers_execute_fast(self) -> None:
         """All orchestration helper functions complete under 100ms combined."""
         from mle_star.orchestrator import (
-            CostTracker,
-            _build_agents_dict,
             _compute_phase_budgets,
             _make_failed_phase2_result,
-            build_hooks,
         )
 
         # Arrange
         config = _make_config(num_parallel_solutions=4)
         p1_result = _make_phase1_result()
-        cost_tracker = CostTracker(max_budget=100.0)
-        finalize_flag = threading.Event()
 
         # Act -- run all helpers sequentially
         start = time.monotonic()
-        _build_agents_dict()
         _compute_phase_budgets(config, 3600.0)
         _make_failed_phase2_result(p1_result)
-        build_hooks(
-            pipeline_start=start,
-            deadline=start + 86400,
-            time_limit=86400,
-            cost_tracker=cost_tracker,
-            work_dir="/tmp/test",
-            finalize_flag=finalize_flag,
-            failure_counts={},
-            failure_lock=threading.Lock(),
-            session_agent_map={},
-        )
+        with patch(
+            f"{_MODULE}.detect_gpu_info",
+            return_value={"cuda_available": False},
+        ):
+            from mle_star.orchestrator import _create_client
+
+            _create_client(config, _make_task())
         elapsed_ms = (time.monotonic() - start) * 1000
 
         # Assert -- all helpers combined should be well under 100ms
@@ -1502,11 +1195,9 @@ class TestOrchestratorConstraintsIntegration:
             f"Combined helper overhead {elapsed_ms:.2f}ms exceeds 100ms budget"
         )
 
-    def test_agent_dict_keys_are_exactly_agent_type_values(self) -> None:
-        """The agents dict keys are the string values of every AgentType member."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        agents = _build_agents_dict()
+    def test_agent_config_keys_are_exactly_agent_type_values(self) -> None:
+        """The agent config keys are exactly the AgentType enum members."""
+        agents = build_default_agent_configs()
         agent_keys = set(agents.keys())
-        enum_values = {member.value for member in AgentType}
+        enum_values = set(AgentType)
         assert agent_keys == enum_values

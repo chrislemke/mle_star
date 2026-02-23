@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mle_star.execution import evaluate_with_retry, rank_solutions
 from mle_star.models import (
@@ -43,6 +43,9 @@ from mle_star.safety import (
     make_debug_callback,
 )
 from mle_star.scoring import is_improvement_or_equal
+
+if TYPE_CHECKING:
+    from mle_star.orchestrator import ClaudeCodeClient
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +113,7 @@ def _filter_valid_models(models: list[RetrievedModel]) -> list[RetrievedModel]:
 async def retrieve_models(
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> list[RetrievedModel]:
     """Invoke A_retriever to find M effective models for the task (REQ-P1-007).
 
@@ -134,11 +137,12 @@ async def retrieve_models(
     template = registry.get(AgentType.RETRIEVER)
     prompt = template.render(
         task_description=task.description,
+        target_column=task.target_column or "Not specified",
         M=config.num_retrieved_models,
     )
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.RETRIEVER),
+        agent_type=AgentType.RETRIEVER,
         message=prompt,
     )
 
@@ -168,7 +172,7 @@ async def generate_candidate(
     task: TaskDescription,
     model: RetrievedModel,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript | None:
     """Invoke A_init to generate a candidate solution for a model (REQ-P1-012).
 
@@ -192,12 +196,13 @@ async def generate_candidate(
     template = registry.get(AgentType.INIT)
     prompt = template.render(
         task_description=task.description,
+        target_column=task.target_column or "Not specified",
         model_name=model.model_name,
         example_code=model.example_code,
     )
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.INIT),
+        agent_type=AgentType.INIT,
         message=prompt,
     )
 
@@ -222,7 +227,7 @@ async def merge_solutions(
     base: SolutionScript,
     reference: SolutionScript,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript | None:
     """Invoke A_merger to integrate a reference solution into the base (REQ-P1-017).
 
@@ -250,7 +255,7 @@ async def merge_solutions(
     )
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.MERGER),
+        agent_type=AgentType.MERGER,
         message=prompt,
     )
 
@@ -284,7 +289,7 @@ async def _generate_and_evaluate_candidates(
     models: list[RetrievedModel],
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
     debug_cb: Any,
 ) -> _CandidateResults:
     """Generate, leakage-check, and evaluate M candidates (REQ-P1-020).
@@ -366,7 +371,7 @@ async def _run_merge_loop(
     ranked: list[tuple[SolutionScript, EvaluationResult]],
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
     debug_cb: Any,
 ) -> tuple[SolutionScript, float, int]:
     """Execute the merge loop over sorted candidates (REQ-P1-025 to REQ-P1-028).
@@ -440,7 +445,7 @@ async def _apply_safety_check(
     task: TaskDescription,
     config: PipelineConfig,
     debug_cb: Any,
-    client: Any,
+    client: ClaudeCodeClient,
     label: str,
 ) -> tuple[SolutionScript, float]:
     """Apply a single safety check with optional re-evaluation (REQ-P1-030/031).
@@ -493,7 +498,7 @@ async def _apply_post_merge_safety(
     h_best: float,
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
     debug_cb: Any,
 ) -> tuple[SolutionScript, float]:
     """Run post-merge safety checks: data usage then leakage (REQ-P1-030/031).
@@ -527,7 +532,7 @@ async def _apply_post_merge_safety(
 async def run_phase1(
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> Phase1Result:
     """Execute Phase 1: model retrieval, candidate generation, and merging (REQ-P1-018).
 

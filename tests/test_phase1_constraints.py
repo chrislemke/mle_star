@@ -1646,7 +1646,9 @@ class TestRetrieverPromptFidelity:
 
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
-        rendered = template.render(task_description="Test task", M=5)
+        rendered = template.render(
+            task_description="Test task", target_column="Not specified", M=5
+        )
         assert "model_name" in rendered
         assert "example_code" in rendered
 
@@ -1656,7 +1658,9 @@ class TestRetrieverPromptFidelity:
 
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
-        rendered = template.render(task_description="Test task", M=7)
+        rendered = template.render(
+            task_description="Test task", target_column="Not specified", M=7
+        )
         assert "7" in rendered
 
     def test_retriever_prompt_has_task_description(self) -> None:
@@ -1666,7 +1670,9 @@ class TestRetrieverPromptFidelity:
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
         rendered = template.render(
-            task_description="Classify images into 10 categories", M=3
+            task_description="Classify images into 10 categories",
+            target_column="Not specified",
+            M=3,
         )
         assert "Classify images" in rendered
 
@@ -1676,7 +1682,9 @@ class TestRetrieverPromptFidelity:
 
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
-        rendered = template.render(task_description="Test", M=3)
+        rendered = template.render(
+            task_description="Test", target_column="Not specified", M=3
+        )
         assert "effective" in rendered.lower() or "model" in rendered.lower()
 
     def test_retriever_prompt_requires_example_code(self) -> None:
@@ -1685,7 +1693,9 @@ class TestRetrieverPromptFidelity:
 
         registry = PromptRegistry()
         template = registry.get(AgentType.RETRIEVER)
-        rendered = template.render(task_description="Test", M=3)
+        rendered = template.render(
+            task_description="Test", target_column="Not specified", M=3
+        )
         assert "example code" in rendered.lower() or "example_code" in rendered.lower()
 
 
@@ -1706,6 +1716,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1719,6 +1730,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1733,6 +1745,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1746,6 +1759,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1759,6 +1773,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1772,6 +1787,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1785,6 +1801,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1798,6 +1815,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1811,6 +1829,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="import xgboost",
         )
@@ -1824,6 +1843,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="my_special_model",
             example_code="import special",
         )
@@ -1837,6 +1857,7 @@ class TestInitPromptFidelity:
         template = registry.get(AgentType.INIT)
         rendered = template.render(
             task_description="Test task",
+            target_column="Not specified",
             model_name="xgboost",
             example_code="from xgboost import XGBClassifier",
         )

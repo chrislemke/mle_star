@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from mle_star.execution import evaluate_solution
 from mle_star.models import AgentType, LeakageDetectionOutput, SolutionScript
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         PipelineConfig,
         TaskDescription,
     )
+    from mle_star.orchestrator import ClaudeCodeClient
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ async def _invoke_debugger_agent(
     traceback: str,
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript:
     """Invoke the debugger agent once and return the fixed solution.
 
@@ -141,7 +142,7 @@ async def _invoke_debugger_agent(
     logger.info("Debug invocation start for phase=%s", solution.phase)
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.DEBUGGER),
+        agent_type=AgentType.DEBUGGER,
         message=prompt,
     )
 
@@ -162,7 +163,7 @@ async def debug_solution(
     traceback: str,
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> tuple[SolutionScript, EvaluationResult]:
     """Debug retry loop for fixing execution errors (REQ-SF-006).
 
@@ -222,7 +223,7 @@ async def debug_solution(
 def make_debug_callback(
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> Callable[[SolutionScript, str | None], Awaitable[SolutionScript]]:
     """Factory returning an async callback for ``evaluate_with_retry`` (REQ-SF-007).
 
@@ -258,7 +259,7 @@ def make_debug_callback(
 async def check_and_fix_leakage(
     solution: SolutionScript,
     task: TaskDescription,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript:
     """Detect and correct data leakage in a solution script (REQ-SF-020).
 
@@ -298,7 +299,7 @@ async def check_and_fix_leakage(
 async def _check_and_fix_leakage_impl(
     solution: SolutionScript,
     task: TaskDescription,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript:
     """Inner implementation of leakage detection and correction.
 
@@ -322,7 +323,7 @@ async def _check_and_fix_leakage_impl(
     detection_prompt = detection_template.render(code=solution.content)
 
     detection_response: str = await client.send_message(
-        agent_type=str(AgentType.LEAKAGE),
+        agent_type=AgentType.LEAKAGE,
         message=detection_prompt,
     )
 
@@ -347,8 +348,9 @@ async def _check_and_fix_leakage_impl(
         )
 
         correction_response: str = await client.send_message(
-            agent_type=str(AgentType.LEAKAGE),
+            agent_type=AgentType.LEAKAGE,
             message=correction_prompt,
+            use_structured_output=False,
         )
 
         corrected_block = extract_code_block(correction_response)
@@ -408,7 +410,7 @@ def parse_data_agent_response(
 async def check_data_usage(
     solution: SolutionScript,
     task: TaskDescription,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript:
     """Verify and fix data usage in a solution script (REQ-SF-026).
 
@@ -440,7 +442,7 @@ async def check_data_usage(
 async def _check_data_usage_impl(
     solution: SolutionScript,
     task: TaskDescription,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript:
     """Inner implementation of data usage verification.
 
@@ -460,12 +462,13 @@ async def _check_data_usage_impl(
     prompt = template.render(
         initial_solution=solution.content,
         task_description=task.description,
+        target_column=task.target_column or "Not specified",
     )
 
     logger.info("Data usage check start")
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.DATA),
+        agent_type=AgentType.DATA,
         message=prompt,
     )
 

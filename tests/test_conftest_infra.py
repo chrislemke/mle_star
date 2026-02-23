@@ -302,11 +302,6 @@ class TestMakeConfig:
         result = make_config(time_limit_seconds=3600)
         assert result.time_limit_seconds == 3600
 
-    def test_override_max_budget_usd(self) -> None:
-        """max_budget_usd can be overridden."""
-        result = make_config(max_budget_usd=50.0)
-        assert result.max_budget_usd == 50.0
-
     def test_override_model(self) -> None:
         """Model can be overridden."""
         result = make_config(model="opus")

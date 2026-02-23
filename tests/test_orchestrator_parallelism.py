@@ -610,8 +610,6 @@ class TestPipelineParallelismIntegration:
         config = _make_config(num_parallel_solutions=2)
 
         mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
 
         p1_result = _make_phase1_result()
         p2_result = _make_phase2_result()
@@ -636,15 +634,12 @@ class TestPipelineParallelismIntegration:
             final_solution=_make_solution(phase=SolutionPhase.FINAL),
             submission_path="/output/submission.csv",
             total_duration_seconds=10.0,
-            total_cost_usd=None,
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,

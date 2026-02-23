@@ -64,7 +64,6 @@ class TestApplyEnvOverrides:
         # Arrange -- ensure no MLE_STAR env vars exist
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config()
@@ -75,7 +74,6 @@ class TestApplyEnvOverrides:
         # Assert -- values match the defaults
         assert result.model == config.model
         assert result.log_level == config.log_level
-        assert result.max_budget_usd == config.max_budget_usd
         assert result.time_limit_seconds == config.time_limit_seconds
 
     def test_mle_star_model_overrides_default(
@@ -87,7 +85,6 @@ class TestApplyEnvOverrides:
         # Arrange
         monkeypatch.setenv("MLE_STAR_MODEL", "opus")
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config()  # model defaults to "sonnet"
@@ -107,7 +104,6 @@ class TestApplyEnvOverrides:
         # Arrange
         monkeypatch.setenv("MLE_STAR_LOG_LEVEL", "DEBUG")
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config()  # log_level defaults to "INFO"
@@ -117,26 +113,6 @@ class TestApplyEnvOverrides:
 
         # Assert
         assert result.log_level == "DEBUG"
-
-    def test_mle_star_max_budget_overrides_default(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """MLE_STAR_MAX_BUDGET env var overrides the default max_budget_usd."""
-        from mle_star.orchestrator import apply_env_overrides
-
-        # Arrange
-        monkeypatch.setenv("MLE_STAR_MAX_BUDGET", "42.5")
-        monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
-
-        config = _make_config()  # max_budget_usd defaults to None
-
-        # Act
-        result = apply_env_overrides(config)
-
-        # Assert
-        assert result.max_budget_usd == 42.5
 
     def test_mle_star_time_limit_overrides_default(
         self, monkeypatch: pytest.MonkeyPatch
@@ -148,7 +124,6 @@ class TestApplyEnvOverrides:
         monkeypatch.setenv("MLE_STAR_TIME_LIMIT", "3600")
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
 
         config = _make_config()  # time_limit_seconds defaults to 86400
 
@@ -171,7 +146,6 @@ class TestApplyEnvOverrides:
         # Arrange -- set env var AND explicit constructor value
         monkeypatch.setenv("MLE_STAR_MODEL", "haiku")
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config(model="opus")  # Explicitly set to "opus"
@@ -189,7 +163,6 @@ class TestApplyEnvOverrides:
         # Arrange
         monkeypatch.setenv("MLE_STAR_MODEL", "haiku")
         monkeypatch.setenv("MLE_STAR_LOG_LEVEL", "WARNING")
-        monkeypatch.setenv("MLE_STAR_MAX_BUDGET", "100.0")
         monkeypatch.setenv("MLE_STAR_TIME_LIMIT", "7200")
 
         config = _make_config()  # All defaults
@@ -200,26 +173,7 @@ class TestApplyEnvOverrides:
         # Assert
         assert result.model == "haiku"
         assert result.log_level == "WARNING"
-        assert result.max_budget_usd == 100.0
         assert result.time_limit_seconds == 7200
-
-    def test_invalid_max_budget_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Non-numeric MLE_STAR_MAX_BUDGET is silently ignored."""
-        from mle_star.orchestrator import apply_env_overrides
-
-        # Arrange
-        monkeypatch.setenv("MLE_STAR_MAX_BUDGET", "not_a_number")
-        monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
-
-        config = _make_config()
-
-        # Act
-        result = apply_env_overrides(config)
-
-        # Assert -- default remains
-        assert result.max_budget_usd is None
 
     def test_invalid_time_limit_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Non-numeric MLE_STAR_TIME_LIMIT is silently ignored."""
@@ -229,7 +183,6 @@ class TestApplyEnvOverrides:
         monkeypatch.setenv("MLE_STAR_TIME_LIMIT", "fast")
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
 
         config = _make_config()
 
@@ -246,7 +199,6 @@ class TestApplyEnvOverrides:
         # Arrange
         monkeypatch.setenv("MLE_STAR_MODEL", "opus")
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config()
@@ -267,7 +219,6 @@ class TestApplyEnvOverrides:
         # Arrange
         monkeypatch.setenv("MLE_STAR_MODEL", "opus")
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config(
@@ -293,7 +244,6 @@ class TestApplyEnvOverrides:
         # Arrange
         monkeypatch.setenv("MLE_STAR_LOG_LEVEL", "ERROR")
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config(log_level="DEBUG")  # Explicitly set
@@ -303,26 +253,6 @@ class TestApplyEnvOverrides:
 
         # Assert
         assert result.log_level == "DEBUG"
-
-    def test_env_var_does_not_override_explicit_max_budget(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """MLE_STAR_MAX_BUDGET does not override explicitly set max_budget_usd."""
-        from mle_star.orchestrator import apply_env_overrides
-
-        # Arrange
-        monkeypatch.setenv("MLE_STAR_MAX_BUDGET", "999.0")
-        monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
-
-        config = _make_config(max_budget_usd=50.0)  # Explicitly set
-
-        # Act
-        result = apply_env_overrides(config)
-
-        # Assert
-        assert result.max_budget_usd == 50.0
 
     def test_env_var_does_not_override_explicit_time_limit(
         self, monkeypatch: pytest.MonkeyPatch
@@ -334,7 +264,6 @@ class TestApplyEnvOverrides:
         monkeypatch.setenv("MLE_STAR_TIME_LIMIT", "100")
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
 
         config = _make_config(time_limit_seconds=43200)  # Explicitly set
 
@@ -588,7 +517,6 @@ class TestPipelineState:
         # Assert
         assert state.current_phase == "phase1"
         assert state.elapsed_seconds == 0.0
-        assert state.accumulated_cost_usd == 0.0
         assert state.phase2_path_statuses == []
         assert state.best_score_so_far is None
         assert state.agent_call_count == 0
@@ -618,19 +546,6 @@ class TestPipelineState:
 
         # Assert
         assert state.elapsed_seconds == 123.456
-
-    def test_update_accumulated_cost(self) -> None:
-        """accumulated_cost_usd can be updated with running cost."""
-        from mle_star.orchestrator import PipelineState
-
-        # Arrange
-        state = PipelineState()
-
-        # Act
-        state.accumulated_cost_usd = 5.75
-
-        # Assert
-        assert state.accumulated_cost_usd == 5.75
 
     def test_update_phase2_path_statuses(self) -> None:
         """phase2_path_statuses can be updated with per-path status strings."""
@@ -694,7 +609,6 @@ class TestPipelineState:
         # Act & Assert -- should NOT raise ValidationError
         state.current_phase = "finalization"
         state.elapsed_seconds = 999.0
-        state.accumulated_cost_usd = 10.0
         state.phase2_path_statuses = ["completed"]
         state.best_score_so_far = 0.99
         state.agent_call_count = 100
@@ -777,7 +691,6 @@ class TestConfigOverrideProperties:
 
         monkeypatch.setenv("MLE_STAR_MODEL", model_name)
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config()
@@ -804,44 +717,11 @@ class TestConfigOverrideProperties:
         monkeypatch.setenv("MLE_STAR_TIME_LIMIT", str(time_limit))
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
 
         config = _make_config()
         result = apply_env_overrides(config)
 
         assert result.time_limit_seconds == time_limit
-
-    @given(
-        budget=st.floats(
-            min_value=0.01,
-            max_value=10000.0,
-            allow_nan=False,
-            allow_infinity=False,
-        ),
-    )
-    @settings(
-        max_examples=10,
-        deadline=5000,
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
-    )
-    def test_env_budget_applied_for_default_config(
-        self,
-        budget: float,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """For any valid budget float, env var overrides default config."""
-        from mle_star.orchestrator import apply_env_overrides
-
-        monkeypatch.setenv("MLE_STAR_MAX_BUDGET", str(budget))
-        monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
-
-        config = _make_config()
-        result = apply_env_overrides(config)
-
-        assert result.max_budget_usd is not None
-        assert abs(result.max_budget_usd - budget) < 1e-6
 
     @given(
         explicit_model=st.sampled_from(["opus", "haiku"]),
@@ -867,7 +747,6 @@ class TestConfigOverrideProperties:
 
         monkeypatch.setenv("MLE_STAR_MODEL", env_model)
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         # "opus" and "haiku" both differ from default "sonnet"
@@ -894,7 +773,6 @@ class TestConfigOverrideProperties:
 
         monkeypatch.setenv("MLE_STAR_LOG_LEVEL", log_level)
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
         config = _make_config()
@@ -917,7 +795,6 @@ class TestPipelineStateProperties:
             ["phase1", "phase2", "phase3", "finalization", "complete"]
         ),
         elapsed=st.floats(min_value=0.0, max_value=1e6, allow_nan=False),
-        cost=st.floats(min_value=0.0, max_value=1e6, allow_nan=False),
         call_count=st.integers(min_value=0, max_value=100000),
     )
     @settings(max_examples=20, deadline=5000)
@@ -925,7 +802,6 @@ class TestPipelineStateProperties:
         self,
         phase: str,
         elapsed: float,
-        cost: float,
         call_count: int,
     ) -> None:
         """All PipelineState fields can be set to any valid value."""
@@ -935,12 +811,10 @@ class TestPipelineStateProperties:
 
         state.current_phase = phase
         state.elapsed_seconds = elapsed
-        state.accumulated_cost_usd = cost
         state.agent_call_count = call_count
 
         assert state.current_phase == phase
         assert state.elapsed_seconds == elapsed
-        assert state.accumulated_cost_usd == cost
         assert state.agent_call_count == call_count
 
     @given(
@@ -998,7 +872,6 @@ class TestApplyEnvOverridesIntegration:
         # Arrange
         monkeypatch.setenv("MLE_STAR_MODEL", "opus")
         monkeypatch.setenv("MLE_STAR_LOG_LEVEL", "DEBUG")
-        monkeypatch.setenv("MLE_STAR_MAX_BUDGET", "75.0")
         monkeypatch.setenv("MLE_STAR_TIME_LIMIT", "3600")
 
         config = _make_config()
@@ -1010,12 +883,10 @@ class TestApplyEnvOverridesIntegration:
         validated = PipelineConfig(
             model=result.model,
             log_level=result.log_level,
-            max_budget_usd=result.max_budget_usd,
             time_limit_seconds=result.time_limit_seconds,
         )
         assert validated.model == "opus"
         assert validated.log_level == "DEBUG"
-        assert validated.max_budget_usd == 75.0
         assert validated.time_limit_seconds == 3600
 
     def test_env_time_limit_zero_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1029,7 +900,6 @@ class TestApplyEnvOverridesIntegration:
         monkeypatch.setenv("MLE_STAR_TIME_LIMIT", "0")
         monkeypatch.delenv("MLE_STAR_MODEL", raising=False)
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
-        monkeypatch.delenv("MLE_STAR_MAX_BUDGET", raising=False)
 
         config = _make_config()
 

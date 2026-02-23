@@ -685,8 +685,8 @@ class TestCheckContaminationAgentInvocation:
         call_kwargs = client.send_message.call_args[1]
         assert call_kwargs.get("agent_type") == str(AgentType.TEST)
 
-    async def test_client_called_with_output_format(self) -> None:
-        """client.send_message includes output_format with DataContaminationResult schema."""
+    async def test_client_called_with_output_schema(self) -> None:
+        """client.send_message includes output_schema=DataContaminationResult."""
         from mle_star.finalization import check_contamination
 
         client = AsyncMock()
@@ -702,11 +702,7 @@ class TestCheckContaminationAgentInvocation:
             await check_contamination(client, _make_solution(), ["ref"])
 
         call_kwargs = client.send_message.call_args[1]
-        expected_format = {
-            "type": "json_schema",
-            "schema": DataContaminationResult.model_json_schema(),
-        }
-        assert call_kwargs.get("output_format") == expected_format
+        assert call_kwargs.get("output_schema") is DataContaminationResult
 
 
 # ===========================================================================
@@ -1975,63 +1971,6 @@ class TestRunFinalizationFinalResultFields:
 
         assert result.final_solution.content == "evaluated_final"
 
-    async def test_total_cost_usd_is_none(self) -> None:
-        """FinalResult.total_cost_usd is None (not tracked at this level)."""
-        from mle_star.finalization import run_finalization
-
-        client = AsyncMock()
-        eval_result = _make_eval_result(score=0.91)
-        test_script = _make_solution(content="test_script", phase=SolutionPhase.FINAL)
-
-        with (
-            patch(
-                f"{_MODULE}.remove_subsampling",
-                new_callable=AsyncMock,
-                return_value=_make_solution(),
-            ),
-            patch(
-                f"{_MODULE}.generate_test_submission",
-                new_callable=AsyncMock,
-                return_value=test_script,
-            ),
-            patch(
-                f"{_MODULE}.check_and_fix_leakage",
-                new_callable=AsyncMock,
-                return_value=test_script,
-            ),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(test_script, eval_result),
-            ),
-            patch(f"{_MODULE}.make_debug_callback", return_value=MagicMock()),
-            patch(f"{_MODULE}.verify_submission", return_value=True),
-            patch(
-                f"{_MODULE}.get_submission_info",
-                return_value={
-                    "exists": True,
-                    "path": "/abs/path/final/submission.csv",
-                    "size_bytes": 100,
-                    "row_count": 10,
-                },
-            ),
-            patch(
-                f"{_MODULE}.check_contamination",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-        ):
-            result = await run_finalization(
-                client=client,
-                solution=_make_solution(),
-                task=_make_task(),
-                config=_make_config(),
-                phase1_result=_make_phase1_result(),
-                phase2_results=[_make_phase2_result()],
-                phase3_result=None,
-            )
-
-        assert result.total_cost_usd is None
 
 
 # ===========================================================================
@@ -2755,73 +2694,6 @@ class TestRunFinalizationPropertyBased:
             )
 
         assert result.total_duration_seconds >= 0.0
-
-    @given(
-        score=st.floats(
-            min_value=0.0,
-            max_value=1.0,
-            allow_nan=False,
-            allow_infinity=False,
-        ),
-    )
-    @settings(max_examples=10)
-    async def test_total_cost_always_none(self, score: float) -> None:
-        """total_cost_usd is always None (not tracked at this level)."""
-        from mle_star.finalization import run_finalization
-
-        client = AsyncMock()
-        eval_result = _make_eval_result(score=score)
-        test_script = _make_solution(content="test_script", phase=SolutionPhase.FINAL)
-
-        with (
-            patch(
-                f"{_MODULE}.remove_subsampling",
-                new_callable=AsyncMock,
-                return_value=_make_solution(),
-            ),
-            patch(
-                f"{_MODULE}.generate_test_submission",
-                new_callable=AsyncMock,
-                return_value=test_script,
-            ),
-            patch(
-                f"{_MODULE}.check_and_fix_leakage",
-                new_callable=AsyncMock,
-                return_value=test_script,
-            ),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(test_script, eval_result),
-            ),
-            patch(f"{_MODULE}.make_debug_callback", return_value=MagicMock()),
-            patch(f"{_MODULE}.verify_submission", return_value=True),
-            patch(
-                f"{_MODULE}.get_submission_info",
-                return_value={
-                    "exists": True,
-                    "path": "/path/submission.csv",
-                    "size_bytes": 100,
-                    "row_count": 10,
-                },
-            ),
-            patch(
-                f"{_MODULE}.check_contamination",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-        ):
-            result = await run_finalization(
-                client=client,
-                solution=_make_solution(),
-                task=_make_task(),
-                config=_make_config(),
-                phase1_result=_make_phase1_result(),
-                phase2_results=[_make_phase2_result()],
-                phase3_result=None,
-            )
-
-        assert result.total_cost_usd is None
 
     @given(
         phase3_present=st.booleans(),

@@ -752,6 +752,7 @@ class TestDataPromptTemplate:
         rendered = template.render(
             initial_solution="print('hello')",
             task_description="Classify images",
+            target_column="Not specified",
         )
         assert "print('hello')" in rendered
         assert "Classify images" in rendered
@@ -765,6 +766,7 @@ class TestDataPromptTemplate:
         rendered = template.render(
             initial_solution="code",
             task_description="task",
+            target_column="Not specified",
         )
         assert "TRY AND EXCEPT" in rendered or "try-except" in rendered.lower()
 
@@ -777,6 +779,7 @@ class TestDataPromptTemplate:
         rendered = template.render(
             initial_solution="code",
             task_description="task",
+            target_column="Not specified",
         )
         assert "All the provided information is used" in rendered
 

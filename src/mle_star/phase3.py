@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mle_star.execution import evaluate_with_retry
 from mle_star.models import (
@@ -39,6 +39,9 @@ from mle_star.safety import (
     make_debug_callback,
 )
 from mle_star.scoring import is_improvement_or_equal
+
+if TYPE_CHECKING:
+    from mle_star.orchestrator import ClaudeCodeClient
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +105,7 @@ async def invoke_ens_planner(
     solutions: list[SolutionScript],
     plans: list[str],
     scores: list[float | None],
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> str | None:
     """Invoke A_ens_planner to propose an ensemble strategy (REQ-P3-009).
 
@@ -145,7 +148,7 @@ async def invoke_ens_planner(
     )
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.ENS_PLANNER),
+        agent_type=AgentType.ENS_PLANNER,
         message=prompt,
     )
 
@@ -160,7 +163,7 @@ async def invoke_ens_planner(
 async def invoke_ensembler(
     plan: str,
     solutions: list[SolutionScript],
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript | None:
     """Invoke A_ensembler to implement an ensemble plan (REQ-P3-016).
 
@@ -199,7 +202,7 @@ async def invoke_ensembler(
     )
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.ENSEMBLER),
+        agent_type=AgentType.ENSEMBLER,
         message=prompt,
     )
 
@@ -250,7 +253,7 @@ async def _run_ensemble_round(
     scores_snapshot: list[float | None],
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
     debug_cb: Any,
     *,
     round_index: int = 0,
@@ -367,7 +370,7 @@ async def _execute_rounds(
     solutions: list[SolutionScript],
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
     debug_cb: Any,
 ) -> tuple[
     list[str], list[float | None], SolutionScript | None, float | None, int, int
@@ -430,7 +433,7 @@ async def _execute_rounds(
 
 
 async def run_phase3(
-    client: Any,
+    client: ClaudeCodeClient,
     task: TaskDescription,
     config: PipelineConfig,
     solutions: list[SolutionScript],

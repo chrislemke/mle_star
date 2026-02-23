@@ -217,7 +217,6 @@ def _make_final_result(**overrides: Any) -> FinalResult:
         "final_solution": _make_solution_script(phase=SolutionPhase.FINAL),
         "submission_path": "./final/submission.csv",
         "total_duration_seconds": 3600.0,
-        "total_cost_usd": 12.50,
     }
     defaults.update(overrides)
     return FinalResult(**defaults)
@@ -1061,7 +1060,6 @@ class TestFinalResultConstruction:
         assert isinstance(result.final_solution, SolutionScript)
         assert result.submission_path == "./final/submission.csv"
         assert result.total_duration_seconds == 3600.0
-        assert result.total_cost_usd == 12.50
 
     def test_task_holds_task_description(self) -> None:
         """The task field holds a TaskDescription instance."""
@@ -1120,16 +1118,6 @@ class TestFinalResultConstruction:
         assert isinstance(result.total_duration_seconds, float)
         assert result.total_duration_seconds == 7200.5
 
-    def test_total_cost_usd_accepts_none(self) -> None:
-        """total_cost_usd accepts None (cost tracking may be disabled)."""
-        result = _make_final_result(total_cost_usd=None)
-        assert result.total_cost_usd is None
-
-    def test_total_cost_usd_accepts_float(self) -> None:
-        """total_cost_usd accepts a float value."""
-        result = _make_final_result(total_cost_usd=25.99)
-        assert result.total_cost_usd == 25.99
-
     def test_phase2_results_empty_list_accepted(self) -> None:
         """Empty list for phase2_results is valid."""
         result = _make_final_result(phase2_results=[])
@@ -1163,7 +1151,6 @@ class TestFinalResultRequiredFields:
             "final_solution": _make_solution_script(phase=SolutionPhase.FINAL),
             "submission_path": "./final/submission.csv",
             "total_duration_seconds": 3600.0,
-            "total_cost_usd": 12.50,
         }
         del all_fields[missing_field]
         with pytest.raises(ValidationError):
@@ -1179,22 +1166,8 @@ class TestFinalResultRequiredFields:
             final_solution=_make_solution_script(phase=SolutionPhase.FINAL),
             submission_path="./final/submission.csv",
             total_duration_seconds=3600.0,
-            total_cost_usd=None,
         )
         assert result.phase3 is None
-
-    def test_total_cost_usd_can_be_omitted_defaults_to_none(self) -> None:
-        """Omitting total_cost_usd should default to None (optional field)."""
-        result = FinalResult(
-            task=_make_task_description(),
-            config=PipelineConfig(),
-            phase1=_make_phase1_result(),
-            phase2_results=[_make_phase2_result()],
-            final_solution=_make_solution_script(phase=SolutionPhase.FINAL),
-            submission_path="./final/submission.csv",
-            total_duration_seconds=3600.0,
-        )
-        assert result.total_cost_usd is None
 
 
 @pytest.mark.unit
@@ -1230,12 +1203,6 @@ class TestFinalResultFrozen:
         result = _make_final_result()
         with pytest.raises(ValidationError):
             result.total_duration_seconds = 9999.0  # type: ignore[misc]
-
-    def test_cannot_mutate_total_cost_usd(self) -> None:
-        """Assignment to total_cost_usd raises an error."""
-        result = _make_final_result()
-        with pytest.raises(ValidationError):
-            result.total_cost_usd = 999.0  # type: ignore[misc]
 
     def test_cannot_mutate_final_solution(self) -> None:
         """Assignment to final_solution raises an error."""
@@ -1284,7 +1251,6 @@ class TestFinalResultSerialization:
         assert restored.final_solution.content == original.final_solution.content
         assert restored.submission_path == original.submission_path
         assert restored.total_duration_seconds == original.total_duration_seconds
-        assert restored.total_cost_usd == original.total_cost_usd
 
     def test_round_trip_with_none_phase3(self) -> None:
         """Round-trip preserves None phase3."""
@@ -1292,13 +1258,6 @@ class TestFinalResultSerialization:
         json_str = original.model_dump_json()
         restored = FinalResult.model_validate_json(json_str)
         assert restored.phase3 is None
-
-    def test_round_trip_with_none_total_cost_usd(self) -> None:
-        """Round-trip preserves None total_cost_usd."""
-        original = _make_final_result(total_cost_usd=None)
-        json_str = original.model_dump_json()
-        restored = FinalResult.model_validate_json(json_str)
-        assert restored.total_cost_usd is None
 
     def test_round_trip_equality(self) -> None:
         """Serialized then deserialized object equals the original."""
@@ -1319,7 +1278,6 @@ class TestFinalResultSerialization:
         assert "final_solution" in parsed
         assert "submission_path" in parsed
         assert "total_duration_seconds" in parsed
-        assert "total_cost_usd" in parsed
 
     def test_round_trip_multiple_phase2_results(self) -> None:
         """Round-trip with multiple Phase2Result entries."""
@@ -1680,27 +1638,14 @@ class TestFinalResultPropertyBased:
         duration=st.floats(
             min_value=0.0, max_value=1e6, allow_nan=False, allow_infinity=False
         ),
-        cost=st.one_of(
-            st.none(),
-            st.floats(
-                min_value=0.0,
-                max_value=1e4,
-                allow_nan=False,
-                allow_infinity=False,
-            ),
-        ),
     )
     @settings(max_examples=30)
-    def test_any_valid_duration_and_cost_accepted(
-        self, duration: float, cost: float | None
-    ) -> None:
-        """Property: any valid duration and cost create a valid FinalResult."""
+    def test_any_valid_duration_accepted(self, duration: float) -> None:
+        """Property: any valid duration creates a valid FinalResult."""
         result = _make_final_result(
             total_duration_seconds=duration,
-            total_cost_usd=cost,
         )
         assert result.total_duration_seconds == duration
-        assert result.total_cost_usd == cost
 
     @given(
         num_phase2=st.integers(min_value=0, max_value=4),
@@ -1716,28 +1661,15 @@ class TestFinalResultPropertyBased:
         duration=st.floats(
             min_value=0.0, max_value=1e4, allow_nan=False, allow_infinity=False
         ),
-        cost=st.one_of(
-            st.none(),
-            st.floats(
-                min_value=0.0,
-                max_value=1e3,
-                allow_nan=False,
-                allow_infinity=False,
-            ),
-        ),
     )
     @settings(max_examples=20)
-    def test_round_trip_preserves_duration_and_cost(
-        self, duration: float, cost: float | None
-    ) -> None:
-        """Property: JSON round-trip preserves total_duration_seconds and total_cost_usd."""
+    def test_round_trip_preserves_duration(self, duration: float) -> None:
+        """Property: JSON round-trip preserves total_duration_seconds."""
         original = _make_final_result(
             total_duration_seconds=duration,
-            total_cost_usd=cost,
         )
         restored = FinalResult.model_validate_json(original.model_dump_json())
         assert restored.total_duration_seconds == original.total_duration_seconds
-        assert restored.total_cost_usd == original.total_cost_usd
 
     @given(
         with_phase3=st.booleans(),

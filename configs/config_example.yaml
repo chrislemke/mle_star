@@ -1,0 +1,70 @@
+# =============================================================================
+# MLE-STAR Pipeline Configuration — Paper Defaults
+# =============================================================================
+# This file lists every PipelineConfig option at its paper-specified default.
+# Load with:  mle_star --task tasks/task_example.yaml --config configs/config_example.yaml
+#
+# All fields map to the PipelineConfig Pydantic model in src/mle_star/models.py.
+# All integer hyperparameters must be >= 1 (validated by the model).
+
+# ---------------------------------------------------------------------------
+# Paper hyperparameters (Section 6)
+# ---------------------------------------------------------------------------
+
+# Number of candidate ML models to retrieve in Phase 1 (paper notation: M).
+num_retrieved_models: 4
+
+# Outer-loop iterations in Phase 2 targeted refinement (paper notation: T).
+outer_loop_steps: 4
+
+# Inner-loop iterations per code block in Phase 2 (paper notation: K).
+inner_loop_steps: 4
+
+# Number of parallel solution paths through Phase 2 (paper notation: L).
+# When L=1, Phase 3 (ensemble) is automatically skipped.
+num_parallel_solutions: 2
+
+# Ensemble strategy exploration rounds in Phase 3 (paper notation: R).
+ensemble_rounds: 5
+
+# Maximum total pipeline runtime in seconds (paper default: 24 hours).
+# Override via env var: MLE_STAR_TIME_LIMIT
+time_limit_seconds: 86400
+
+# Maximum training samples used during Phase 2 refinement.
+subsample_limit: 30000
+
+# Maximum debugging retries before falling back to the previous best solution.
+max_debug_attempts: 3
+
+# ---------------------------------------------------------------------------
+# Runtime configuration
+# ---------------------------------------------------------------------------
+
+# Claude model identifier passed to the Claude Code CLI (--model flag).
+# Common values: "sonnet", "opus", "haiku"
+# Override via env var: MLE_STAR_MODEL
+model: "opus"
+
+# Claude Code CLI permission mode flag (appended as --<value>).
+permission_mode: "dangerously-skip-permissions"
+
+# Python logging level for the mle_star logger.
+# Common values: "DEBUG", "INFO", "WARNING", "ERROR"
+# Override via env var: MLE_STAR_LOG_LEVEL
+log_level: "INFO"
+
+# Optional path to a log file. Set to null for console-only logging.
+log_file: null
+
+# ---------------------------------------------------------------------------
+# Phase time budget (proportional allocation)
+# ---------------------------------------------------------------------------
+# Percentages controlling how the total time_limit_seconds is distributed
+# across pipeline phases. All four values must sum to exactly 100.0.
+
+phase_time_budget:
+  phase1_pct: 10.0        # Phase 1: model retrieval + initial solution
+  phase2_pct: 65.0        # Phase 2: targeted refinement (outer + inner loops)
+  phase3_pct: 15.0        # Phase 3: ensemble construction
+  finalization_pct: 10.0  # Finalization: subsampling, test submission, contamination check

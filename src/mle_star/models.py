@@ -102,7 +102,6 @@ class PipelineConfig(BaseModel):
         time_limit_seconds: Maximum runtime per competition in seconds.
         subsample_limit: Max training samples during refinement.
         max_debug_attempts: Max debugging retries before fallback.
-        max_budget_usd: Optional cost cap in USD (REQ-OR-028).
         permission_mode: SDK permission mode (REQ-OR-009).
         model: Claude model identifier (REQ-OR-044).
         log_level: Logging level string (REQ-OR-047).
@@ -123,8 +122,7 @@ class PipelineConfig(BaseModel):
     max_debug_attempts: int = 3
 
     # Orchestrator fields
-    max_budget_usd: float | None = None
-    permission_mode: str = "bypassPermissions"
+    permission_mode: str = "dangerously-skip-permissions"
     model: str = "sonnet"
     log_level: str = "INFO"
     log_file: str | None = None
@@ -162,6 +160,7 @@ class TaskDescription(BaseModel):
         evaluation_metric: Name of the evaluation metric.
         metric_direction: Whether to maximize or minimize the metric.
         description: Full task description text (T_task).
+        target_column: Name of the column to predict (optional).
         data_dir: Path to dataset directory.
         output_dir: Path for submission output.
     """
@@ -174,6 +173,7 @@ class TaskDescription(BaseModel):
     evaluation_metric: str
     metric_direction: MetricDirection
     description: str
+    target_column: str | None = None
     data_dir: str = "./input"
     output_dir: str = "./final"
 
@@ -675,7 +675,6 @@ class FinalResult(BaseModel):
         final_solution: The solution submitted for test evaluation.
         submission_path: Path to submission file.
         total_duration_seconds: Total pipeline wall-clock time.
-        total_cost_usd: Total API cost if tracked.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -688,7 +687,6 @@ class FinalResult(BaseModel):
     final_solution: SolutionScript
     submission_path: str
     total_duration_seconds: float
-    total_cost_usd: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -722,8 +720,45 @@ class AgentConfig(BaseModel):
     output_schema: type[BaseModel] | None = None
     max_turns: int | None = None
 
+    def to_cli_flags(self) -> list[str]:
+        """Return CLI flags for this agent's configuration.
+
+        Produces flags for ``--model``, ``--allowedTools``, and
+        ``--max-turns`` based on the agent's configuration.
+
+        Returns:
+            List of CLI flag strings.
+        """
+        flags: list[str] = []
+        if self.model:
+            flags.extend(["--model", self.model])
+        if self.tools:
+            flags.extend(["--allowedTools", ",".join(self.tools)])
+        if self.max_turns is not None:
+            flags.extend(["--max-turns", str(self.max_turns)])
+        return flags
+
+    def to_output_flags(self) -> list[str]:
+        """Return CLI flags for structured JSON output.
+
+        Produces ``["--output-format", "json", "--json-schema", ...]``
+        when ``output_schema`` is set, otherwise returns an empty list.
+
+        Returns:
+            List of CLI flag strings for structured output, or empty list.
+        """
+        if self.output_schema is None:
+            return []
+        import json
+
+        schema = self.output_schema.model_json_schema()
+        return ["--output-format", "json", "--json-schema", json.dumps(schema)]
+
     def to_agent_definition(self) -> dict[str, Any]:
         """Return a dict suitable for ``ClaudeAgentOptions.agents`` (REQ-DM-037).
+
+        .. deprecated::
+            Use ``to_cli_flags()`` and ``to_output_flags()`` instead.
 
         Returns:
             Dict with keys ``description``, ``prompt``, ``tools``, ``model``.
@@ -737,6 +772,9 @@ class AgentConfig(BaseModel):
 
     def to_output_format(self) -> dict[str, Any] | None:
         """Return SDK ``output_format`` dict or None (REQ-DM-038).
+
+        .. deprecated::
+            Use ``to_output_flags()`` instead.
 
         Returns:
             ``{"type": "json_schema", "schema": ...}`` when ``output_schema``

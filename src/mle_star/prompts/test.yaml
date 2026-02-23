@@ -11,6 +11,7 @@ templates:
 
       # Task description
       {task_description}
+      - The target column to predict is: {target_column}
 
       # Python solution
       {final_solution}
@@ -33,6 +34,7 @@ templates:
       - Do not use try: and except: or if else to ignore unintended behavior.
     variables:
       - task_description
+      - target_column
       - final_solution
 
   - agent_type: test

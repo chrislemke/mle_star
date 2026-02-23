@@ -1,8 +1,8 @@
-"""Tests for time budgeting, cost tracking, and graceful shutdown (Task 45).
+"""Tests for time budgeting and graceful shutdown (Task 45).
 
-Validates ``_compute_phase_budgets``, ``CostTracker``, deadline enforcement,
-proportional time allocation, per-path Phase 2 budgets, 80% budget warning,
-and graceful shutdown on timeout or budget exceeded.
+Validates ``_compute_phase_budgets``, deadline enforcement,
+proportional time allocation, per-path Phase 2 budgets,
+and graceful shutdown on timeout.
 
 These tests are TDD-first — they define the expected behavior for
 REQ-OR-024 through REQ-OR-030.
@@ -146,7 +146,6 @@ def _make_final_result(
         "final_solution": _make_solution(phase=SolutionPhase.FINAL),
         "submission_path": "/output/submission.csv",
         "total_duration_seconds": 100.0,
-        "total_cost_usd": None,
     }
     defaults.update(overrides)
     return FinalResult(**defaults)
@@ -161,10 +160,8 @@ def _make_data_dir(tmp_path: Path) -> Path:
 
 
 def _make_mock_client() -> AsyncMock:
-    """Build a mock ClaudeSDKClient with connect/disconnect stubs."""
+    """Build a mock ClaudeCodeClient."""
     mock_client = AsyncMock()
-    mock_client.connect = AsyncMock()
-    mock_client.disconnect = AsyncMock()
     return mock_client
 
 
@@ -287,116 +284,6 @@ class TestPhase2PerPathBudget:
 
 
 # ===========================================================================
-# REQ-OR-027, REQ-OR-029: CostTracker
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestCostTracker:
-    """CostTracker accumulates cost and enforces budget (REQ-OR-027, REQ-OR-029)."""
-
-    def test_initial_total_is_zero(self) -> None:
-        """CostTracker starts with zero accumulated cost."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker()
-        assert tracker.total == 0.0
-
-    def test_accumulate_adds_to_total(self) -> None:
-        """accumulate() increases the running total."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker()
-        tracker.accumulate(1.50)
-        assert tracker.total == pytest.approx(1.50)
-        tracker.accumulate(0.75)
-        assert tracker.total == pytest.approx(2.25)
-
-    def test_exceeded_false_when_no_budget(self) -> None:
-        """Exceeded is False when max_budget is None (unlimited)."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=None)
-        tracker.accumulate(1000.0)
-        assert not tracker.exceeded
-
-    def test_exceeded_true_when_budget_reached(self) -> None:
-        """Exceeded is True when accumulated cost >= max_budget."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=10.0)
-        tracker.accumulate(10.0)
-        assert tracker.exceeded
-
-    def test_exceeded_true_when_budget_surpassed(self) -> None:
-        """Exceeded is True when accumulated cost > max_budget."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=10.0)
-        tracker.accumulate(10.01)
-        assert tracker.exceeded
-
-    def test_exceeded_false_below_budget(self) -> None:
-        """Exceeded is False when accumulated cost < max_budget."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=10.0)
-        tracker.accumulate(9.99)
-        assert not tracker.exceeded
-
-    def test_warning_at_80_percent(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Warning logged when 80% of budget is consumed (REQ-OR-029)."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=10.0)
-        with caplog.at_level(logging.WARNING):
-            tracker.accumulate(7.99)  # < 80%, no warning
-            assert not any("80%" in r.message for r in caplog.records)
-
-            tracker.accumulate(0.02)  # = 80.1%, warning
-            assert any("80%" in r.message for r in caplog.records)
-
-    def test_warning_logged_only_once(self, caplog: pytest.LogCaptureFixture) -> None:
-        """80% budget warning is logged only once, not on every accumulate."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=10.0)
-        with caplog.at_level(logging.WARNING):
-            tracker.accumulate(8.5)  # Triggers 80% warning
-            warning_count_1 = sum(1 for r in caplog.records if "80%" in r.message)
-
-            tracker.accumulate(0.5)  # Still above 80%, no second warning
-            warning_count_2 = sum(1 for r in caplog.records if "80%" in r.message)
-
-            assert warning_count_1 == 1
-            assert warning_count_2 == 1
-
-    def test_thread_safety(self) -> None:
-        """CostTracker is safe for concurrent access from multiple threads."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=None)
-        num_threads = 10
-        increments_per_thread = 100
-
-        def _accumulate_many() -> None:
-            for _ in range(increments_per_thread):
-                tracker.accumulate(1.0)
-
-        threads = [
-            threading.Thread(target=_accumulate_many) for _ in range(num_threads)
-        ]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert tracker.total == pytest.approx(
-            num_threads * increments_per_thread, rel=1e-6
-        )
-
-
-# ===========================================================================
 # REQ-OR-024: Deadline computed at pipeline start
 # ===========================================================================
 
@@ -426,11 +313,11 @@ class TestDeadlineComputation:
         mock_time.monotonic = Mock(side_effect=[0.0] * 5 + [200.0] * 15)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -467,11 +354,11 @@ class TestDeadlineComputation:
             return _make_phase1_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(f"{_MODULE}.run_phase1", side_effect=_very_slow_phase1),
             pytest.raises(PipelineTimeoutError),
         ):
@@ -511,11 +398,11 @@ class TestGracefulShutdown:
             return _make_phase2_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -557,11 +444,11 @@ class TestGracefulShutdown:
             return _make_phase3_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -581,33 +468,6 @@ class TestGracefulShutdown:
         # Finalization called — should have received one of the Phase 2 solutions
         finalization_mock.assert_awaited_once()
 
-    async def test_disconnect_called_on_timeout(self, tmp_path: Path) -> None:
-        """client.disconnect() is called even when pipeline times out."""
-        from mle_star.orchestrator import PipelineTimeoutError, run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config(time_limit_seconds=1)
-
-        mock_client = _make_mock_client()
-
-        async def _very_slow_phase1(*args: Any, **kwargs: Any) -> Phase1Result:
-            await asyncio.sleep(10.0)
-            return _make_phase1_result()
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(f"{_MODULE}.run_phase1", side_effect=_very_slow_phase1),
-            pytest.raises(PipelineTimeoutError),
-        ):
-            await run_pipeline(task, config)
-
-        mock_client.disconnect.assert_awaited_once()
-
     async def test_pipeline_timeout_error_has_diagnostics(self, tmp_path: Path) -> None:
         """PipelineTimeoutError includes elapsed_time in diagnostics."""
         from mle_star.orchestrator import PipelineTimeoutError, run_pipeline
@@ -623,11 +483,11 @@ class TestGracefulShutdown:
             return _make_phase1_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(f"{_MODULE}.run_phase1", side_effect=_very_slow_phase1),
             pytest.raises(PipelineTimeoutError) as exc_info,
         ):
@@ -669,11 +529,11 @@ class TestPhase2ReceivesTimeBudget:
             return [_make_phase2_result()]
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -726,11 +586,11 @@ class TestPhase1FallbackOnTimeout:
             return _make_phase2_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -776,33 +636,6 @@ class TestTimeCostProperties:
         expected = budgets["phase2"] / l_paths
         assert budgets["phase2_per_path"] == pytest.approx(expected, rel=1e-6)
 
-    @given(amount=st.floats(min_value=0.01, max_value=1000.0))
-    @settings(max_examples=15, deadline=5000)
-    def test_cost_tracker_accumulate_is_monotonic(self, amount: float) -> None:
-        """CostTracker.total is monotonically increasing after each accumulate."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker()
-        prev = tracker.total
-        tracker.accumulate(amount)
-        assert tracker.total >= prev
-
-    @given(
-        budget=st.floats(min_value=1.0, max_value=1000.0),
-        amount=st.floats(min_value=0.0, max_value=2000.0),
-    )
-    @settings(max_examples=20, deadline=5000)
-    def test_exceeded_iff_total_ge_budget(self, budget: float, amount: float) -> None:
-        """Exceeded is True iff total >= max_budget."""
-        from mle_star.orchestrator import CostTracker
-
-        tracker = CostTracker(max_budget=budget)
-        tracker.accumulate(amount)
-
-        if amount >= budget:
-            assert tracker.exceeded
-        else:
-            assert not tracker.exceeded
 
 
 # ===========================================================================
@@ -833,11 +666,11 @@ class TestPipelineTimeLimitIntegration:
         fr = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,
@@ -877,11 +710,11 @@ class TestPipelineTimeLimitIntegration:
             return _make_phase2_result()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
+            patch(f"{_MODULE}._create_client", return_value=mock_client),
+            patch(f"{_MODULE}.validate_api_key"),
+            patch(f"{_MODULE}.check_claude_cli_version"),
+            patch(f"{_MODULE}.configure_logging"),
+            patch(f"{_MODULE}.setup_working_directory"),
             patch(
                 f"{_MODULE}.run_phase1",
                 new_callable=AsyncMock,

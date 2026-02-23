@@ -21,7 +21,7 @@ Refs:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mle_star.execution import evaluate_with_retry
 from mle_star.models import (
@@ -40,6 +40,9 @@ from mle_star.safety import (
     make_debug_callback,
 )
 from mle_star.scoring import is_improvement, is_improvement_or_equal
+
+if TYPE_CHECKING:
+    from mle_star.orchestrator import ClaudeCodeClient
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,7 @@ def _format_plan_history(
 async def invoke_coder(
     code_block: str,
     plan: str,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> str | None:
     """Invoke A_coder to implement a refinement plan on a code block (REQ-P2I-005).
 
@@ -106,7 +109,7 @@ async def invoke_coder(
     prompt = template.render(code_block=code_block, plan=plan)
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.CODER),
+        agent_type=AgentType.CODER,
         message=prompt,
     )
 
@@ -122,7 +125,7 @@ async def invoke_planner(
     code_block: str,
     plans: list[str],
     scores: list[float | None],
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> str | None:
     """Invoke A_planner to propose a new refinement strategy (REQ-P2I-013).
 
@@ -160,7 +163,7 @@ async def invoke_planner(
     prompt = template.render(code_block=code_block, plan_history=plan_history)
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.PLANNER),
+        agent_type=AgentType.PLANNER,
         message=prompt,
     )
 
@@ -179,7 +182,7 @@ async def _execute_coder_step(
     solution: SolutionScript,
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> dict[str, Any]:
     """Execute the coder → replace → leakage → eval portion of one inner step.
 
@@ -275,7 +278,7 @@ async def _execute_coder_step(
 
 
 async def run_phase2_inner_loop(
-    client: Any,
+    client: ClaudeCodeClient,
     solution: SolutionScript,
     code_block: CodeBlock,
     initial_plan: str,
@@ -404,7 +407,7 @@ async def _run_inner_step(
     accumulated_scores: list[float | None],
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> dict[str, Any]:
     """Execute one inner loop step: plan determination + coder step.
 

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -52,6 +52,9 @@ from mle_star.phase2_inner import run_phase2_inner_loop
 from mle_star.prompts import PromptRegistry
 from mle_star.safety import extract_code_block, make_debug_callback
 from mle_star.scoring import is_improvement_or_equal
+
+if TYPE_CHECKING:
+    from mle_star.orchestrator import ClaudeCodeClient
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +97,7 @@ def _format_previous_ablations(summaries: list[str]) -> str:
 async def invoke_ablation(
     solution: SolutionScript,
     previous_summaries: list[str],
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> SolutionScript | None:
     """Invoke A_abl to generate an ablation study script (REQ-P2O-003).
 
@@ -129,7 +132,7 @@ async def invoke_ablation(
     )
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.ABLATION),
+        agent_type=AgentType.ABLATION,
         message=prompt,
     )
 
@@ -198,7 +201,7 @@ async def execute_ablation_with_retry(
     ablation_script: SolutionScript,
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> tuple[str, str]:
     """Execute an ablation study script with debug retry on error (REQ-P2O-020).
 
@@ -310,7 +313,7 @@ def _format_previous_blocks(blocks: list[str]) -> str:
 async def invoke_summarize(
     ablation_code: str,
     raw_output: str,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> str:
     """Invoke A_summarize to produce a text summary of ablation results.
 
@@ -343,7 +346,7 @@ async def invoke_summarize(
     )
 
     response: str = await client.send_message(
-        agent_type=str(AgentType.SUMMARIZE),
+        agent_type=AgentType.SUMMARIZE,
         message=prompt,
     )
 
@@ -383,7 +386,7 @@ async def invoke_extractor(
     summary: str,
     solution: SolutionScript,
     previous_blocks: list[str],
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> ExtractorOutput | None:
     """Invoke A_extractor to identify a code block and refinement plan.
 
@@ -420,16 +423,10 @@ async def invoke_extractor(
         previous_code_blocks=blocks_text,
     )
 
-    output_format = {
-        "type": "json_schema",
-        "schema": ExtractorOutput.model_json_schema(),
-    }
-
     for attempt in range(2):
         response: str = await client.send_message(
-            agent_type=str(AgentType.EXTRACTOR),
+            agent_type=AgentType.EXTRACTOR,
             message=prompt,
-            output_format=output_format,
         )
         try:
             result = ExtractorOutput.model_validate_json(response)
@@ -463,7 +460,7 @@ async def _run_outer_step(
     code_block_strings: list[str],
     task: TaskDescription,
     config: PipelineConfig,
-    client: Any,
+    client: ClaudeCodeClient,
 ) -> dict[str, Any]:
     """Execute a single outer loop iteration t (REQ-P2O-025).
 
@@ -614,7 +611,7 @@ def _make_skipped_step(
 
 
 async def run_phase2_outer_loop(
-    client: Any,
+    client: ClaudeCodeClient,
     task: TaskDescription,
     config: PipelineConfig,
     initial_solution: SolutionScript,

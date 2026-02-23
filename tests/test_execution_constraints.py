@@ -1,8 +1,7 @@
 """Tests for execution harness constraints and interface compliance (Task 18).
 
-Validates ``detect_error_masking``, ``ExecutorStrategy`` enum,
-``execute_script_via_sdk``, SDK timeout cap with fallback, structured
-logging, large output truncation, and performance constraints.
+Validates ``detect_error_masking``, structured logging, large output
+truncation, and performance constraints.
 
 Tests are written TDD-first and serve as the executable specification for
 REQ-EX-028 through REQ-EX-047.
@@ -19,7 +18,7 @@ import logging
 import textwrap
 import time
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from hypothesis import HealthCheck, given, settings, strategies as st
 from mle_star.execution import ExecutionRawResult
@@ -167,191 +166,17 @@ class TestDetectErrorMasking:
 
 
 # ===========================================================================
-# REQ-EX-034: ExecutorStrategy enum
+# REQ-EX-034: evaluate_solution uses subprocess execution
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestExecutorStrategy:
-    """ExecutorStrategy enum has correct values (REQ-EX-034)."""
-
-    def test_has_subprocess_value(self) -> None:
-        """Enum includes 'subprocess' value."""
-        from mle_star.execution import ExecutorStrategy
-
-        assert ExecutorStrategy.SUBPROCESS.value == "subprocess"
-
-    def test_has_sdk_bash_value(self) -> None:
-        """Enum includes 'sdk_bash' value."""
-        from mle_star.execution import ExecutorStrategy
-
-        assert ExecutorStrategy.SDK_BASH.value == "sdk_bash"
-
-    def test_exactly_two_members(self) -> None:
-        """Enum has exactly two members."""
-        from mle_star.execution import ExecutorStrategy
-
-        assert len(ExecutorStrategy) == 2
-
-    def test_is_str_enum(self) -> None:
-        """ExecutorStrategy is a StrEnum."""
-        from enum import StrEnum
-
-        from mle_star.execution import ExecutorStrategy
-
-        assert issubclass(ExecutorStrategy, StrEnum)
-
-
-# ===========================================================================
-# REQ-EX-033: execute_script_via_sdk
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestExecuteScriptViaSdk:
-    """execute_script_via_sdk uses SDK Bash tool interface (REQ-EX-033)."""
+class TestEvaluateSolutionSubprocess:
+    """evaluate_solution uses subprocess execution (REQ-EX-034)."""
 
     @pytest.mark.asyncio
-    async def test_returns_execution_raw_result(self) -> None:
-        """Function returns an ExecutionRawResult."""
-        from mle_star.execution import execute_script_via_sdk
-
-        mock_client = AsyncMock()
-        mock_client.execute_bash = AsyncMock(
-            return_value={"output": "hello\n", "exitCode": 0}
-        )
-
-        result = await execute_script_via_sdk(
-            script_path="/tmp/test.py",
-            working_dir="/tmp",
-            timeout_ms=60000,
-            client=mock_client,
-        )
-        assert isinstance(result, ExecutionRawResult)
-
-    @pytest.mark.asyncio
-    async def test_passes_correct_command(self) -> None:
-        """SDK is called with cd + python command."""
-        from mle_star.execution import execute_script_via_sdk
-
-        mock_client = AsyncMock()
-        mock_client.execute_bash = AsyncMock(return_value={"output": "", "exitCode": 0})
-
-        await execute_script_via_sdk(
-            script_path="/tmp/solution.py",
-            working_dir="/work",
-            timeout_ms=60000,
-            client=mock_client,
-        )
-
-        call_args = mock_client.execute_bash.call_args
-        command = call_args[1].get("command", call_args[0][0] if call_args[0] else "")
-        assert "/work" in command
-        assert "/tmp/solution.py" in command
-
-    @pytest.mark.asyncio
-    async def test_maps_exit_code(self) -> None:
-        """Exit code from SDK response is mapped to result."""
-        from mle_star.execution import execute_script_via_sdk
-
-        mock_client = AsyncMock()
-        mock_client.execute_bash = AsyncMock(
-            return_value={"output": "error\n", "exitCode": 1}
-        )
-
-        result = await execute_script_via_sdk(
-            script_path="/tmp/test.py",
-            working_dir="/tmp",
-            timeout_ms=60000,
-            client=mock_client,
-        )
-        assert result.exit_code == 1
-
-    @pytest.mark.asyncio
-    async def test_maps_output_to_stdout(self) -> None:
-        """SDK combined output is mapped to stdout."""
-        from mle_star.execution import execute_script_via_sdk
-
-        mock_client = AsyncMock()
-        mock_client.execute_bash = AsyncMock(
-            return_value={"output": "hello world\n", "exitCode": 0}
-        )
-
-        result = await execute_script_via_sdk(
-            script_path="/tmp/test.py",
-            working_dir="/tmp",
-            timeout_ms=60000,
-            client=mock_client,
-        )
-        assert "hello world" in result.stdout
-
-    @pytest.mark.asyncio
-    async def test_records_duration(self) -> None:
-        """Duration is recorded in the result."""
-        from mle_star.execution import execute_script_via_sdk
-
-        mock_client = AsyncMock()
-        mock_client.execute_bash = AsyncMock(return_value={"output": "", "exitCode": 0})
-
-        result = await execute_script_via_sdk(
-            script_path="/tmp/test.py",
-            working_dir="/tmp",
-            timeout_ms=60000,
-            client=mock_client,
-        )
-        assert result.duration_seconds >= 0.0
-
-
-# ===========================================================================
-# REQ-EX-047: SDK Bash timeout cap at 600,000ms
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestSdkTimeoutCap:
-    """SDK Bash executor timeout capped at 600,000ms (REQ-EX-047)."""
-
-    @pytest.mark.asyncio
-    async def test_timeout_capped_at_600000ms(self) -> None:
-        """Timeout passed to SDK is capped at 600,000ms."""
-        from mle_star.execution import execute_script_via_sdk
-
-        mock_client = AsyncMock()
-        mock_client.execute_bash = AsyncMock(return_value={"output": "", "exitCode": 0})
-
-        await execute_script_via_sdk(
-            script_path="/tmp/test.py",
-            working_dir="/tmp",
-            timeout_ms=1_000_000,  # exceeds cap
-            client=mock_client,
-        )
-
-        call_args = mock_client.execute_bash.call_args
-        timeout_arg = call_args[1].get(
-            "timeout", call_args[0][1] if len(call_args[0]) > 1 else None
-        )
-        if timeout_arg is not None:
-            assert timeout_arg <= 600_000
-
-    def test_evaluate_solution_sdk_fallback_on_large_timeout(self) -> None:
-        """evaluate_solution falls back to subprocess when SDK timeout exceeds cap."""
-        from mle_star.execution import _SDK_BASH_TIMEOUT_CAP_MS
-
-        assert _SDK_BASH_TIMEOUT_CAP_MS == 600_000
-
-
-# ===========================================================================
-# REQ-EX-034: evaluate_solution with strategy parameter
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestEvaluateSolutionStrategy:
-    """evaluate_solution accepts optional strategy parameter (REQ-EX-034)."""
-
-    @pytest.mark.asyncio
-    async def test_default_strategy_is_subprocess(self, tmp_path: Path) -> None:
-        """Default strategy uses subprocess execution."""
+    async def test_subprocess_execution(self, tmp_path: Path) -> None:
+        """evaluate_solution uses subprocess execution and returns correct score."""
         from mle_star.execution import evaluate_solution
 
         with patch("mle_star.execution.execute_script") as mock_exec:
@@ -367,28 +192,6 @@ class TestEvaluateSolutionStrategy:
             config = make_config()
 
             result = await evaluate_solution(solution, task, config)
-            assert result.score == 0.85
-
-    @pytest.mark.asyncio
-    async def test_accepts_strategy_parameter(self, tmp_path: Path) -> None:
-        """evaluate_solution accepts strategy kwarg without error."""
-        from mle_star.execution import ExecutorStrategy, evaluate_solution
-
-        with patch("mle_star.execution.execute_script") as mock_exec:
-            mock_exec.return_value = ExecutionRawResult(
-                stdout="Final Validation Performance: 0.85\n",
-                stderr="",
-                exit_code=0,
-                duration_seconds=1.0,
-                timed_out=False,
-            )
-            task = make_task(data_dir=str(tmp_path))
-            solution = make_solution()
-            config = make_config()
-
-            result = await evaluate_solution(
-                solution, task, config, strategy=ExecutorStrategy.SUBPROCESS
-            )
             assert result.score == 0.85
 
 

@@ -1,9 +1,8 @@
-"""Tests for the pipeline entry point and SDK client setup (Task 42).
+"""Tests for the pipeline entry point and CLI client setup (Task 42).
 
 Validates ``PipelineError``, ``PipelineTimeoutError``, ``run_pipeline``,
-``run_pipeline_sync``, and the internal helpers ``_validate_inputs``,
-``_build_system_prompt``, and ``_build_agents_dict`` defined in
-``src/mle_star/orchestrator.py``.
+``run_pipeline_sync``, and the internal helpers ``_validate_inputs``
+and ``_build_system_prompt`` defined in ``src/mle_star/orchestrator.py``.
 
 These tests are written TDD-first -- the implementation does not yet exist.
 They serve as the executable specification for REQ-OR-002, REQ-OR-005
@@ -18,13 +17,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from hypothesis import HealthCheck, given, settings, strategies as st
 from mle_star.models import (
-    AgentType,
     CodeBlock,
     CodeBlockCategory,
     DataModality,
@@ -39,7 +36,6 @@ from mle_star.models import (
     SolutionScript,
     TaskDescription,
     TaskType,
-    build_default_agent_configs,
 )
 import pytest
 
@@ -84,7 +80,7 @@ def _make_config(**overrides: Any) -> PipelineConfig:
     """Build a valid PipelineConfig with sensible defaults.
 
     Uses ``num_parallel_solutions=1`` by default so that Phase 3 is
-    skipped in SDK-setup-focused tests (Phase dispatch is tested in
+    skipped in client-setup-focused tests (Phase dispatch is tested in
     ``test_orchestrator_dispatch.py``).
 
     Args:
@@ -204,7 +200,6 @@ def _make_final_result(
         "final_solution": _make_solution(phase=SolutionPhase.FINAL),
         "submission_path": "/output/submission.csv",
         "total_duration_seconds": 100.0,
-        "total_cost_usd": None,
     }
     defaults.update(overrides)
     return FinalResult(**defaults)
@@ -416,7 +411,7 @@ class TestValidateInputs:
 
         data_dir = _make_data_dir(tmp_path)
         task = _make_task(data_dir=str(data_dir))
-        config = _make_config(model="opus", max_budget_usd=50.0)
+        config = _make_config(model="opus")
 
         result = _validate_inputs(task, config)
 
@@ -559,111 +554,33 @@ class TestBuildSystemPrompt:
 
 
 # ===========================================================================
-# REQ-OR-006: Agent registration
+# REQ-OR-005: Client setup via _create_client
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestBuildAgentsDict:
-    """_build_agents_dict builds the agents dict for the SDK (REQ-OR-006)."""
-
-    def test_returns_dict(self) -> None:
-        """_build_agents_dict returns a dict."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        result = _build_agents_dict()
-
-        assert isinstance(result, dict)
-
-    def test_contains_all_14_agents(self) -> None:
-        """The agents dict contains entries for all 14 MLE-STAR agents."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        result = _build_agents_dict()
-
-        assert len(result) == 14
-
-    def test_all_agent_types_present(self) -> None:
-        """Every AgentType enum value has a corresponding key in the dict."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        result = _build_agents_dict()
-
-        for agent_type in AgentType:
-            assert str(agent_type) in result or agent_type.value in result, (
-                f"Agent {agent_type} not found in agents dict"
-            )
-
-    def test_agent_definitions_from_build_default_agent_configs(self) -> None:
-        """Agent definitions are derived from build_default_agent_configs()."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        result = _build_agents_dict()
-        default_configs = build_default_agent_configs()
-
-        # Each agent definition should have a description matching the config
-        for agent_type, agent_config in default_configs.items():
-            key = str(agent_type) if str(agent_type) in result else agent_type.value
-            assert key in result, f"Agent {agent_type} missing from dict"
-            defn = result[key]
-            assert defn["description"] == agent_config.description
-
-    def test_each_agent_has_description_key(self) -> None:
-        """Every agent definition dict has a 'description' key."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        result = _build_agents_dict()
-
-        for key, defn in result.items():
-            assert "description" in defn, f"Agent {key} missing 'description'"
-
-    def test_agent_definitions_converted_via_to_agent_definition(self) -> None:
-        """Each agent config is converted to dict via to_agent_definition()."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        result = _build_agents_dict()
-        default_configs = build_default_agent_configs()
-
-        for agent_type, agent_config in default_configs.items():
-            expected_defn = agent_config.to_agent_definition()
-            key = str(agent_type) if str(agent_type) in result else agent_type.value
-            actual_defn = result[key]
-            assert actual_defn["description"] == expected_defn["description"]
-            assert actual_defn["tools"] == expected_defn["tools"]
-
-
-# ===========================================================================
-# REQ-OR-005: SDK client setup
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestSDKClientSetup:
-    """run_pipeline creates SDK client with correct options (REQ-OR-005)."""
+class TestClientSetup:
+    """run_pipeline creates ClaudeCodeClient with correct options (REQ-OR-005)."""
 
     async def test_client_created_with_model_from_config(self, tmp_path: Path) -> None:
-        """SDK client options include the model from PipelineConfig."""
+        """ClaudeCodeClient receives model from PipelineConfig."""
         from mle_star.orchestrator import run_pipeline
 
         data_dir = _make_data_dir(tmp_path)
         task = _make_task(data_dir=str(data_dir))
         config = _make_config(model="opus")
 
-        mock_client_instance = AsyncMock()
-        mock_client_instance.connect = AsyncMock()
-        mock_client_instance.disconnect = AsyncMock()
-        mock_client_instance.query = AsyncMock()
+        captured_kwargs: list[dict[str, Any]] = []
 
-        captured_options: list[Any] = []
-
-        def _capture_client(options: Any = None, **kwargs: Any) -> AsyncMock:
-            captured_options.append(options)
-            return mock_client_instance
+        def _capture_client(**kwargs: Any) -> MagicMock:
+            captured_kwargs.append(kwargs)
+            return MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(
                 f"{_MODULE}.detect_gpu_info",
                 return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
@@ -686,31 +603,28 @@ class TestSDKClientSetup:
         ):
             await run_pipeline(task, config)
 
-        assert len(captured_options) == 1
-        assert captured_options[0].model == "opus"
+        assert len(captured_kwargs) == 1
+        assert captured_kwargs[0]["model"] == "opus"
 
     async def test_client_created_with_permission_mode(self, tmp_path: Path) -> None:
-        """SDK client options include the permission_mode from PipelineConfig."""
+        """ClaudeCodeClient receives permission_mode from PipelineConfig."""
         from mle_star.orchestrator import run_pipeline
 
         data_dir = _make_data_dir(tmp_path)
         task = _make_task(data_dir=str(data_dir))
         config = _make_config(permission_mode="acceptEdits")
 
-        mock_client_instance = AsyncMock()
-        mock_client_instance.connect = AsyncMock()
-        mock_client_instance.disconnect = AsyncMock()
+        captured_kwargs: list[dict[str, Any]] = []
 
-        captured_options: list[Any] = []
-
-        def _capture_client(options: Any = None, **kwargs: Any) -> AsyncMock:
-            captured_options.append(options)
-            return mock_client_instance
+        def _capture_client(**kwargs: Any) -> MagicMock:
+            captured_kwargs.append(kwargs)
+            return MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(
                 f"{_MODULE}.detect_gpu_info",
                 return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
@@ -733,30 +647,27 @@ class TestSDKClientSetup:
         ):
             await run_pipeline(task, config)
 
-        assert captured_options[0].permission_mode == "acceptEdits"
+        assert captured_kwargs[0]["permission_mode"] == "acceptEdits"
 
-    async def test_client_created_with_max_budget(self, tmp_path: Path) -> None:
-        """SDK client options include max_budget_usd from PipelineConfig."""
+    async def test_client_receives_agent_configs(self, tmp_path: Path) -> None:
+        """ClaudeCodeClient receives agent_configs with all 14 agents."""
         from mle_star.orchestrator import run_pipeline
 
         data_dir = _make_data_dir(tmp_path)
         task = _make_task(data_dir=str(data_dir))
-        config = _make_config(max_budget_usd=25.0)
+        config = _make_config()
 
-        mock_client_instance = AsyncMock()
-        mock_client_instance.connect = AsyncMock()
-        mock_client_instance.disconnect = AsyncMock()
+        captured_kwargs: list[dict[str, Any]] = []
 
-        captured_options: list[Any] = []
-
-        def _capture_client(options: Any = None, **kwargs: Any) -> AsyncMock:
-            captured_options.append(options)
-            return mock_client_instance
+        def _capture_client(**kwargs: Any) -> MagicMock:
+            captured_kwargs.append(kwargs)
+            return MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(
                 f"{_MODULE}.detect_gpu_info",
                 return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
@@ -779,230 +690,9 @@ class TestSDKClientSetup:
         ):
             await run_pipeline(task, config)
 
-        assert captured_options[0].max_budget_usd == 25.0
-
-    async def test_client_options_include_14_agents(self, tmp_path: Path) -> None:
-        """SDK client options include agent definitions for all 14 agents."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config()
-
-        mock_client_instance = AsyncMock()
-        mock_client_instance.connect = AsyncMock()
-        mock_client_instance.disconnect = AsyncMock()
-
-        captured_options: list[Any] = []
-
-        def _capture_client(options: Any = None, **kwargs: Any) -> AsyncMock:
-            captured_options.append(options)
-            return mock_client_instance
-
-        final_result = _make_final_result(task=task, config=config)
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", side_effect=_capture_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=_make_phase1_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=_make_phase2_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=final_result,
-            ),
-        ):
-            await run_pipeline(task, config)
-
-        agents = captured_options[0].agents
-        assert agents is not None
-        assert len(agents) == 14
-
-
-# ===========================================================================
-# REQ-OR-005: Client disconnect (cleanup)
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestClientDisconnect:
-    """client.disconnect() is called in try/finally for cleanup (REQ-OR-005)."""
-
-    async def test_disconnect_called_on_success(self, tmp_path: Path) -> None:
-        """client.disconnect() is called after successful pipeline completion."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config()
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        final_result = _make_final_result(task=task, config=config)
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=_make_phase1_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=_make_phase2_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=final_result,
-            ),
-        ):
-            await run_pipeline(task, config)
-
-        mock_client.disconnect.assert_awaited_once()
-
-    async def test_disconnect_called_on_exception(self, tmp_path: Path) -> None:
-        """client.disconnect() is called even when an exception occurs (try/finally)."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config()
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("phase1 exploded"),
-            ),
-            pytest.raises(RuntimeError, match="phase1 exploded"),
-        ):
-            await run_pipeline(task, config)
-
-        # disconnect should still be called despite the exception
-        mock_client.disconnect.assert_awaited_once()
-
-    async def test_disconnect_called_on_pipeline_error(self, tmp_path: Path) -> None:
-        """client.disconnect() is called when PipelineError is raised."""
-        from mle_star.orchestrator import PipelineError, run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config()
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                side_effect=PipelineError("failed", diagnostics={"elapsed_time": 10.0}),
-            ),
-            pytest.raises(PipelineError),
-        ):
-            await run_pipeline(task, config)
-
-        mock_client.disconnect.assert_awaited_once()
-
-
-# ===========================================================================
-# REQ-OR-010: MCP server registration failure
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestMCPRegistrationFailure:
-    """MCP registration failure is logged as warning, doesn't crash (REQ-OR-010)."""
-
-    async def test_mcp_failure_logged_as_warning(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """MCP server registration failure emits a warning log but continues."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config()
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        final_result = _make_final_result(task=task, config=config)
-
-        # Simulate MCP registration failure by having the client raise
-        # during MCP setup but still continuing
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(
-                f"{_MODULE}._register_mcp_servers",
-                side_effect=Exception("MCP server init failed"),
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=_make_phase1_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=_make_phase2_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=final_result,
-            ),
-            caplog.at_level(logging.WARNING),
-        ):
-            # Should not crash
-            result = await run_pipeline(task, config)
-
-        assert isinstance(result, FinalResult)
-        # Verify warning was logged
-        assert any(
-            "MCP" in record.message or "mcp" in record.message.lower()
-            for record in caplog.records
-            if record.levelno >= logging.WARNING
-        )
+        agent_configs = captured_kwargs[0]["agent_configs"]
+        assert agent_configs is not None
+        assert len(agent_configs) == 14
 
 
 # ===========================================================================
@@ -1028,14 +718,13 @@ class TestRunPipelineIsAsync:
         task = _make_task(data_dir=str(data_dir))
         config = _make_config()
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
+        mock_client = MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", return_value=mock_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(
                 f"{_MODULE}.detect_gpu_info",
                 return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
@@ -1067,21 +756,18 @@ class TestRunPipelineIsAsync:
         data_dir = _make_data_dir(tmp_path)
         task = _make_task(data_dir=str(data_dir))
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
+        captured_kwargs: list[dict[str, Any]] = []
 
-        captured_options: list[Any] = []
-
-        def _capture_client(options: Any = None, **kwargs: Any) -> AsyncMock:
-            captured_options.append(options)
-            return mock_client
+        def _capture_client(**kwargs: Any) -> MagicMock:
+            captured_kwargs.append(kwargs)
+            return MagicMock()
 
         default_config = PipelineConfig()
         final_result = _make_final_result(task=task, config=default_config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(
                 f"{_MODULE}.detect_gpu_info",
                 return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
@@ -1110,7 +796,7 @@ class TestRunPipelineIsAsync:
             await run_pipeline(task, None)
 
         # Default model is "sonnet"
-        assert captured_options[0].model == "sonnet"
+        assert captured_kwargs[0]["model"] == "sonnet"
 
     async def test_accepts_task_and_config_parameters(self, tmp_path: Path) -> None:
         """run_pipeline accepts task as first param and optional config."""
@@ -1120,14 +806,13 @@ class TestRunPipelineIsAsync:
         task = _make_task(data_dir=str(data_dir))
         config = _make_config()
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
+        mock_client = MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", return_value=mock_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(
                 f"{_MODULE}.detect_gpu_info",
                 return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
@@ -1155,36 +840,33 @@ class TestRunPipelineIsAsync:
 
 
 # ===========================================================================
-# REQ-OR-005: SDK client receives system prompt
+# REQ-OR-005: Client receives system prompt
 # ===========================================================================
 
 
 @pytest.mark.unit
 class TestClientSystemPrompt:
-    """run_pipeline configures the SDK client with a system prompt (REQ-OR-007)."""
+    """run_pipeline configures the client with a system prompt (REQ-OR-007)."""
 
-    async def test_system_prompt_passed_to_client_options(self, tmp_path: Path) -> None:
-        """ClaudeAgentOptions.system_prompt is set from _build_system_prompt."""
+    async def test_system_prompt_passed_to_client(self, tmp_path: Path) -> None:
+        """ClaudeCodeClient system_prompt is set from _build_system_prompt."""
         from mle_star.orchestrator import run_pipeline
 
         data_dir = _make_data_dir(tmp_path)
         task = _make_task(data_dir=str(data_dir))
         config = _make_config()
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
+        captured_kwargs: list[dict[str, Any]] = []
 
-        captured_options: list[Any] = []
-
-        def _capture_client(options: Any = None, **kwargs: Any) -> AsyncMock:
-            captured_options.append(options)
-            return mock_client
+        def _capture_client(**kwargs: Any) -> MagicMock:
+            captured_kwargs.append(kwargs)
+            return MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(
                 f"{_MODULE}.detect_gpu_info",
                 return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
@@ -1207,10 +889,10 @@ class TestClientSystemPrompt:
         ):
             await run_pipeline(task, config)
 
-        options = captured_options[0]
-        assert options.system_prompt is not None
-        assert isinstance(options.system_prompt, str)
-        assert len(options.system_prompt) > 0
+        assert "system_prompt" in captured_kwargs[0]
+        system_prompt = captured_kwargs[0]["system_prompt"]
+        assert isinstance(system_prompt, str)
+        assert len(system_prompt) > 0
 
 
 # ===========================================================================
@@ -1296,18 +978,18 @@ class TestRunPipelineSync:
 
 
 # ===========================================================================
-# Input validation: run_pipeline raises ValueError before SDK setup
+# Input validation: run_pipeline raises ValueError before client setup
 # ===========================================================================
 
 
 @pytest.mark.unit
 class TestRunPipelineInputValidation:
-    """run_pipeline raises ValueError for invalid inputs before SDK setup (REQ-OR-002)."""
+    """run_pipeline raises ValueError for invalid inputs before client setup (REQ-OR-002)."""
 
     async def test_nonexistent_data_dir_raises_before_client(
         self, tmp_path: Path
     ) -> None:
-        """ValueError for nonexistent data_dir raised before creating SDK client."""
+        """ValueError for nonexistent data_dir raised before creating client."""
         from mle_star.orchestrator import run_pipeline
 
         task = _make_task(data_dir=str(tmp_path / "nonexistent"))
@@ -1316,7 +998,7 @@ class TestRunPipelineInputValidation:
         mock_client_cls = MagicMock()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", mock_client_cls),
+            patch(f"{_MODULE}.ClaudeCodeClient", mock_client_cls),
             pytest.raises(ValueError, match="data_dir"),
         ):
             await run_pipeline(task, config)
@@ -1325,7 +1007,7 @@ class TestRunPipelineInputValidation:
         mock_client_cls.assert_not_called()
 
     async def test_empty_data_dir_raises_before_client(self, tmp_path: Path) -> None:
-        """ValueError for empty data_dir raised before creating SDK client."""
+        """ValueError for empty data_dir raised before creating client."""
         from mle_star.orchestrator import run_pipeline
 
         empty_dir = tmp_path / "empty"
@@ -1336,7 +1018,7 @@ class TestRunPipelineInputValidation:
         mock_client_cls = MagicMock()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", mock_client_cls),
+            patch(f"{_MODULE}.ClaudeCodeClient", mock_client_cls),
             pytest.raises(ValueError, match="data_dir"),
         ):
             await run_pipeline(task, config)
@@ -1344,7 +1026,7 @@ class TestRunPipelineInputValidation:
         mock_client_cls.assert_not_called()
 
     async def test_file_as_data_dir_raises_before_client(self, tmp_path: Path) -> None:
-        """ValueError for file-as-data_dir raised before creating SDK client."""
+        """ValueError for file-as-data_dir raised before creating client."""
         from mle_star.orchestrator import run_pipeline
 
         fake_file = tmp_path / "data.csv"
@@ -1355,7 +1037,7 @@ class TestRunPipelineInputValidation:
         mock_client_cls = MagicMock()
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", mock_client_cls),
+            patch(f"{_MODULE}.ClaudeCodeClient", mock_client_cls),
             pytest.raises(ValueError, match="data_dir"),
         ):
             await run_pipeline(task, config)
@@ -1458,15 +1140,6 @@ class TestOrchestratorProperties:
         prompt = _build_system_prompt(task, gpu_info)
 
         assert description in prompt
-
-    def test_build_agents_dict_has_exactly_14_entries(self) -> None:
-        """_build_agents_dict always produces exactly 14 agent definitions."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        result = _build_agents_dict()
-
-        assert len(result) == len(AgentType)
-        assert len(result) == 14
 
     @given(
         gpu_count=st.integers(min_value=0, max_value=8),
@@ -1600,186 +1273,39 @@ class TestValidateInputsEdgeCases:
 
 
 # ===========================================================================
-# SDK client connect is called
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestClientConnect:
-    """run_pipeline calls client.connect() to establish the SDK session."""
-
-    async def test_connect_called(self, tmp_path: Path) -> None:
-        """client.connect() is called during pipeline setup."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config()
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        final_result = _make_final_result(task=task, config=config)
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=_make_phase1_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=_make_phase2_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=final_result,
-            ),
-        ):
-            await run_pipeline(task, config)
-
-        mock_client.connect.assert_awaited_once()
-
-
-# ===========================================================================
-# _build_agents_dict: verify specific agent tool assignments
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestBuildAgentsDictToolAssignments:
-    """_build_agents_dict assigns correct tools per REQ-OR-008."""
-
-    def test_retriever_has_web_tools(self) -> None:
-        """Retriever agent has WebSearch and WebFetch tools."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        agents = _build_agents_dict()
-        retriever_key = _find_agent_key(agents, AgentType.RETRIEVER)
-        tools = agents[retriever_key].get("tools", [])
-
-        assert "WebSearch" in tools
-        assert "WebFetch" in tools
-
-    def test_execution_agents_have_bash_tools(self) -> None:
-        """Execution agents (init, merger, ablation, coder, etc.) have Bash tool."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        execution_types = [
-            AgentType.INIT,
-            AgentType.MERGER,
-            AgentType.ABLATION,
-            AgentType.CODER,
-            AgentType.ENSEMBLER,
-            AgentType.DEBUGGER,
-        ]
-
-        agents = _build_agents_dict()
-
-        for agent_type in execution_types:
-            key = _find_agent_key(agents, agent_type)
-            tools = agents[key].get("tools", [])
-            assert "Bash" in tools, f"Agent {agent_type} missing Bash tool"
-
-    def test_test_agent_has_read_only_tools(self) -> None:
-        """A_test agent has only Read tool per REQ-FN-048."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        agents = _build_agents_dict()
-        key = _find_agent_key(agents, AgentType.TEST)
-        tools = agents[key].get("tools", [])
-        assert tools == ["Read"], f"Expected ['Read'] but got {tools}"
-
-    def test_read_only_agents_have_read_tool(self) -> None:
-        """Read-only agents (summarize, extractor, planner, etc.) have Read tool."""
-        from mle_star.orchestrator import _build_agents_dict
-
-        read_only_types = [
-            AgentType.SUMMARIZE,
-            AgentType.EXTRACTOR,
-            AgentType.PLANNER,
-            AgentType.ENS_PLANNER,
-            AgentType.LEAKAGE,
-            AgentType.DATA,
-        ]
-
-        agents = _build_agents_dict()
-
-        for agent_type in read_only_types:
-            key = _find_agent_key(agents, agent_type)
-            tools = agents[key].get("tools", [])
-            assert "Read" in tools, f"Agent {agent_type} missing Read tool"
-
-
-def _find_agent_key(agents: dict[str, Any], agent_type: AgentType) -> str:
-    """Find the key used for an agent type in the agents dict.
-
-    Tries both str(agent_type) and agent_type.value as potential keys.
-
-    Args:
-        agents: The agents dict from _build_agents_dict.
-        agent_type: The AgentType to look up.
-
-    Returns:
-        The key that matches the agent type.
-
-    Raises:
-        KeyError: If the agent type is not found.
-    """
-    for key_candidate in [str(agent_type), agent_type.value]:
-        if key_candidate in agents:
-            return key_candidate
-    msg = (
-        f"Agent {agent_type} not found in agents dict with keys: {list(agents.keys())}"
-    )
-    raise KeyError(msg)
-
-
-# ===========================================================================
-# Parametrized tests: SDK client options for various config values
+# Parametrized tests: client options for various config values
 # ===========================================================================
 
 
 @pytest.mark.unit
 class TestClientOptionsParametrized:
-    """Parametrized tests for SDK client option construction."""
+    """Parametrized tests for ClaudeCodeClient option construction."""
 
     @pytest.mark.parametrize(
         ("model_name",),
         [("sonnet",), ("opus",), ("haiku",)],
     )
-    async def test_model_passed_to_options(
+    async def test_model_passed_to_client(
         self, model_name: str, tmp_path: Path
     ) -> None:
-        """SDK client options model matches config.model for various models."""
+        """ClaudeCodeClient model kwarg matches config.model for various models."""
         from mle_star.orchestrator import run_pipeline
 
         data_dir = _make_data_dir(tmp_path)
         task = _make_task(data_dir=str(data_dir))
         config = _make_config(model=model_name)
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
+        captured_kwargs: list[dict[str, Any]] = []
 
-        captured_options: list[Any] = []
-
-        def _capture_client(options: Any = None, **kwargs: Any) -> AsyncMock:
-            captured_options.append(options)
-            return mock_client
+        def _capture_client(**kwargs: Any) -> MagicMock:
+            captured_kwargs.append(kwargs)
+            return MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", side_effect=_capture_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(
                 f"{_MODULE}.detect_gpu_info",
                 return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
@@ -1802,59 +1328,7 @@ class TestClientOptionsParametrized:
         ):
             await run_pipeline(task, config)
 
-        assert captured_options[0].model == model_name
-
-    @pytest.mark.parametrize(
-        ("budget",),
-        [(None,), (10.0,), (100.0,), (0.5,)],
-    )
-    async def test_budget_passed_to_options(
-        self, budget: float | None, tmp_path: Path
-    ) -> None:
-        """SDK client options max_budget_usd matches config for various budgets."""
-        from mle_star.orchestrator import run_pipeline
-
-        data_dir = _make_data_dir(tmp_path)
-        task = _make_task(data_dir=str(data_dir))
-        config = _make_config(max_budget_usd=budget)
-
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
-
-        captured_options: list[Any] = []
-
-        def _capture_client(options: Any = None, **kwargs: Any) -> AsyncMock:
-            captured_options.append(options)
-            return mock_client
-
-        final_result = _make_final_result(task=task, config=config)
-
-        with (
-            patch(f"{_MODULE}.ClaudeSDKClient", side_effect=_capture_client),
-            patch(
-                f"{_MODULE}.detect_gpu_info",
-                return_value={"cuda_available": False, "gpu_count": 0, "gpu_names": []},
-            ),
-            patch(
-                f"{_MODULE}.run_phase1",
-                new_callable=AsyncMock,
-                return_value=_make_phase1_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_phase2_outer_loop",
-                new_callable=AsyncMock,
-                return_value=_make_phase2_result(),
-            ),
-            patch(
-                f"{_MODULE}.run_finalization",
-                new_callable=AsyncMock,
-                return_value=final_result,
-            ),
-        ):
-            await run_pipeline(task, config)
-
-        assert captured_options[0].max_budget_usd == budget
+        assert captured_kwargs[0]["model"] == model_name
 
 
 # ===========================================================================
@@ -1874,9 +1348,7 @@ class TestGPUInfoDetection:
         task = _make_task(data_dir=str(data_dir))
         config = _make_config()
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
+        mock_client = MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
         mock_detect = MagicMock(
@@ -1888,7 +1360,8 @@ class TestGPUInfoDetection:
         )
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", return_value=mock_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.detect_gpu_info", mock_detect),
             patch(
                 f"{_MODULE}.run_phase1",
@@ -1918,9 +1391,7 @@ class TestGPUInfoDetection:
         task = _make_task(data_dir=str(data_dir))
         config = _make_config()
 
-        mock_client = AsyncMock()
-        mock_client.connect = AsyncMock()
-        mock_client.disconnect = AsyncMock()
+        mock_client = MagicMock()
 
         final_result = _make_final_result(task=task, config=config)
         gpu = {"cuda_available": True, "gpu_count": 2, "gpu_names": ["A100", "A100"]}
@@ -1932,7 +1403,8 @@ class TestGPUInfoDetection:
             return "mocked system prompt"
 
         with (
-            patch(f"{_MODULE}.ClaudeSDKClient", return_value=mock_client),
+            patch(f"{_MODULE}.ClaudeCodeClient", return_value=mock_client),
+            patch(f"{_MODULE}.check_claude_cli_version"),
             patch(f"{_MODULE}.detect_gpu_info", return_value=gpu),
             patch(f"{_MODULE}._build_system_prompt", side_effect=_capture_build_prompt),
             patch(
