@@ -42,7 +42,7 @@ from mle_star.models import (
     TaskDescription,
     build_default_agent_configs,
 )
-from mle_star.phase1 import run_phase1
+from mle_star.phase1 import _read_notes_context, run_phase1
 from mle_star.phase2_outer import run_phase2_outer_loop
 from mle_star.phase3 import run_phase3
 
@@ -552,10 +552,24 @@ _KAGGLE_PERSONA = (
     "validate your solutions against the training data before submission."
 )
 
+_NOTES_INSTRUCTIONS = """
+
+## Research Notes
+A shared notes directory exists at `{notes_dir}/`.
+- **Before starting work**, use the `Read` tool to check for existing notes files in this directory. Previous agents may have documented key findings, insights, and warnings that are relevant to your task.
+- **If you are a research or planning agent** (researcher, retriever, summarize, extractor, planner, or ensemble planner), you SHOULD write a notes file after completing your task:
+  - Document key observations, insights, and hypotheses discovered during your work
+  - Note what approaches you considered and why you chose your approach
+  - Record any warnings or pitfalls the next agent should know about
+  - Keep notes concise (10-30 lines). Focus on actionable insights.
+  - Write your notes to `{notes_dir}/` using a descriptive filename.
+"""
+
 
 def _build_system_prompt(
     task: TaskDescription,
     gpu_info: dict[str, Any],
+    notes_dir: str | None = None,
 ) -> str:
     """Construct the orchestrator system prompt (REQ-OR-007).
 
@@ -565,13 +579,15 @@ def _build_system_prompt(
     Args:
         task: Task description providing context for the prompt.
         gpu_info: GPU detection results from ``detect_gpu_info()``.
+        notes_dir: Path to the shared notes directory. When provided,
+            note-taking instructions are appended to the prompt.
 
     Returns:
         The fully assembled system prompt string.
     """
     gpu_section = _format_gpu_section(gpu_info)
 
-    return (
+    prompt = (
         f"{_KAGGLE_PERSONA}\n\n"
         f"## Task\n{task.description}\n\n"
         f"## Evaluation\n"
@@ -579,6 +595,11 @@ def _build_system_prompt(
         f"- Direction: {task.metric_direction}\n\n"
         f"## Hardware\n{gpu_section}"
     )
+
+    if notes_dir:
+        prompt += _NOTES_INSTRUCTIONS.format(notes_dir=notes_dir)
+
+    return prompt
 
 
 def _format_gpu_section(gpu_info: dict[str, Any]) -> str:
@@ -811,7 +832,10 @@ async def _execute_phase3_or_skip(
     p3_start = time.monotonic()
     try:
         phase3_result = await asyncio.wait_for(
-            run_phase3(client, task, config, phase2_solutions),
+            run_phase3(
+                client, task, config, phase2_solutions,
+                notes_context=_read_notes_context(Path(task.data_dir) / "notes"),
+            ),
             timeout=max(0.01, p3_budget),
         )
         p3_duration = time.monotonic() - p3_start
@@ -900,17 +924,33 @@ async def _dispatch_phase2(
     num_paths = config.num_parallel_solutions
 
     # REQ-OR-020: Create per-path working directories
-    _create_path_work_directories(task, num_paths)
+    path_dirs = _create_path_work_directories(task, num_paths)
 
-    # REQ-OR-020: Deep copy the initial solution for each path
+    # Symlink input data into each path directory
+    for path_dir in path_dirs:
+        input_link = path_dir / "input"
+        if not input_link.exists():
+            input_link.symlink_to(Path(task.data_dir) / "input")
+
+    # Create per-path notes directories
+    notes_base = Path(task.data_dir) / "notes" / "phase2"
+    for i in range(num_paths):
+        (notes_base / f"path-{i}").mkdir(parents=True, exist_ok=True)
+
+    # Read accumulated notes from Phase 1 for injection into Phase 2 agents.
+    phase1_notes = _read_notes_context(Path(task.data_dir) / "notes")
+
+    # REQ-OR-020: Deep copy the initial solution for each path,
+    # using per-path task copies so evaluations use isolated directories.
     phase2_coros = [
         run_phase2_outer_loop(
             client,
-            task,
+            task.model_copy(update={"data_dir": str(path_dirs[i])}),
             config,
             copy.deepcopy(phase1_result.initial_solution),
             phase1_result.initial_score,
             session_id=f"path-{i}",
+            notes_context=phase1_notes,
         )
         for i in range(num_paths)
     ]
@@ -1176,6 +1216,7 @@ def _log_solution_lineage(
 def _create_client(
     config: PipelineConfig,
     task: TaskDescription,
+    notes_dir: str | None = None,
 ) -> ClaudeCodeClient:
     """Create a Claude Code headless client (REQ-OR-005).
 
@@ -1185,12 +1226,13 @@ def _create_client(
     Args:
         config: Pipeline configuration.
         task: Task description for system prompt construction.
+        notes_dir: Path to the shared notes directory for agent note-taking.
 
     Returns:
         A configured Claude Code client.
     """
     gpu_info = detect_gpu_info()
-    system_prompt = _build_system_prompt(task, gpu_info)
+    system_prompt = _build_system_prompt(task, gpu_info, notes_dir=notes_dir)
     agent_configs = build_default_agent_configs()
 
     return ClaudeCodeClient(
@@ -1262,8 +1304,14 @@ async def run_pipeline(
     pipeline_start = time.monotonic()
     deadline = pipeline_start + resolved_config.time_limit_seconds
 
+    # Create notes directory for agent scratchpad
+    notes_dir = Path(task.data_dir) / "notes"
+    notes_dir.mkdir(parents=True, exist_ok=True)
+    (notes_dir / "phase2").mkdir(exist_ok=True)
+    (notes_dir / "phase3").mkdir(exist_ok=True)
+
     # Create client (no connect/disconnect needed for subprocess-based client)
-    client = _create_client(resolved_config, task)
+    client = _create_client(resolved_config, task, notes_dir=str(notes_dir))
 
     setup_working_directory(task.data_dir)
 

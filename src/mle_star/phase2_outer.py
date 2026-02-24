@@ -98,6 +98,8 @@ async def invoke_ablation(
     solution: SolutionScript,
     previous_summaries: list[str],
     client: ClaudeCodeClient,
+    *,
+    notes_context: str = "",
 ) -> SolutionScript | None:
     """Invoke A_abl to generate an ablation study script (REQ-P2O-003).
 
@@ -109,6 +111,7 @@ async def invoke_ablation(
         solution: Current best solution (s_t) whose components to ablate.
         previous_summaries: Summaries from prior outer steps (T_abl).
         client: SDK client for agent invocation.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         A ``SolutionScript`` wrapping the ablation study code with
@@ -129,6 +132,7 @@ async def invoke_ablation(
     prompt = template.render(
         solution_script=solution.content,
         previous_ablations=previous_text,
+        notes_context=notes_context,
     )
 
     response: str = await client.send_message(
@@ -314,6 +318,8 @@ async def invoke_summarize(
     ablation_code: str,
     raw_output: str,
     client: ClaudeCodeClient,
+    *,
+    notes_context: str = "",
 ) -> str:
     """Invoke A_summarize to produce a text summary of ablation results.
 
@@ -326,6 +332,7 @@ async def invoke_summarize(
         ablation_code: Source code of the executed ablation script (a_t).
         raw_output: Raw stdout from ablation script execution (r_t).
         client: SDK client for agent invocation.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         Summary text (T_abl^t) — either the agent response or a fallback
@@ -343,6 +350,7 @@ async def invoke_summarize(
     prompt = template.render(
         ablation_code=ablation_code,
         raw_result=raw_output,
+        notes_context=notes_context,
     )
 
     response: str = await client.send_message(
@@ -387,6 +395,8 @@ async def invoke_extractor(
     solution: SolutionScript,
     previous_blocks: list[str],
     client: ClaudeCodeClient,
+    *,
+    notes_context: str = "",
 ) -> ExtractorOutput | None:
     """Invoke A_extractor to identify a code block and refinement plan.
 
@@ -400,6 +410,7 @@ async def invoke_extractor(
         solution: Current best solution (s_t).
         previous_blocks: Code block strings from prior iterations (C).
         client: SDK client for agent invocation.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         Parsed ``ExtractorOutput`` containing one or more ``RefinePlan``
@@ -421,6 +432,7 @@ async def invoke_extractor(
         solution_script=solution.content,
         ablation_summary=summary,
         previous_code_blocks=blocks_text,
+        notes_context=notes_context,
     )
 
     for attempt in range(2):
@@ -461,6 +473,8 @@ async def _run_outer_step(
     task: TaskDescription,
     config: PipelineConfig,
     client: ClaudeCodeClient,
+    *,
+    notes_context: str = "",
 ) -> dict[str, Any]:
     """Execute a single outer loop iteration t (REQ-P2O-025).
 
@@ -476,6 +490,7 @@ async def _run_outer_step(
         task: Task description for agent context.
         config: Pipeline configuration.
         client: SDK client for agent invocation.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         A dict with keys matching REQ-P2O-030: ``outer_step``, ``ablation_summary``,
@@ -486,7 +501,10 @@ async def _run_outer_step(
     step_start = time.monotonic()
 
     # Step 1: Invoke A_abl (REQ-P2O-001).
-    ablation_script = await invoke_ablation(s_t, list(ablation_summaries), client)
+    ablation_script = await invoke_ablation(
+        s_t, list(ablation_summaries), client,
+        notes_context=notes_context,
+    )
 
     # Step 2: Execute ablation script (REQ-P2O-020).
     if ablation_script is not None:
@@ -500,11 +518,15 @@ async def _run_outer_step(
         ablation_code = ""
 
     # Step 3: Summarize ablation results (REQ-P2O-008).
-    summary = await invoke_summarize(ablation_code, stdout, client)
+    summary = await invoke_summarize(
+        ablation_code, stdout, client,
+        notes_context=notes_context,
+    )
 
     # Step 4: Extract code block and plan (REQ-P2O-012).
     extractor_output = await invoke_extractor(
-        summary, s_t, list(code_block_strings), client
+        summary, s_t, list(code_block_strings), client,
+        notes_context=notes_context,
     )
 
     if extractor_output is None:
@@ -537,6 +559,7 @@ async def _run_outer_step(
         best_score=h_best,
         task=task,
         config=config,
+        notes_context=notes_context,
     )
 
     # Log inner loop return (REQ-P2O-037).
@@ -617,6 +640,8 @@ async def run_phase2_outer_loop(
     initial_solution: SolutionScript,
     initial_score: float,
     session_id: str,
+    *,
+    notes_context: str = "",
 ) -> Phase2Result:
     """Execute the Phase 2 outer loop for T iterations (REQ-P2O-019).
 
@@ -631,6 +656,7 @@ async def run_phase2_outer_loop(
         initial_solution: Starting solution s_0 from Phase 1.
         initial_score: Starting best score h_best (explicit ``float``).
         session_id: Identifier for this solution path.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         ``Phase2Result`` with accumulated ablation summaries, refined code
@@ -664,6 +690,7 @@ async def run_phase2_outer_loop(
             task=task,
             config=config,
             client=client,
+            notes_context=notes_context,
         )
 
         # Apply updates from step result.

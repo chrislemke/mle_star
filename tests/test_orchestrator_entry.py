@@ -1398,7 +1398,7 @@ class TestGPUInfoDetection:
 
         captured_gpu: list[Any] = []
 
-        def _capture_build_prompt(t: Any, g: Any) -> str:
+        def _capture_build_prompt(t: Any, g: Any, **kwargs: Any) -> str:
             captured_gpu.append(g)
             return "mocked system prompt"
 

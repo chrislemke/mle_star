@@ -12,6 +12,9 @@ template: |
   # Improvement plans you have tried
   {plan_history}
 
+  # Previous agent notes
+  {notes_context}
+
   # Your task
   - Suggest a better plan to improve the above code block.
   - The suggested plan must be novel and effective.
@@ -21,6 +24,9 @@ template: |
   # Response format
   - Your response should be a brief outline/sketch of your proposed solution in natural language (3-5 sentences).
   - There should be no additional headings or text in your response.
+  After completing your task, write a concise notes file (10-30 lines) to the notes directory documenting key observations, insights, and warnings for downstream agents. Use the `Write` tool.
+
 variables:
   - code_block
   - plan_history
+  - notes_context

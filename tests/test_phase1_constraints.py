@@ -1649,6 +1649,7 @@ class TestRetrieverPromptFidelity:
         rendered = template.render(
             task_description="Test task", target_column="Not specified", M=5,
             research_context="",
+            notes_context="",
         )
         assert "model_name" in rendered
         assert "example_code" in rendered
@@ -1662,6 +1663,7 @@ class TestRetrieverPromptFidelity:
         rendered = template.render(
             task_description="Test task", target_column="Not specified", M=7,
             research_context="",
+            notes_context="",
         )
         assert "7" in rendered
 
@@ -1676,6 +1678,7 @@ class TestRetrieverPromptFidelity:
             target_column="Not specified",
             M=3,
             research_context="",
+            notes_context="",
         )
         assert "Classify images" in rendered
 
@@ -1688,6 +1691,7 @@ class TestRetrieverPromptFidelity:
         rendered = template.render(
             task_description="Test", target_column="Not specified", M=3,
             research_context="",
+            notes_context="",
         )
         assert "effective" in rendered.lower() or "model" in rendered.lower()
 
@@ -1700,6 +1704,7 @@ class TestRetrieverPromptFidelity:
         rendered = template.render(
             task_description="Test", target_column="Not specified", M=3,
             research_context="",
+            notes_context="",
         )
         assert "example code" in rendered.lower() or "example_code" in rendered.lower()
 
@@ -1725,6 +1730,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "Kaggle grandmaster" in rendered
 
@@ -1740,6 +1746,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "simple" in rendered.lower()
         assert "ensembl" in rendered.lower()
@@ -1756,6 +1763,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "./input" in rendered
 
@@ -1771,6 +1779,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "PyTorch" in rendered
 
@@ -1786,6 +1795,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "30,000" in rendered or "30000" in rendered
 
@@ -1801,6 +1811,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "Final Validation Performance" in rendered
 
@@ -1816,6 +1827,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "single code block" in rendered.lower()
 
@@ -1831,6 +1843,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "exit()" in rendered
 
@@ -1846,6 +1859,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="import xgboost",
             research_context="",
+            notes_context="",
         )
         assert "try:" in rendered and "except:" in rendered
 
@@ -1861,6 +1875,7 @@ class TestInitPromptFidelity:
             model_name="my_special_model",
             example_code="import special",
             research_context="",
+            notes_context="",
         )
         assert "my_special_model" in rendered
 
@@ -1876,6 +1891,7 @@ class TestInitPromptFidelity:
             model_name="xgboost",
             example_code="from xgboost import XGBClassifier",
             research_context="",
+            notes_context="",
         )
         assert "from xgboost import XGBClassifier" in rendered
 

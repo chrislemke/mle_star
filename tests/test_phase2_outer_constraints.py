@@ -1511,7 +1511,7 @@ class TestImmutableInputSolution:
         ablation_calls: list[str] = []
 
         async def capture_ablation(
-            sol: SolutionScript, prev: list[str], client: Any
+            sol: SolutionScript, prev: list[str], client: Any, **kwargs: Any
         ) -> SolutionScript:
             ablation_calls.append(sol.content)
             return _make_ablation_script()

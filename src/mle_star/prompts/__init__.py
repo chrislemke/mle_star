@@ -10,12 +10,15 @@ Refs:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from mle_star.models import AgentType, PromptTemplate
+
+logger = logging.getLogger(__name__)
 
 _PROMPTS_DIR: Path = Path(__file__).parent
 
@@ -69,7 +72,11 @@ class PromptRegistry:
         Args:
             data: Parsed YAML dict with agent_type, figure_ref, template, variables.
         """
-        agent_type = AgentType(str(data["agent_type"]))
+        try:
+            agent_type = AgentType(str(data["agent_type"]))
+        except ValueError:
+            logger.warning("Skipping unknown agent_type %r in prompt template", data["agent_type"])
+            return
         variables: list[str] = [str(v) for v in data["variables"]]
         pt = PromptTemplate(
             agent_type=agent_type,
@@ -105,7 +112,11 @@ class PromptRegistry:
         first_per_agent: dict[AgentType, PromptTemplate] = {}
 
         for entry in templates:
-            agent_type = AgentType(str(entry["agent_type"]))
+            try:
+                agent_type = AgentType(str(entry["agent_type"]))
+            except ValueError:
+                logger.warning("Skipping unknown agent_type %r in multi-template YAML", entry["agent_type"])
+                continue
             variant = self._parse_variant(entry)
             variables: list[str] = [str(v) for v in entry["variables"]]
             pt = PromptTemplate(

@@ -42,18 +42,22 @@ EXECUTION_AGENT_TYPES: list[AgentType] = [
 ]
 
 READ_ONLY_AGENT_TYPES: list[AgentType] = [
-    AgentType.SUMMARIZE,
-    AgentType.EXTRACTOR,
-    AgentType.PLANNER,
-    AgentType.ENS_PLANNER,
     AgentType.LEAKAGE,
     AgentType.DATA,
     AgentType.TEST,
 ]
 
+READ_WRITE_AGENT_TYPES: list[AgentType] = [
+    AgentType.SUMMARIZE,
+    AgentType.EXTRACTOR,
+    AgentType.PLANNER,
+    AgentType.ENS_PLANNER,
+]
+
 EXECUTION_TOOLS: list[str] = ["Bash", "Edit", "Write", "Read"]
 READ_ONLY_TOOLS: list[str] = ["Read"]
-RETRIEVER_TOOLS: list[str] = ["WebSearch", "WebFetch"]
+READ_WRITE_TOOLS: list[str] = ["Read", "Write"]
+RETRIEVER_TOOLS: list[str] = ["WebSearch", "WebFetch", "Write"]
 
 # Mapping of agent types to expected output_schema (None means no schema)
 AGENT_OUTPUT_SCHEMAS: dict[AgentType, type[BaseModel] | None] = {
@@ -564,10 +568,10 @@ class TestBuildDefaultAgentConfigsRetriever:
     """Retriever agent has specific tools and output_schema (REQ-OR-008)."""
 
     def test_retriever_tools(self) -> None:
-        """A_retriever has tools=['WebSearch', 'WebFetch']."""
+        """A_retriever has tools=['WebSearch', 'WebFetch', 'Write']."""
         configs = build_default_agent_configs()
         retriever = configs[AgentType.RETRIEVER]
-        assert retriever.tools == ["WebSearch", "WebFetch"]
+        assert retriever.tools == ["WebSearch", "WebFetch", "Write"]
 
     def test_retriever_output_schema(self) -> None:
         """A_retriever has no output_schema (parsed from prompt text)."""
@@ -594,10 +598,22 @@ class TestBuildDefaultAgentConfigsReadOnlyAgents:
 
     @pytest.mark.parametrize("agent_type", READ_ONLY_AGENT_TYPES)
     def test_read_only_agent_tools(self, agent_type: AgentType) -> None:
-        """Read-only agents (A_summarize, A_extractor, A_planner, A_ens_planner, A_leakage, A_data) have tools=['Read']."""
+        """Read-only agents (A_leakage, A_data, A_test) have tools=['Read']."""
         configs = build_default_agent_configs()
         config = configs[agent_type]
         assert config.tools == ["Read"]
+
+
+@pytest.mark.unit
+class TestBuildDefaultAgentConfigsReadWriteAgents:
+    """Research/planning agents have tools=['Read', 'Write'] for note-taking."""
+
+    @pytest.mark.parametrize("agent_type", READ_WRITE_AGENT_TYPES)
+    def test_read_write_agent_tools(self, agent_type: AgentType) -> None:
+        """Research/planning agents (A_summarize, A_extractor, A_planner, A_ens_planner) have tools=['Read', 'Write']."""
+        configs = build_default_agent_configs()
+        config = configs[agent_type]
+        assert config.tools == ["Read", "Write"]
 
 
 @pytest.mark.unit

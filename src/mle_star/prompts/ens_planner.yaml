@@ -11,6 +11,9 @@ template: |
   # Ensemble plans you have tried
   {plan_history}
 
+  # Previous agent notes
+  {notes_context}
+
   # Your task
   - Suggest a better plan to ensemble the {L} solutions. You should concentrate how to merge, not the other parts like hyperparameters.
   - The suggested plan must be easy to implement, novel, and effective.
@@ -20,7 +23,10 @@ template: |
   - Your response should be an outline/sketch of your proposed solution in natural language.
   - There should be no additional headings or text in your response.
   - Plan should not modify the original solutions too much since execution error can occur.
+  After completing your task, write a concise notes file (10-30 lines) to the notes directory documenting key observations, insights, and warnings for downstream agents. Use the `Write` tool.
+
 variables:
   - L
   - solutions_text
   - plan_history
+  - notes_context

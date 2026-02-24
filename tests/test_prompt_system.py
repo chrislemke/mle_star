@@ -566,11 +566,11 @@ class TestPromptRegistryRetrieverContent:
         assert pt.figure_ref == "Figure 9"
 
     def test_retriever_variables(self) -> None:
-        """Retriever template has variables ['task_description', 'target_column', 'M', 'research_context']."""
+        """Retriever template has variables ['task_description', 'target_column', 'M', 'research_context', 'notes_context']."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
         assert sorted(pt.variables) == sorted(
-            ["task_description", "target_column", "M", "research_context"]
+            ["task_description", "target_column", "M", "research_context", "notes_context"]
         )
 
     def test_retriever_template_contains_placeholders(self) -> None:
@@ -586,7 +586,7 @@ class TestPromptRegistryRetrieverContent:
         pt = registry.get(AgentType.RETRIEVER)
         rendered = pt.render(
             task_description="classify images", target_column="label", M=4,
-            research_context="",
+            research_context="", notes_context="",
         )
         assert "classify images" in rendered
         assert "4" in rendered
@@ -915,19 +915,19 @@ class TestPromptRegistryVariables:
     """Templates have correct variable lists matching their YAML definitions."""
 
     def test_retriever_variables_are_task_description_and_m(self) -> None:
-        """Retriever template declares variables task_description, target_column, M, and research_context."""
+        """Retriever template declares variables task_description, target_column, M, research_context, and notes_context."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.RETRIEVER)
         assert sorted(pt.variables) == sorted(
-            ["task_description", "target_column", "M", "research_context"]
+            ["task_description", "target_column", "M", "research_context", "notes_context"]
         )
 
     def test_init_variables(self) -> None:
-        """Init template declares variables task_description, target_column, model_name, example_code, research_context."""
+        """Init template declares variables task_description, target_column, model_name, example_code, research_context, notes_context."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.INIT)
         assert sorted(pt.variables) == sorted(
-            ["task_description", "target_column", "model_name", "example_code", "research_context"]
+            ["task_description", "target_column", "model_name", "example_code", "research_context", "notes_context"]
         )
 
     def test_merger_variables(self) -> None:
@@ -972,7 +972,7 @@ class TestPromptRegistryRenderIntegration:
         pt = registry.get(AgentType.RETRIEVER)
         rendered = pt.render(
             task_description="Predict house prices", target_column="price", M=4,
-            research_context="",
+            research_context="", notes_context="",
         )
         assert "Predict house prices" in rendered
         assert "4" in rendered
@@ -1099,3 +1099,56 @@ class TestPromptRegistryMultipleInstances:
         r2 = PromptRegistry()
         for agent_type in AgentType:
             assert r1.get(agent_type) == r2.get(agent_type)
+
+
+# ===========================================================================
+# PromptRegistry -- Resilience to Unknown Agent Types
+# ===========================================================================
+
+
+@pytest.mark.unit
+class TestPromptRegistryResilience:
+    """PromptRegistry gracefully skips templates with unknown agent_type values."""
+
+    def test_load_single_template_unknown_agent_type_skipped(self) -> None:
+        """_load_single_template with unknown agent_type adds no template and raises no error."""
+        registry = PromptRegistry()
+        count_before = len(registry._templates)
+        registry._load_single_template({
+            "agent_type": "totally_unknown_agent",
+            "figure_ref": "Figure 99",
+            "template": "Hello {x}",
+            "variables": ["x"],
+        })
+        assert len(registry._templates) == count_before
+
+    def test_load_multi_template_unknown_agent_type_skipped(self) -> None:
+        """_load_multi_template with unknown agent_type skips that entry without error."""
+        registry = PromptRegistry()
+        count_before = len(registry._templates)
+        registry._load_multi_template([
+            {
+                "agent_type": "totally_unknown_agent",
+                "variant": "v1",
+                "figure_ref": "Figure 99",
+                "template": "Hello {x}",
+                "variables": ["x"],
+            },
+        ])
+        assert len(registry._templates) == count_before
+
+    def test_unknown_agent_type_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A warning is logged when an unknown agent_type is encountered."""
+        import logging
+
+        registry = PromptRegistry()
+        with caplog.at_level(logging.WARNING, logger="mle_star.prompts"):
+            registry._load_single_template({
+                "agent_type": "totally_unknown_agent",
+                "figure_ref": "Figure 99",
+                "template": "Hello {x}",
+                "variables": ["x"],
+            })
+        warning_msgs = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warning_msgs) >= 1
+        assert "totally_unknown_agent" in warning_msgs[0].message

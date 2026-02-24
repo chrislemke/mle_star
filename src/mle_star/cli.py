@@ -12,6 +12,7 @@ Refs:
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 import shutil
 import sys
@@ -161,6 +162,7 @@ def main() -> int:
         print(f"Diagnostics: {exc.diagnostics}", file=sys.stderr)
         return 1
     except Exception as exc:
+        logging.getLogger(__name__).exception("Unhandled error in pipeline: %s", exc)
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 

@@ -664,6 +664,7 @@ class TestInvokeAblationPromptTemplateIntegration:
         rendered = template.render(
             solution_script="x = 1",
             previous_ablations="",
+            notes_context="",
         )
         assert "x = 1" in rendered
 
@@ -676,6 +677,7 @@ class TestInvokeAblationPromptTemplateIntegration:
         rendered = template.render(
             solution_script="code here",
             previous_ablations="# Previous\n1. Summary A\n2. Summary B",
+            notes_context="",
         )
         assert "code here" in rendered
         assert "Summary A" in rendered

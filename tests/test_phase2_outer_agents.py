@@ -1308,6 +1308,7 @@ class TestSummarizePromptTemplateIntegration:
         rendered = template.render(
             ablation_code="print('ablation')",
             raw_result="feature importance: 0.85",
+            notes_context="",
         )
         assert "print('ablation')" in rendered
         assert "feature importance: 0.85" in rendered
@@ -1359,6 +1360,7 @@ class TestExtractorPromptTemplateIntegration:
             solution_script="x = 1",
             ablation_summary="Feature engineering is important",
             previous_code_blocks="",
+            notes_context="",
         )
         assert "x = 1" in rendered
         assert "Feature engineering is important" in rendered
@@ -1373,6 +1375,7 @@ class TestExtractorPromptTemplateIntegration:
             solution_script="model.fit(X, y)",
             ablation_summary="Model selection matters",
             previous_code_blocks="# Code Block 1\nmodel.fit(X, y)",
+            notes_context="",
         )
         assert "model.fit(X, y)" in rendered
         assert "Code Block 1" in rendered

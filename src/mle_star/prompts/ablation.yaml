@@ -12,6 +12,9 @@ template: |
 
   {previous_ablations}
 
+  # Previous agent notes
+  {notes_context}
+
   # Instructions
   - You need to generate a simple Python code that performs an ablation study on the train.py script.
   - The generated code should create variations by modifying or disabling parts (2-3 parts) of the training process.
@@ -26,3 +29,4 @@ template: |
 variables:
   - solution_script
   - previous_ablations
+  - notes_context

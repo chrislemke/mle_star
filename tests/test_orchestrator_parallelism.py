@@ -152,6 +152,7 @@ class TestDeepCopyIsolation:
             initial_solution: SolutionScript,
             initial_score: float,
             session_id: str,
+            **kwargs: Any,
         ) -> Phase2Result:
             received_solutions.append(initial_solution)
             return _make_phase2_result()
@@ -198,6 +199,7 @@ class TestDeepCopyIsolation:
             initial_solution: SolutionScript,
             initial_score: float,
             session_id: str,
+            **kwargs: Any,
         ) -> Phase2Result:
             received_solutions.append(initial_solution)
             if session_id == "path-0":
@@ -243,6 +245,7 @@ class TestDeepCopyIsolation:
             initial_solution: SolutionScript,
             initial_score: float,
             session_id: str,
+            **kwargs: Any,
         ) -> Phase2Result:
             received_solutions.append(initial_solution)
             return _make_phase2_result()
@@ -531,6 +534,7 @@ class TestSessionIdUniqueness:
             _solution: Any,
             _score: float,
             session_id: str,
+            **kwargs: Any,
         ) -> Phase2Result:
             received_session_ids.append(session_id)
             return _make_phase2_result()
@@ -575,6 +579,7 @@ class TestInitialScorePassedToEachPath:
             _solution: Any,
             initial_score: float,
             session_id: str,
+            **kwargs: Any,
         ) -> Phase2Result:
             received_scores.append(initial_score)
             return _make_phase2_result()

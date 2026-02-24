@@ -19,6 +19,9 @@ template: |
   3. **Preprocessing pipelines**: What preprocessing steps (normalization, encoding, imputation, augmentation) improve performance?
   4. **Domain-specific insights**: Any domain knowledge, tricks, or common pitfalls specific to this type of competition.
 
+  # Previous agent notes
+  {notes_context}
+
   # Output format — MANDATORY
   You MUST respond with ONLY a valid JSON object matching this schema.
   Do NOT include any text, markdown, or explanation before or after the JSON.
@@ -35,9 +38,12 @@ template: |
 
   Each list should contain 3-5 concise, actionable items.
   The raw_summary should be a 2-3 paragraph overview of your findings.
+  After completing your task, write a concise notes file (10-30 lines) to the notes directory documenting key observations, insights, and warnings for downstream agents. Use the `Write` tool.
+
 variables:
   - task_description
   - target_column
   - task_type
   - data_modality
   - baseline_score
+  - notes_context

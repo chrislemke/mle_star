@@ -126,6 +126,8 @@ async def invoke_planner(
     plans: list[str],
     scores: list[float | None],
     client: ClaudeCodeClient,
+    *,
+    notes_context: str = "",
 ) -> str | None:
     """Invoke A_planner to propose a new refinement strategy (REQ-P2I-013).
 
@@ -138,6 +140,7 @@ async def invoke_planner(
         plans: List of previous refinement plan texts (p_0 … p_{k-1}).
         scores: Corresponding scores; ``None`` for failed evaluations.
         client: SDK client for agent invocation.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         The refinement plan string, or ``None`` if the response is empty.
@@ -160,7 +163,11 @@ async def invoke_planner(
 
     registry = PromptRegistry()
     template = registry.get(AgentType.PLANNER)
-    prompt = template.render(code_block=code_block, plan_history=plan_history)
+    prompt = template.render(
+        code_block=code_block,
+        plan_history=plan_history,
+        notes_context=notes_context,
+    )
 
     response: str = await client.send_message(
         agent_type=AgentType.PLANNER,
@@ -285,6 +292,8 @@ async def run_phase2_inner_loop(
     best_score: float,
     task: TaskDescription,
     config: PipelineConfig,
+    *,
+    notes_context: str = "",
 ) -> InnerLoopResult:
     """Execute K inner-loop iterations for targeted code block refinement (REQ-P2I-016).
 
@@ -310,6 +319,7 @@ async def run_phase2_inner_loop(
         best_score: Current h_best from the outer loop.
         task: Task description for evaluation context.
         config: Pipeline configuration (provides ``inner_loop_steps`` = K).
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         ``InnerLoopResult`` with the best solution, best score, all K
@@ -347,6 +357,7 @@ async def run_phase2_inner_loop(
             task,
             config,
             client,
+            notes_context=notes_context,
         )
 
         accumulated_plans.append(step_result["plan"])
@@ -408,6 +419,8 @@ async def _run_inner_step(
     task: TaskDescription,
     config: PipelineConfig,
     client: ClaudeCodeClient,
+    *,
+    notes_context: str = "",
 ) -> dict[str, Any]:
     """Execute one inner loop step: plan determination + coder step.
 
@@ -425,6 +438,7 @@ async def _run_inner_step(
         task: Task description for evaluation context.
         config: Pipeline configuration.
         client: SDK client for agent invocation.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         Dict with step results including ``plan``, ``score``,
@@ -439,7 +453,8 @@ async def _run_inner_step(
             len(accumulated_plans),
         )
         plan_result = await invoke_planner(
-            original_code, list(accumulated_plans), list(accumulated_scores), client
+            original_code, list(accumulated_plans), list(accumulated_scores), client,
+            notes_context=notes_context,
         )
         if plan_result is None:
             logger.warning("A_planner returned None at k=%d; skipping", k)

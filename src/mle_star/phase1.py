@@ -55,6 +55,36 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Notes context helper
+# ---------------------------------------------------------------------------
+
+
+def _read_notes_context(notes_dir: str | Path, pattern: str = "*.md") -> str:
+    """Read all notes files matching *pattern* and format for prompt injection.
+
+    Args:
+        notes_dir: Directory containing notes files.
+        pattern: Glob pattern for note files.
+
+    Returns:
+        Formatted notes string, or empty string if no notes found.
+    """
+    notes_path = Path(notes_dir)
+    if not notes_path.exists():
+        return ""
+
+    sections: list[str] = []
+    for note_file in sorted(notes_path.glob(pattern)):
+        content = note_file.read_text(encoding="utf-8").strip()
+        if content:
+            sections.append(f"### {note_file.stem}\n{content}")
+
+    if not sections:
+        return ""
+    return "# Notes from previous agents\n" + "\n\n".join(sections)
+
+
+# ---------------------------------------------------------------------------
 # Baseline — Simple default model generation
 # ---------------------------------------------------------------------------
 
@@ -215,6 +245,8 @@ async def conduct_research(
     config: PipelineConfig,
     client: ClaudeCodeClient,
     baseline_score: float | None = None,
+    *,
+    notes_context: str = "",
 ) -> ResearchFindings | None:
     """Conduct internet research for model architectures and techniques.
 
@@ -227,6 +259,7 @@ async def conduct_research(
         config: Pipeline configuration.
         client: SDK client for agent invocation.
         baseline_score: Current baseline score for context (if available).
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         A ``ResearchFindings`` instance, or ``None`` on failure.
@@ -239,6 +272,7 @@ async def conduct_research(
         task_type=task.task_type,
         data_modality=task.data_modality,
         baseline_score=baseline_score if baseline_score is not None else "N/A",
+        notes_context=notes_context,
     )
 
     response: str = await client.send_message(
@@ -391,6 +425,7 @@ async def retrieve_models(
     *,
     max_retries: int = 3,
     research_context: str = "",
+    notes_context: str = "",
 ) -> list[RetrievedModel]:
     """Invoke A_retriever to find M effective models for the task (REQ-P1-007).
 
@@ -408,6 +443,7 @@ async def retrieve_models(
         client: SDK client for agent invocation.
         max_retries: Maximum number of retry attempts on parse failure.
         research_context: Formatted research findings for prompt injection.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         A list of validated ``RetrievedModel`` instances (1 to M).
@@ -425,6 +461,7 @@ async def retrieve_models(
         target_column=task.target_column or "Not specified",
         M=config.num_retrieved_models,
         research_context=research_context,
+        notes_context=notes_context,
     )
 
     last_error: Exception | None = None
@@ -512,6 +549,7 @@ async def generate_candidate(
     client: ClaudeCodeClient,
     *,
     research_context: str = "",
+    notes_context: str = "",
 ) -> SolutionScript | None:
     """Invoke A_init to generate a candidate solution for a model (REQ-P1-012).
 
@@ -527,6 +565,7 @@ async def generate_candidate(
             for future extensions).
         client: SDK client for agent invocation.
         research_context: Formatted research findings for prompt injection.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         A ``SolutionScript`` with the generated code, or ``None`` if the
@@ -540,6 +579,7 @@ async def generate_candidate(
         model_name=model.model_name,
         example_code=model.example_code,
         research_context=research_context,
+        notes_context=notes_context,
     )
 
     response: str = await client.send_message(
@@ -651,6 +691,7 @@ async def _generate_and_evaluate_candidates(
     debug_cb: Any,
     *,
     research_context: str = "",
+    notes_context: str = "",
 ) -> _CandidateResults:
     """Generate, leakage-check, and evaluate M candidates (REQ-P1-020).
 
@@ -665,6 +706,7 @@ async def _generate_and_evaluate_candidates(
         client: SDK client for agent invocation.
         debug_cb: Debug callback for evaluate_with_retry.
         research_context: Formatted research findings for prompt injection.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         A ``_CandidateResults`` accumulator with all outcomes.
@@ -680,7 +722,9 @@ async def _generate_and_evaluate_candidates(
             model.model_name,
         )
         candidate = await generate_candidate(
-            task, model, config, client, research_context=research_context
+            task, model, config, client,
+            research_context=research_context,
+            notes_context=notes_context,
         )
 
         if candidate is None:
@@ -929,6 +973,10 @@ async def run_phase1(
 
     debug_cb = make_debug_callback(task, config, client)
 
+    # Read any existing notes for context injection.
+    notes_dir = Path(task.data_dir) / "notes"
+    notes_context = _read_notes_context(notes_dir)
+
     # Step 0a — Generate baseline solution.
     baseline_score: float | None = None
     baseline_solution: SolutionScript | None = None
@@ -960,7 +1008,8 @@ async def run_phase1(
     try:
         logger.info("Internet research start")
         research_findings = await conduct_research(
-            task, config, client, baseline_score
+            task, config, client, baseline_score,
+            notes_context=notes_context,
         )
         if research_findings is not None:
             research_context = _format_research_context(research_findings)
@@ -978,9 +1027,14 @@ async def run_phase1(
     except Exception:
         logger.exception("Internet research failed; continuing without research context")
 
+    # Re-read notes after research (researcher may have written new notes).
+    notes_context = _read_notes_context(notes_dir)
+
     # Step 1 — Retrieve M models (REQ-P1-019).
     models = await retrieve_models(
-        task, config, client, research_context=research_context
+        task, config, client,
+        research_context=research_context,
+        notes_context=notes_context,
     )
     model_names = [m.model_name for m in models]
     logger.info(
@@ -989,9 +1043,14 @@ async def run_phase1(
         model_names,
     )
 
+    # Re-read notes after retrieval (retriever may have written new notes).
+    notes_context = _read_notes_context(notes_dir)
+
     # Steps 2-5 — Generate and evaluate M candidates (REQ-P1-020).
     acc = await _generate_and_evaluate_candidates(
-        models, task, config, client, debug_cb, research_context=research_context
+        models, task, config, client, debug_cb,
+        research_context=research_context,
+        notes_context=notes_context,
     )
 
     # Inject successful baseline into candidates so it participates in ranking.

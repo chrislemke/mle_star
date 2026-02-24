@@ -7,8 +7,14 @@ template: |
   # Ablation study results after running the above code:
   {raw_result}
 
+  # Previous agent notes
+  {notes_context}
+
   # Your task
   - Summarize the result of ablation study based on the code and printed output.
+
+  After completing your task, write a concise notes file (10-30 lines) to the notes directory documenting key observations, insights, and warnings for downstream agents. Use the `Write` tool.
 variables:
   - ablation_code
   - raw_result
+  - notes_context

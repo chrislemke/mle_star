@@ -821,6 +821,8 @@ class AgentConfig(BaseModel):
 _EXECUTION_TOOLS: list[str] = ["Bash", "Edit", "Write", "Read"]
 # Tools for read-only / analysis-only agents (REQ-OR-008).
 _READ_ONLY_TOOLS: list[str] = ["Read"]
+# Tools for research/planning agents that read existing notes and write new ones.
+_READ_WRITE_TOOLS: list[str] = ["Read", "Write"]
 
 
 def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
@@ -841,13 +843,13 @@ def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
         AgentType.RESEARCHER: AgentConfig(
             agent_type=AgentType.RESEARCHER,
             description="Conducts internet research for model architectures and techniques.",
-            tools=["WebSearch", "WebFetch"],
+            tools=["WebSearch", "WebFetch", "Write"],
             output_schema=ResearchFindings,
         ),
         AgentType.RETRIEVER: AgentConfig(
             agent_type=AgentType.RETRIEVER,
             description="Retrieves ML models and example code from the web.",
-            tools=["WebSearch", "WebFetch"],
+            tools=["WebSearch", "WebFetch", "Write"],
         ),
         AgentType.INIT: AgentConfig(
             agent_type=AgentType.INIT,
@@ -867,18 +869,18 @@ def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
         AgentType.SUMMARIZE: AgentConfig(
             agent_type=AgentType.SUMMARIZE,
             description="Summarizes ablation results into concise analysis.",
-            tools=_READ_ONLY_TOOLS,
+            tools=_READ_WRITE_TOOLS,
         ),
         AgentType.EXTRACTOR: AgentConfig(
             agent_type=AgentType.EXTRACTOR,
             description="Extracts targeted code blocks with refinement plans.",
-            tools=_READ_ONLY_TOOLS,
+            tools=_READ_WRITE_TOOLS,
             output_schema=ExtractorOutput,
         ),
         AgentType.PLANNER: AgentConfig(
             agent_type=AgentType.PLANNER,
             description="Creates refinement plans for targeted code blocks.",
-            tools=_READ_ONLY_TOOLS,
+            tools=_READ_WRITE_TOOLS,
         ),
         AgentType.CODER: AgentConfig(
             agent_type=AgentType.CODER,
@@ -888,7 +890,7 @@ def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
         AgentType.ENS_PLANNER: AgentConfig(
             agent_type=AgentType.ENS_PLANNER,
             description="Plans ensemble strategies from multiple solutions.",
-            tools=_READ_ONLY_TOOLS,
+            tools=_READ_WRITE_TOOLS,
         ),
         AgentType.ENSEMBLER: AgentConfig(
             agent_type=AgentType.ENSEMBLER,

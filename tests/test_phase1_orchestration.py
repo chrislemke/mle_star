@@ -247,7 +247,9 @@ class TestRetrieveModelsInvocation:
             await run_phase1(task, config, client)
 
         mocks["retrieve_models"].assert_awaited_once_with(
-            task, config, client, research_context=""
+            task, config, client,
+            research_context="",
+            notes_context="",
         )
 
 
@@ -291,7 +293,9 @@ class TestCandidateGenerationLoop:
         assert mocks["generate_candidate"].await_count == 3
         for _i, model in enumerate(models):
             mocks["generate_candidate"].assert_any_await(
-                task, model, config, client, research_context=""
+                task, model, config, client,
+                research_context="",
+                notes_context="",
             )
 
     async def test_leakage_check_called_for_each_successful_candidate(self) -> None:

@@ -106,6 +106,8 @@ async def invoke_ens_planner(
     plans: list[str],
     scores: list[float | None],
     client: ClaudeCodeClient,
+    *,
+    notes_context: str = "",
 ) -> str | None:
     """Invoke A_ens_planner to propose an ensemble strategy (REQ-P3-009).
 
@@ -122,6 +124,7 @@ async def invoke_ens_planner(
         plans: Previous ensemble plan texts (empty on first call).
         scores: Corresponding scores; ``None`` for failed evaluations.
         client: SDK client for agent invocation.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         The ensemble plan string, or ``None`` if the response is empty.
@@ -145,6 +148,7 @@ async def invoke_ens_planner(
         L=len(solutions),
         solutions_text=solutions_text,
         plan_history=plan_history,
+        notes_context=notes_context,
     )
 
     response: str = await client.send_message(
@@ -257,6 +261,7 @@ async def _run_ensemble_round(
     debug_cb: Any,
     *,
     round_index: int = 0,
+    notes_context: str = "",
 ) -> tuple[str, float | None, SolutionScript]:
     """Execute a single ensemble round: plan, implement, check, evaluate.
 
@@ -291,7 +296,10 @@ async def _run_ensemble_round(
         round_index,
         len(plans_snapshot),
     )
-    plan = await invoke_ens_planner(solutions, plans_snapshot, scores_snapshot, client)
+    plan = await invoke_ens_planner(
+        solutions, plans_snapshot, scores_snapshot, client,
+        notes_context=notes_context,
+    )
     if plan is None:
         logger.warning("A_ens_planner empty response: r=%d", round_index)
         return "[ens_planner failed]", None, empty_solution
@@ -372,6 +380,8 @@ async def _execute_rounds(
     config: PipelineConfig,
     client: ClaudeCodeClient,
     debug_cb: Any,
+    *,
+    notes_context: str = "",
 ) -> tuple[
     list[str], list[float | None], SolutionScript | None, float | None, int, int
 ]:
@@ -383,6 +393,7 @@ async def _execute_rounds(
         config: Pipeline configuration.
         client: SDK client for agent invocation.
         debug_cb: Debug callback for evaluation.
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         Tuple of (plans, scores, best_solution, best_score, best_round,
@@ -405,6 +416,7 @@ async def _execute_rounds(
             client,
             debug_cb,
             round_index=_r,
+            notes_context=notes_context,
         )
         plan, round_score, sol = round_result
         accumulated_plans.append(plan)
@@ -437,6 +449,8 @@ async def run_phase3(
     task: TaskDescription,
     config: PipelineConfig,
     solutions: list[SolutionScript],
+    *,
+    notes_context: str = "",
 ) -> Phase3Result:
     """Execute Phase 3: ensemble construction via Algorithm 3 (REQ-P3-017).
 
@@ -455,6 +469,7 @@ async def run_phase3(
         task: Task description providing competition context.
         config: Pipeline configuration (``ensemble_rounds`` = R).
         solutions: L solution scripts to ensemble (must be >= 1).
+        notes_context: Formatted notes from previous agents.
 
     Returns:
         A ``Phase3Result`` with the best ensemble solution and scores.
@@ -504,7 +519,10 @@ async def run_phase3(
         best_score,
         best_round,
         successful_rounds,
-    ) = await _execute_rounds(solutions, task, config, client, debug_cb)
+    ) = await _execute_rounds(
+        solutions, task, config, client, debug_cb,
+        notes_context=notes_context,
+    )
 
     # REQ-P3-026: All rounds failed — fallback to best input solution.
     if best_solution is None or best_score is None:

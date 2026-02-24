@@ -1113,7 +1113,8 @@ class TestInvokePlannerPromptTemplateIntegration:
         registry = PromptRegistry()
         template = registry.get(AgentType.PLANNER)
         rendered = template.render(
-            code_block="x = 1", plan_history="## Plan: old\n## Score: 0.5"
+            code_block="x = 1", plan_history="## Plan: old\n## Score: 0.5",
+            notes_context="",
         )
         assert "x = 1" in rendered
         assert "## Plan: old" in rendered

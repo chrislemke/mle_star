@@ -31,6 +31,9 @@ template: |
   - Only use the provided train data in the `./input` directory. Do not load test data.
   - If there are more than 30,000 training samples, you must subsample to 30,000 for a faster run.
 
+  # Previous agent notes
+  {notes_context}
+
   # Required
   - There should be no additional headings or text in your response.
   - Print out or return a final performance metric in a clear format with the exact words: 'Final Validation Performance: {{final_validation_score}}'.
@@ -44,3 +47,4 @@ variables:
   - model_name
   - example_code
   - research_context
+  - notes_context

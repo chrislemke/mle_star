@@ -16,6 +16,9 @@ template: |
 
   {previous_code_blocks}
 
+  # Previous agent notes
+  {notes_context}
+
   # Your task
   - Given the ablation study results, suggest an effective next plan to improve the above Python script.
   - The plan should be a brief outline/sketch of your proposed solution in natural language (3-5 sentences).
@@ -30,7 +33,10 @@ template: |
   Use this JSON schema:
   Refine_Plan = {{'code_block': str, 'plan': str}}
   Return: list[Refine_Plan]
+  After completing your task, write a concise notes file (10-30 lines) to the notes directory documenting key observations, insights, and warnings for downstream agents. Use the `Write` tool.
+
 variables:
   - solution_script
   - ablation_summary
   - previous_code_blocks
+  - notes_context
