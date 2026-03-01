@@ -292,7 +292,7 @@ class TestCheckDataUsageAllInfoUsed:
         solution = _make_solution(content="my_original_code")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -312,7 +312,7 @@ class TestCheckDataUsageAllInfoUsed:
         client.send_message = AsyncMock(return_value=_ALL_USED_RESPONSE)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -343,7 +343,7 @@ class TestCheckDataUsageCorrectedCode:
         solution = _make_solution()
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -364,7 +364,7 @@ class TestCheckDataUsageCorrectedCode:
 
         for phase in (SolutionPhase.MERGED, SolutionPhase.INIT, SolutionPhase.REFINED):
             with patch(
-                f"{_SAFETY}.PromptRegistry",
+                f"{_SAFETY}.get_registry",
             ) as mock_registry_cls:
                 mock_registry = mock_registry_cls.return_value
                 mock_template = AsyncMock()
@@ -397,7 +397,7 @@ class TestCheckDataUsageGracefulDegradation:
         solution = _make_solution(content="original_safe_code")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -418,7 +418,7 @@ class TestCheckDataUsageGracefulDegradation:
         solution = _make_solution(content="timeout_safe_code")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -441,7 +441,7 @@ class TestCheckDataUsageGracefulDegradation:
         solution = _make_solution(content="exception_safe_code")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -462,7 +462,7 @@ class TestCheckDataUsageGracefulDegradation:
         solution = _make_solution()
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -482,7 +482,7 @@ class TestCheckDataUsageGracefulDegradation:
         client.send_message = AsyncMock(side_effect=KeyboardInterrupt)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -499,7 +499,7 @@ class TestCheckDataUsageGracefulDegradation:
         client = AsyncMock()
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_registry.get.side_effect = KeyError("No template for data")
@@ -527,7 +527,7 @@ class TestCheckDataUsagePromptRegistry:
         client.send_message = AsyncMock(return_value=_ALL_USED_RESPONSE)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -548,7 +548,7 @@ class TestCheckDataUsagePromptRegistry:
         render_kwargs_captured: list[dict[str, Any]] = []
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -579,7 +579,7 @@ class TestCheckDataUsagePromptRegistry:
         render_kwargs_captured: list[dict[str, Any]] = []
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -610,7 +610,7 @@ class TestCheckDataUsagePromptRegistry:
         expected_prompt = "rendered data agent prompt xyz"
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -630,7 +630,7 @@ class TestCheckDataUsagePromptRegistry:
         client.send_message = AsyncMock(return_value=_ALL_USED_RESPONSE)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -660,7 +660,7 @@ class TestCheckDataUsageReturnType:
         client.send_message = AsyncMock(return_value=_ALL_USED_RESPONSE)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -679,7 +679,7 @@ class TestCheckDataUsageReturnType:
         client.send_message = AsyncMock(return_value=_IMPROVED_CODE_RESPONSE)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -698,7 +698,7 @@ class TestCheckDataUsageReturnType:
         client.send_message = AsyncMock(side_effect=RuntimeError("boom"))
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -758,7 +758,7 @@ class TestDataPromptTemplate:
         assert "Classify images" in rendered
 
     def test_data_template_mentions_do_not_use_try_except(self) -> None:
-        """Data template contains instruction about not using try-except (REQ-SF-029)."""
+        """Data template contains instruction about not using try/except (REQ-SF-029)."""
         from mle_star.prompts import PromptRegistry
 
         registry = PromptRegistry()
@@ -768,7 +768,7 @@ class TestDataPromptTemplate:
             task_description="task",
             target_column="Not specified",
         )
-        assert "TRY AND EXCEPT" in rendered or "try-except" in rendered.lower()
+        assert "try/except" in rendered
 
     def test_data_template_mentions_all_provided_information(self) -> None:
         """Data template mentions the key phrase for the 'all used' response."""
@@ -857,7 +857,7 @@ class TestCheckDataUsageEdgeCases:
         solution = _make_solution(content="")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -878,7 +878,7 @@ class TestCheckDataUsageEdgeCases:
         solution = _make_solution(score=0.88)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -897,7 +897,7 @@ class TestCheckDataUsageEdgeCases:
         client.send_message = AsyncMock(return_value=_IMPROVED_CODE_RESPONSE)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -995,7 +995,7 @@ class TestCheckDataUsagePropertyBased:
         solution = _make_solution(content=content)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1019,7 +1019,7 @@ class TestCheckDataUsagePropertyBased:
         solution = _make_solution(phase=phase)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1051,7 +1051,7 @@ class TestCheckDataUsagePropertyBased:
         solution = _make_solution(content=content)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()

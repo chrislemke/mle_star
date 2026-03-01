@@ -39,7 +39,7 @@ from mle_star.models import (
     SolutionScript,
     TaskDescription,
 )
-from mle_star.prompts import PromptRegistry
+from mle_star.prompts import get_registry
 from mle_star.safety import (
     check_and_fix_leakage,
     check_data_usage,
@@ -108,7 +108,7 @@ async def generate_baseline(
         A ``SolutionScript`` with the baseline code, or ``None`` if the
         agent response is empty or extraction yields no code.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.BASELINE)
     prompt = template.render(
         task_description=task.description,
@@ -264,7 +264,7 @@ async def conduct_research(
     Returns:
         A ``ResearchFindings`` instance, or ``None`` on failure.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.RESEARCHER)
     prompt = template.render(
         task_description=task.description,
@@ -454,7 +454,7 @@ async def retrieve_models(
     """
     import asyncio
 
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.RETRIEVER)
     prompt = template.render(
         task_description=task.description,
@@ -571,7 +571,7 @@ async def generate_candidate(
         A ``SolutionScript`` with the generated code, or ``None`` if the
         agent response is empty or extraction yields no code.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.INIT)
     prompt = template.render(
         task_description=task.description,
@@ -645,7 +645,7 @@ async def merge_solutions(
         A ``SolutionScript`` with the merged code, or ``None`` if the
         agent response is empty or extraction yields no code.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.MERGER)
     prompt = template.render(
         base_code=base.content,
@@ -683,6 +683,86 @@ class _CandidateResults:
         self.successful_results: list[EvaluationResult] = []
 
 
+async def _generate_and_evaluate_single_candidate(
+    model: RetrievedModel,
+    index: int,
+    num_models: int,
+    task: TaskDescription,
+    config: PipelineConfig,
+    client: ClaudeCodeClient,
+    debug_cb: Any,
+    *,
+    research_context: str = "",
+    notes_context: str = "",
+) -> tuple[SolutionScript, float | None, EvaluationResult | None]:
+    """Generate, leakage-check, and evaluate a single candidate.
+
+    Args:
+        model: Retrieved model to generate candidate for.
+        index: 1-based index of this candidate.
+        num_models: Total number of models.
+        task: Task description providing competition context.
+        config: Pipeline configuration with hyperparameters.
+        client: SDK client for agent invocation.
+        debug_cb: Debug callback for evaluate_with_retry.
+        research_context: Formatted research findings for prompt injection.
+        notes_context: Formatted notes from previous agents.
+
+    Returns:
+        A ``(solution, score, eval_result)`` tuple.
+    """
+    logger.info(
+        "Candidate generation start: %d/%d, model=%s",
+        index,
+        num_models,
+        model.model_name,
+    )
+    candidate = await generate_candidate(
+        task, model, config, client,
+        research_context=research_context,
+        notes_context=notes_context,
+    )
+
+    if candidate is None:
+        logger.warning("A_init returned None for model '%s'", model.model_name)
+        return (
+            SolutionScript(
+                content="",
+                phase=SolutionPhase.INIT,
+                source_model=model.model_name,
+                is_executable=False,
+            ),
+            None,
+            None,
+        )
+
+    logger.info(
+        "Candidate generation complete: model=%s, code_length=%d",
+        model.model_name,
+        len(candidate.content),
+    )
+
+    candidate = await check_and_fix_leakage(candidate, task, client)
+    candidate, result = await evaluate_with_retry(candidate, task, config, debug_cb)
+
+    if result.is_error or result.score is None:
+        logger.warning(
+            "Candidate from model '%s' failed: %s",
+            model.model_name,
+            (result.error_traceback or "no score")[:80],
+        )
+        return candidate, None, None
+
+    logger.info(
+        "Candidate evaluation result: model=%s, score=%s, duration=%.2fs",
+        model.model_name,
+        result.score,
+        result.duration_seconds,
+    )
+    candidate.score = result.score
+    return candidate, result.score, result
+
+
 async def _generate_and_evaluate_candidates(
     models: list[RetrievedModel],
     task: TaskDescription,
@@ -693,11 +773,13 @@ async def _generate_and_evaluate_candidates(
     research_context: str = "",
     notes_context: str = "",
 ) -> _CandidateResults:
-    """Generate, leakage-check, and evaluate M candidates (REQ-P1-020).
+    """Generate, leakage-check, and evaluate M candidates in parallel (REQ-P1-020).
 
     For each retrieved model: generate a candidate, run the leakage checker,
     evaluate with debug retry, and record the outcome.  Candidates that fail
     generation or evaluation are recorded with ``score=None``.
+
+    All candidates are generated concurrently via ``asyncio.gather``.
 
     Args:
         models: Retrieved models from A_retriever.
@@ -711,24 +793,31 @@ async def _generate_and_evaluate_candidates(
     Returns:
         A ``_CandidateResults`` accumulator with all outcomes.
     """
-    acc = _CandidateResults()
+    import asyncio
+
     num_models = len(models)
 
-    for i, model in enumerate(models):
-        logger.info(
-            "Candidate generation start: %d/%d, model=%s",
-            i + 1,
-            num_models,
-            model.model_name,
-        )
-        candidate = await generate_candidate(
-            task, model, config, client,
+    # Run all candidates in parallel.
+    tasks = [
+        _generate_and_evaluate_single_candidate(
+            model, i + 1, num_models, task, config, client, debug_cb,
             research_context=research_context,
             notes_context=notes_context,
         )
+        for i, model in enumerate(models)
+    ]
 
-        if candidate is None:
-            logger.warning("A_init returned None for model '%s'", model.model_name)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    acc = _CandidateResults()
+    for i, result in enumerate(results):
+        model = models[i]
+        if isinstance(result, BaseException):
+            logger.warning(
+                "Candidate generation failed for model '%s': %s",
+                model.model_name,
+                str(result)[:200],
+            )
             acc.solutions.append(
                 SolutionScript(
                     content="",
@@ -740,36 +829,12 @@ async def _generate_and_evaluate_candidates(
             acc.scores.append(None)
             continue
 
-        logger.info(
-            "Candidate generation complete: model=%s, code_length=%d",
-            model.model_name,
-            len(candidate.content),
-        )
-
-        candidate = await check_and_fix_leakage(candidate, task, client)
-        candidate, result = await evaluate_with_retry(candidate, task, config, debug_cb)
-
-        if result.is_error or result.score is None:
-            logger.warning(
-                "Candidate from model '%s' failed: %s",
-                model.model_name,
-                (result.error_traceback or "no score")[:80],
-            )
-            acc.solutions.append(candidate)
-            acc.scores.append(None)
-            continue
-
-        logger.info(
-            "Candidate evaluation result: model=%s, score=%s, duration=%.2fs",
-            model.model_name,
-            result.score,
-            result.duration_seconds,
-        )
-        candidate.score = result.score
+        candidate, score, eval_result = result
         acc.solutions.append(candidate)
-        acc.scores.append(result.score)
-        acc.successful_solutions.append(candidate)
-        acc.successful_results.append(result)
+        acc.scores.append(score)
+        if score is not None and eval_result is not None:
+            acc.successful_solutions.append(candidate)
+            acc.successful_results.append(eval_result)
 
     return acc
 
@@ -784,8 +849,9 @@ async def _run_merge_loop(
     """Execute the merge loop over sorted candidates (REQ-P1-025 to REQ-P1-028).
 
     Starting from the best-ranked candidate, iteratively merges each
-    remaining candidate and checks for improvement.  Breaks on the first
-    non-improvement, execution failure, or ``None`` merge result.
+    remaining candidate and checks for improvement.  Tries all remaining
+    candidates rather than breaking on the first failure, since a
+    later candidate might complement the base better.
 
     Args:
         ranked: Sorted ``(solution, result)`` pairs, best first.
@@ -814,15 +880,18 @@ async def _run_merge_loop(
         )
         merged = await merge_solutions(s_0, ranked_sol, config, client)
         if merged is None:
-            logger.warning("Merge returned None; breaking merge loop")
-            break
+            logger.warning("Merge returned None for reference '%s'; trying next", ref_model)
+            continue
 
         merged = await check_and_fix_leakage(merged, task, client)
         merged, merge_result = await evaluate_with_retry(merged, task, config, debug_cb)
 
         if merge_result.is_error or merge_result.score is None:
-            logger.warning("Merged solution failed evaluation; breaking merge loop")
-            break
+            logger.warning(
+                "Merged solution failed evaluation for reference '%s'; trying next",
+                ref_model,
+            )
+            continue
 
         if is_improvement_or_equal(merge_result.score, h_best, task.metric_direction):
             logger.info(
@@ -840,7 +909,6 @@ async def _run_merge_loop(
                 merge_result.score,
                 h_best,
             )
-            break
 
     return s_0, h_best, merge_count
 
@@ -977,57 +1045,58 @@ async def run_phase1(
     notes_dir = Path(task.data_dir) / "notes"
     notes_context = _read_notes_context(notes_dir)
 
-    # Step 0a — Generate baseline solution.
-    baseline_score: float | None = None
-    baseline_solution: SolutionScript | None = None
-    try:
-        logger.info("Baseline generation start")
-        baseline_candidate = await generate_baseline(task, config, client)
-        if baseline_candidate is not None:
-            baseline_candidate = await check_and_fix_leakage(
-                baseline_candidate, task, client
-            )
-            baseline_candidate, baseline_result = await evaluate_with_retry(
-                baseline_candidate, task, config, debug_cb
-            )
-            if not baseline_result.is_error and baseline_result.score is not None:
-                baseline_score = baseline_result.score
-                baseline_candidate.score = baseline_score
-                baseline_solution = baseline_candidate
-                logger.info("Baseline score: %s", baseline_score)
-            else:
-                logger.warning("Baseline evaluation failed; continuing without baseline")
-        else:
-            logger.warning("Baseline generation returned None; continuing without baseline")
-    except Exception:
-        logger.exception("Baseline generation failed; continuing without baseline")
+    # Step 0 — Generate baseline and conduct research IN PARALLEL.
+    # Both are independent: baseline generates a simple model, research
+    # searches the web. Running them concurrently saves wall-clock time.
+    logger.info("Starting baseline generation and internet research in parallel")
 
-    # Step 0b — Conduct internet research.
-    research_findings: ResearchFindings | None = None
-    research_context: str = ""
-    try:
-        logger.info("Internet research start")
-        research_findings = await conduct_research(
-            task, config, client, baseline_score,
-            notes_context=notes_context,
-        )
-        if research_findings is not None:
-            research_context = _format_research_context(research_findings)
-            total_items = (
-                len(research_findings.model_recommendations)
-                + len(research_findings.feature_engineering_ideas)
-                + len(research_findings.preprocessing_ideas)
-                + len(research_findings.other_insights)
+    async def _baseline_task() -> tuple[SolutionScript | None, float | None]:
+        try:
+            candidate = await generate_baseline(task, config, client)
+            if candidate is None:
+                logger.warning("Baseline generation returned None; continuing without baseline")
+                return None, None
+            candidate = await check_and_fix_leakage(candidate, task, client)
+            candidate, result = await evaluate_with_retry(candidate, task, config, debug_cb)
+            if not result.is_error and result.score is not None:
+                candidate.score = result.score
+                logger.info("Baseline score: %s", result.score)
+                return candidate, result.score
+            logger.warning("Baseline evaluation failed; continuing without baseline")
+            return None, None
+        except Exception:
+            logger.exception("Baseline generation failed; continuing without baseline")
+            return None, None
+
+    async def _research_task() -> tuple[ResearchFindings | None, str]:
+        try:
+            findings = await conduct_research(
+                task, config, client, None,
+                notes_context=notes_context,
             )
-            logger.info(
-                "Internet research complete: %d findings", total_items
-            )
-        else:
+            if findings is not None:
+                context = _format_research_context(findings)
+                total_items = (
+                    len(findings.model_recommendations)
+                    + len(findings.feature_engineering_ideas)
+                    + len(findings.preprocessing_ideas)
+                    + len(findings.other_insights)
+                )
+                logger.info("Internet research complete: %d findings", total_items)
+                return findings, context
             logger.warning("Research returned None; continuing without research context")
-    except Exception:
-        logger.exception("Internet research failed; continuing without research context")
+            return None, ""
+        except Exception:
+            logger.exception("Internet research failed; continuing without research context")
+            return None, ""
 
-    # Re-read notes after research (researcher may have written new notes).
+    import asyncio as _asyncio
+
+    (baseline_solution, baseline_score), (research_findings, research_context) = (
+        await _asyncio.gather(_baseline_task(), _research_task())
+    )
+
+    # Re-read notes after parallel tasks (agents may have written new notes).
     notes_context = _read_notes_context(notes_dir)
 
     # Step 1 — Retrieve M models (REQ-P1-019).

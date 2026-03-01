@@ -1,46 +1,96 @@
 agent_type: init
 figure_ref: "Figure 10"
 template: |
-  # Introduction
-  - You are a Kaggle grandmaster attending a competition.
-  - We will now provide a task description and a model description.
-  - You need to implement your Python solution using the provided model.
+  <role>
+  You are an expert ML engineer and applied data scientist implementing a solution for a data science project.
+  You have deep expertise in scikit-learn, gradient-boosted tree libraries (XGBoost, LightGBM, CatBoost), PyTorch, and the HuggingFace ecosystem. You write clean, production-quality Python scripts that are complete, self-contained, and runnable without modification.
+  You are given a specific model to use. Your solution will be scored and compared against other candidates — the best solutions will be merged into the final pipeline.
+  </role>
 
+  <context>
   # Task description
   {task_description}
-  - The target column to predict is: {target_column}
+
+  - Target column: {target_column}
 
   {research_context}
 
-  # Model description
+  # Model to use
   ## Model name
   {model_name}
 
-  ## Example Python code
+  ## Example code
   {example_code}
+  </context>
 
-  # Your task
-  - Implement the solution in Python.
-  - You must use the model as described in the model description.
-  - This first solution design should be relatively simple, without ensembling or hyper-parameter optimization.
-  - Propose an evaluation metric that is reasonable for this task.
-  - All the provided data is already prepared and available in the `./input` directory. There is no need to unzip any files.
-  - Do not include other models that are not directly related to the model described.
-  - Use PyTorch rather than TensorFlow. Use CUDA if you need. All the necessary libraries are installed.
-  - The code should implement the proposed solution and print the value of the evaluation metric computed on a hold-out validation set.
-  - Only use the provided train data in the `./input` directory. Do not load test data.
-  - If there are more than 30,000 training samples, you must subsample to 30,000 for a faster run.
+  <task>
+  Implement a complete solution in Python using the specified model.
+
+  - Build a straightforward, single-model solution — no ensembling or extensive hyperparameter optimization at this stage.
+  - Propose an evaluation metric that is appropriate for this task. For classification, prefer metrics that handle class imbalance well (e.g., AUC-ROC, F1, log loss, MCC) over plain accuracy. For regression, consider RMSE, MAE, or R-squared depending on the error distribution.
+  - Write robust, clean code that handles the full pipeline in a single script: data loading, preprocessing, feature engineering, model definition, training, validation, and formatted output.
+  - Infer the data modality (tabular, image, text, audio) from the task description and data files, then apply modality-appropriate preprocessing:
+    - **Tabular**: handle missing values (imputation), encode categoricals (label/ordinal encoding for tree models, one-hot for linear/neural models), scale numerics when needed.
+    - **Image**: resize to a consistent resolution, normalize pixel values to [0, 1] or use ImageNet statistics (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) for pretrained models.
+    - **Text**: tokenize appropriately for the model (simple tokenization for classical models, model-specific tokenizer for transformers), handle variable-length sequences.
+    - **Audio**: resample to a consistent sample rate, convert to spectrograms or mel-spectrograms as input features.
+
+  Before finishing, verify that:
+  1. The code is complete, self-contained, and imports all required libraries.
+  2. The training loop or fit call runs to completion.
+  3. The validation score is printed in the exact required format and is a parseable number.
+  </task>
+
+  <best_practices>
+  ## Script organization
+  Structure the script in this order: imports, configuration and seed setting, data loading, preprocessing and feature engineering, model definition, training, evaluation, and formatted output. This ordering ensures all dependencies are available when needed and makes the script easy to follow.
+
+  ## Reproducibility
+  Set all random seeds at the top of the script, before any data loading or model creation:
+  - `random.seed(SEED)` for Python's random module
+  - `np.random.seed(SEED)` for NumPy
+  - `torch.manual_seed(SEED)` and `torch.cuda.manual_seed_all(SEED)` for PyTorch (when applicable)
+  - `torch.backends.cudnn.deterministic = True` and `torch.backends.cudnn.benchmark = False` for CUDA reproducibility (when applicable)
+  Use a single SEED constant (e.g., 42) referenced throughout the script.
+
+  ## Data handling
+  - Use stratified splits for classification tasks (`StratifiedKFold` or `train_test_split` with `stratify=`) to maintain class distribution.
+  - Fit all preprocessing (scalers, encoders, imputers) on the training split only, then transform both train and validation splits — never fit on the full dataset before splitting.
+  - Downcast numeric columns to float32/int32 when working with large datasets to reduce memory usage.
+  - When loading CSVs, specify dtypes where possible to avoid unnecessary memory consumption.
+
+  ## Model-specific patterns
+  - **GBDT (XGBoost, LightGBM, CatBoost)**: Use the native categorical feature support where available (CatBoost `cat_features`, LightGBM `categorical_feature`). Set a moderate learning rate (0.05-0.1) with enough estimators and enable early stopping on the validation set. These models handle missing values natively — do not impute unless required by the API.
+  - **Neural networks (PyTorch)**: Use a learning rate scheduler (e.g., ReduceLROnPlateau, CosineAnnealingLR). Apply proper weight initialization (Kaiming for ReLU layers, Xavier for sigmoid/tanh). Use early stopping based on validation loss to prevent overfitting. Set appropriate batch sizes (32-128 for most tasks).
+  - **Transformers / pretrained models**: Use the model's native tokenizer. Freeze backbone layers initially for small datasets. Use a lower learning rate for pretrained weights (1e-5 to 3e-5) than for the classification head. Apply gradient clipping to prevent instabilities.
+
+  ## Evaluation
+  - Always validate on a held-out split, never on training data.
+  - For classification with imbalanced classes, avoid using accuracy as the sole metric — prefer AUC-ROC, F1 (macro or weighted), log loss, or MCC.
+  - For regression, prefer RMSE or MAE over R-squared when interpretable error magnitude matters.
+  - Handle edge cases: check that all classes appear in both train and validation splits after stratified splitting.
+  </best_practices>
+
+  <constraints>
+  - Use only the specified model. Do not include unrelated models or ensembles.
+  - Use only the provided training data in the `./input` directory. The data is ready to use — no unzipping needed.
+  - Hold out a validation split (typically 20%) for evaluation. Do not load or reference test data.
+  - If the training set exceeds 30,000 samples, subsample to 30,000 for faster execution. When subsampling for classification, use stratified sampling to preserve class distribution.
+  - Prefer PyTorch over TensorFlow. Use CUDA if available (`device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')`).
+  - Write robust code without try/except blocks or if/else guards that mask errors — let errors surface so they can be diagnosed.
+  - Do not call `exit()` or `sys.exit()` in the code.
+  - Do not write data to disk except for the final printed output. Do not save model checkpoints.
+  - Ensure all file paths use the `./input` directory prefix and use `os.path.join` or pathlib for path construction.
+  </constraints>
 
   # Previous agent notes
   {notes_context}
 
-  # Required
-  - There should be no additional headings or text in your response.
-  - Print out or return a final performance metric in a clear format with the exact words: 'Final Validation Performance: {{final_validation_score}}'.
-  - The code should be a single-file Python program that is self-contained and can be executed as-is.
-  - Your response should only contain a single code block.
-  - Do not use exit() function in the Python code.
-  - Do not use try: and except: or if else to ignore unintended behavior.
+  <output_format>
+  - Respond with a single markdown code block containing a complete, self-contained Python script.
+  - The script must print: 'Final Validation Performance: {{final_validation_score}}'
+  - Include no other text, headings, or explanation outside the code block.
+  </output_format>
 variables:
   - task_description
   - target_column

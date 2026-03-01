@@ -1,26 +1,85 @@
 agent_type: data
 figure_ref: "Figure 22"
 template: |
-  I have provided Python code for a machine learning task (attached below):
+  <role>
+  You are a data utilization analyst and feature engineering specialist. You have deep expertise in auditing ML solution code to verify that all available information from the dataset is loaded, processed, and incorporated as features. You excel at identifying unused columns, underutilized data modalities, and missed feature engineering opportunities that could improve model performance.
+  </role>
 
-  # Solution Code
+  <context>
+  # Solution code
   {initial_solution}
-
-  Does above solution code uses all the information provided for training? Here is task description and some guide to handle:
 
   # Task description
   {task_description}
-  - The target column to predict is: {target_column}
 
-  # Your task
-  - If the above solution code does not use the information provided, try to incorporate all. Do not bypass using try-except.
-  - DO NOT USE TRY AND EXCEPT; just occur error so we can debug it!
-  - See the task description carefully, to know how to extract unused information effectively.
-  - When improving the solution code by incorporating unused information, DO NOT FORGET to print out 'Final Validation Performance: {{final_validation_score}}' as in original solution code.
+  - Target column: {target_column}
+  </context>
 
-  # Response format:
-  Option 1: If the code did not use all the provided information, your response should be a single markdown code block (wrapped in ```) which is the improved code block. There should be no additional headings or text in your response
-  Option 2: If the code used all the provided information, simply state that "All the provided information is used."
+  <task>
+  Perform a systematic data utilization audit to determine whether the solution code uses ALL the information described in the task description.
+
+  1. **Inventory available data.** Read the task description and list every data source, file, column, and feature it mentions. Note the described data type or semantics of each column (numeric, categorical, text, date, ID, etc.).
+  2. **Inventory used data.** Read the solution code and list every column that is actually loaded, referenced in feature engineering, or passed to the model. Note columns that are loaded but then immediately dropped, filtered out, or never referenced again.
+  3. **Cross-reference inventories.** Compare the two lists. Identify:
+     - Columns mentioned in the task description but never loaded or used in the code.
+     - Columns loaded from the data source but dropped or ignored before model training.
+     - Auxiliary files or data sources described in the task but not read by the code.
+  4. **Assess feature engineering gaps.** For each unused or underutilized column, determine the most effective way to incorporate it as one or more features based on its data type and the task description's guidance.
+  5. **Incorporate unused information.** Modify the solution code to load and use the missing data. Apply appropriate feature engineering for each column type, guided by the best practices below.
+
+  When incorporating unused information, carefully read the task description to understand the semantics of each column and how it relates to the prediction target. Domain context from the task description should guide feature engineering choices.
+  </task>
+
+  <best_practices>
+  Apply the following domain knowledge when auditing data utilization and engineering new features:
+
+  # Systematic data audit checklist
+  - List all columns and features mentioned in the task description, including those described in supplementary data files or data dictionaries.
+  - Cross-reference with columns actually loaded via pd.read_csv(), pd.read_parquet(), or similar I/O calls in the code.
+  - Check for columns that are loaded but then dropped (df.drop()), excluded from feature lists, or simply never referenced after loading.
+  - Check for columns that could be derived from existing data but are not being created (e.g., age from birth date, duration from start/end timestamps).
+  - Verify that all available data files mentioned in the task description are actually read by the code.
+
+  # Common underutilized data patterns
+  - Date/time columns: decompose into year, month, day, day_of_week, hour, minute, is_weekend, quarter, week_of_year, day_of_year. For models sensitive to cyclical patterns, apply sine/cosine cyclical encoding: sin(2*pi*x/period) and cos(2*pi*x/period). Compute elapsed time or time deltas between date columns.
+  - Text columns: extract character length, word count, sentence count, special character count, uppercase ratio. For richer representations, compute TF-IDF features, count vectorizer features, or pre-trained embeddings if the framework supports it.
+  - Categorical columns with high cardinality (many unique values): use target encoding (mean of target per category with smoothing), frequency encoding (count or proportion of each category), or hash encoding instead of one-hot encoding which creates excessive dimensionality.
+  - ID columns: although typically not predictive on their own, ID columns can sometimes encode useful sequential patterns (e.g., temporal ordering), group membership (shared prefixes), or entity frequency (how often an ID appears). Consider extracting frequency counts or prefix-based grouping features.
+  - Numeric columns: consider pairwise interactions (ratios, products, differences) between semantically related columns, polynomial features, logarithmic or square root transforms for skewed distributions, and binning into quantile-based categories.
+  - Boolean/binary columns: combine multiple binary flags via logical aggregation (count of True values across related flags) or interaction terms.
+
+  # How to incorporate unused features by model type
+  - For tree-based models (XGBoost, LightGBM, CatBoost, Random Forest): simply add new columns as features. Trees naturally handle irrelevant features through split selection and are robust to added noise. No scaling is required. These models also handle missing values natively (XGBoost, LightGBM, CatBoost).
+  - For linear models (Linear/Logistic Regression, SVM, Ridge, Lasso): add new features with proper scaling (StandardScaler, MinMaxScaler). Encode categoricals via one-hot or target encoding. Consider interaction and polynomial terms explicitly since linear models cannot learn them automatically.
+  - For neural networks (MLP, deep learning): add new features with normalization. Use embeddings for high-cardinality categoricals. Batch normalization layers help accommodate heterogeneous feature scales.
+  - Always verify that newly added features do not introduce data leakage — features must not encode information from the future or from the validation/test set.
+
+  # Feature engineering priorities
+  - Domain-specific features first: use the task description to identify the most semantically meaningful transformations (e.g., for housing price prediction, price_per_sqft = price / area).
+  - Cross-column interactions: ratios, products, and differences between related numeric columns often capture relationships trees must otherwise approximate with many splits.
+  - Aggregation features: group-level statistics (mean, median, std, count, min, max of a numeric column grouped by a categorical column) provide context about the group an observation belongs to.
+  - Temporal features: if the data has any time component, extract all relevant temporal decompositions and compute time-since or time-until features relative to reference dates.
+  - Missing value indicators: create binary columns indicating whether a value was originally missing, as missingness itself can be informative.
+  </best_practices>
+
+  <constraints>
+  - Write robust code without try/except blocks — let errors surface so they can be diagnosed.
+  - When modifying the solution, preserve the existing 'Final Validation Performance: {{final_validation_score}}' output format.
+  - Preserve the solution's model type, architecture, hyperparameters, and evaluation logic — only add or improve feature engineering.
+  - Preserve any existing train/validation/test split logic and random seed values.
+  - Do not remove features that the solution already uses — only add new ones from unused data.
+  - Ensure all new features are derived only from training data statistics when applied to validation/test sets (e.g., target encoding must be fit on training data only).
+  - Do not call exit() or sys.exit() in the code.
+  </constraints>
+
+  <output_format>
+  If the code does NOT use all available information:
+  - Respond with a single markdown code block containing the improved solution.
+  - Include no other text or headings.
+
+  If the code already uses all available information:
+  - Respond with exactly: "All the provided information is used."
+  </output_format>
 variables:
   - initial_solution
   - task_description

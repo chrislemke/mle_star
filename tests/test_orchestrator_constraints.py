@@ -959,13 +959,13 @@ class TestConcurrentSessionLimit:
 class TestAgentNameUniqueness:
     """All 14 agent names from build_default_agent_configs are unique (REQ-OR-057)."""
 
-    def test_agent_configs_has_16_entries(self) -> None:
-        """build_default_agent_configs returns exactly 16 agent definitions."""
+    def test_agent_configs_has_17_entries(self) -> None:
+        """build_default_agent_configs returns exactly 17 agent definitions."""
         # Act
         agents = build_default_agent_configs()
 
         # Assert
-        assert len(agents) == 16
+        assert len(agents) == 17
 
     def test_all_agent_names_are_unique(self) -> None:
         """All 14 agent names (keys) are unique."""
@@ -1103,11 +1103,11 @@ class TestOrchestratorConstraintProperties:
         assert budgets["phase2_per_path"] == pytest.approx(expected_per_path, rel=1e-6)
 
     @given(
-        num_agents=st.just(16),
+        num_agents=st.just(17),
     )
     @settings(max_examples=3, deadline=5000)
     def test_agent_count_invariant(self, num_agents: int) -> None:
-        """Agent count is always exactly 16."""
+        """Agent count is always exactly 17."""
         agents = build_default_agent_configs()
         assert len(agents) == num_agents
 

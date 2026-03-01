@@ -3,35 +3,80 @@ templates:
     variant:
     figure_ref: "Figure 25"
     template: |
-      # Introduction
-      - You are a Kaggle grandmaster attending a competition.
-      - In order to win this competition, you need to come up with an excellent solution in Python.
-      - We will now provide a task description and a Python solution.
-      - What you have to do on the solution is just loading test samples and create a submission file.
+      <role>
+      You are an expert ML finalization engineer specializing in generating production-quality test predictions and submission files. You have deep expertise in adapting validated ML solutions for final inference — retraining on full data, applying consistent preprocessing to unseen test data, and producing error-free submission files that match exact format requirements. You are meticulous about data alignment, dtype correctness, and completeness of predictions.
+      </role>
 
+      <context>
       # Task description
       {task_description}
-      - The target column to predict is: {target_column}
 
-      # Python solution
+      - Target column: {target_column}
+
+      # Validated solution
       {final_solution}
+      </context>
 
-      # Your task
-      - Load the test samples and create a submission file.
-      - All the provided data is already prepared and available in the `./input` directory. There is no need to unzip any files.
-      - Test data is available in the `./input` directory.
-      - Save the test predictions in a `submission.csv` file. Put the `submission.csv` into `./final` directory.
-      - You should not drop any test samples. Predict the target value for all test samples.
-      - This is a very easy task because the only thing to do is to load test samples and then replace the validation samples with the test samples. Then you can even use the full training set!
+      <task>
+      Adapt the solution above to generate predictions on the test set:
 
-      # Required
-      - Do not modify the given Python solution code too much. Try to integrate test submission with minimal changes.
-      - There should be no additional headings or text in your response.
-      - The code should be a single-file Python program that is self-contained and can be executed as-is.
-      - Your response should only contain a single code block.
-      - Do not forget the ./final/submission.csv file.
-      - Do not use exit() function in the Python code.
-      - Do not use try: and except: or if else to ignore unintended behavior.
+      1. Load the test data from the `./input` directory.
+      2. Retrain the model on the FULL training set (no validation hold-out) for maximum performance.
+      3. Apply the same preprocessing pipeline to the test data as was applied to training data.
+      4. Use the trained model to predict the target for all test samples.
+      5. Save predictions to `./final/submission.csv`.
+      6. Do not drop any test samples — predict for every row in the test set.
+
+      This is the final step: replace the validation data with test data, remove any train/val split, use all training data for fitting, and generate predictions for every test row.
+      </task>
+
+      <best_practices>
+      Apply the following domain knowledge when generating the final test submission script:
+
+      # Full training: retrain on ALL data
+      - Remove the train/val split entirely. Use 100% of training data for the final model fit — no hold-out is needed since we are generating final predictions, not evaluating.
+      - If the solution uses cross-validation for training (e.g., out-of-fold predictions), retrain each fold's model on the full training set or train a single model on all data.
+      - Preserve the same hyperparameters, random seeds, and model configuration from the validated solution — only the data split changes.
+      - If the solution uses early stopping with a validation set, either use a fixed number of iterations (the number from the best validation run) or retrain with a small fraction held out solely for early stopping.
+
+      # Test data handling
+      - Load test data using the same file-reading logic as training data (same separator, encoding, header settings).
+      - Apply the exact same preprocessing to test data: same feature engineering, same scaling, same encoding, same imputation. Fit all preprocessors on training data, then transform test data.
+      - Handle columns that exist in training but not in test: fill with zeros or appropriate defaults. Handle columns in test that do not exist in training: drop them before prediction.
+      - Handle new categories in test data gracefully: use handle_unknown='ignore' for OneHotEncoder, or map unknown categories to a default value.
+      - Ensure feature column order matches exactly what the model expects. Use df[training_columns] to enforce column alignment.
+
+      # Submission file best practices
+      - Ensure ALL test IDs are present in the submission — no dropped rows. Verify: len(submission) == len(test_data).
+      - Check for NaN in predictions: assert not submission[target].isna().any(). If NaN values exist, fill them with the training target mean (regression) or mode (classification).
+      - Check for inf in predictions: replace np.inf and -np.inf with large finite values or the training target's min/max.
+      - Use correct dtypes: int for classification labels, float for probabilities or regression targets. Cast explicitly with .astype().
+      - Verify column names match the expected submission format exactly (case-sensitive, no extra whitespace).
+      - Save with index=False and the correct separator (usually comma for CSV).
+      - Do not include extra columns beyond what the submission format requires.
+
+      # Common pitfalls to avoid
+      - Test data having different columns than training data — always align columns explicitly.
+      - Forgetting to apply the same preprocessing (scaling, encoding, imputation) to test data — the model expects transformed features.
+      - Predictions in wrong order — maintain the original test data row order. Never shuffle test data without tracking indices.
+      - Using the validation preprocessing pipeline instead of fitting on full training data — refit preprocessors on all training data.
+      - Accidentally including the target column as a feature when it exists in test data as a placeholder.
+      - Writing the submission file to the wrong path — it must be `./final/submission.csv`.
+      - Forgetting to create the `./final/` directory before writing — use os.makedirs('./final', exist_ok=True).
+      </best_practices>
+
+      <constraints>
+      - Make minimal changes to the solution — only what is needed for test prediction.
+      - All data is in the `./input` directory, ready to use.
+      - Write robust code without try/except blocks or if/else guards that mask errors.
+      - Do not call exit() in the code.
+      - Do not forget `./final/submission.csv`.
+      </constraints>
+
+      <output_format>
+      Respond with a single markdown code block containing a complete, self-contained Python script.
+      Include no other text, headings, or explanation.
+      </output_format>
     variables:
       - task_description
       - target_column
@@ -41,18 +86,54 @@ templates:
     variant: subsampling_extract
     figure_ref: "Figure 26"
     template: |
-      # Introduction
-      - From the given Python solution, you need to extract a code block where subsampling of training samples is used. We will now provide the current Python solution.
+      <role>
+      You are a code analyst specializing in identifying data subsampling patterns in ML pipelines. You have deep familiarity with the many ways data scientists limit training data size during development — from explicit sampling calls to array slicing to conditional truncation — and can reliably extract these patterns as exact code substrings.
+      </role>
 
-      # Current Python solution
+      <context>
+      # Current solution
       {final_solution}
+      </context>
 
-      # Your task
-      - Extract a code block where subsampling of training samples is used.
+      <task>
+      Find and extract the code block where subsampling of training samples is used.
+      The extracted block should be the exact code that limits the number of training samples.
+      Look for any pattern that reduces the training data size from its full extent to a smaller subset.
+      </task>
 
-      # Response format
-      - Your response should be a single markdown code block (wrapped in ```) which is the code block.
-      - The code block should be exactly extracted from the Python script provided above.
+      <best_practices>
+      Look for these common subsampling patterns in ML code:
+
+      # Pandas sampling and slicing
+      - df.sample(n=...) or df.sample(frac=...) — random sampling of rows.
+      - df.head(n) or df.tail(n) — taking first or last N rows.
+      - df.iloc[:N] or df.iloc[:N, :] — integer-location slicing to limit rows.
+      - df = df[:N] — shorthand slicing on a DataFrame or Series.
+
+      # NumPy and array slicing
+      - X_train[:N], y_train[:N] — array slicing to take first N samples.
+      - X_train = X_train[:N]; y_train = y_train[:N] — paired slicing of features and target.
+      - np.random.choice(len(X), size=N, replace=False) — random index selection.
+      - np.random.permutation(len(X))[:N] — shuffled index slicing.
+
+      # Conditional truncation
+      - if len(X) > threshold: X = X.sample(threshold) — conditional subsampling based on size.
+      - if len(df) > N: df = df.head(N) — conditional head truncation.
+      - X = X[:min(len(X), N)] — clamped slicing.
+
+      # Sklearn utilities
+      - sklearn.utils.resample(X, n_samples=N) — resampling to a fixed size.
+      - train_test_split(X, y, train_size=N) — using train_test_split to limit training data.
+
+      # Variable assignment patterns
+      - SAMPLE_SIZE = 1000; df = df.sample(SAMPLE_SIZE) — constant-defined subsampling.
+      - nrows parameter in pd.read_csv(..., nrows=N) — limiting data at load time.
+      </best_practices>
+
+      <output_format>
+      Respond with a single markdown code block (wrapped in ```) containing the extracted subsampling code.
+      The code block must be an exact substring of the solution above.
+      </output_format>
     variables:
       - final_solution
 
@@ -60,18 +141,45 @@ templates:
     variant: subsampling_remove
     figure_ref: "Figure 27"
     template: |
-      # Introduction
-      - From the given Python code block, remove the subsampling and make it to use full training samples. We will now provide the current Python code block.
+      <role>
+      You are a code modifier specializing in safely removing data subsampling logic from ML solutions so they train on the full dataset. You understand how subsampling interacts with downstream code and ensure that removing it does not break variable references, change data shapes unexpectedly, or introduce errors in the pipeline.
+      </role>
 
-      # Current Python code block
+      <context>
+      # Code block with subsampling
       {code_block_with_subsampling}
+      </context>
 
-      # Your task
-      - Remove the subsampling and make it to use full training samples.
-      - Note that all the variable including actual data is defined earlier (since you are just seeing a code block), therefore do not introduce dummy variables.
+      <task>
+      Remove the subsampling from the code block above so it uses the full training set.
+      All variables (including data) are defined in surrounding code — do not introduce dummy variables.
+      Ensure the modified code block is a drop-in replacement that produces the same variable names and interfaces.
+      </task>
 
-      # Response format
-      - Your response should be a single markdown code block (wrapped in ```) which is the code block.
+      <best_practices>
+      Follow these safe removal patterns when eliminating subsampling:
+
+      # Direct removal
+      - If the subsampling is a standalone line (e.g., df = df.sample(1000)), simply remove or comment out the entire line.
+      - If the subsampling is paired across features and target (e.g., X = X[:N]; y = y[:N]), remove both lines together.
+
+      # Preserving variable names
+      - Ensure the full dataset variable names are preserved exactly as they were after subsampling. If the code does X_sub = X.sample(N) and downstream code uses X_sub, either rename to keep X_sub pointing to the full data or remove the subsampling assignment entirely if X_sub was just X sampled.
+      - If subsampling reassigns the original variable (df = df.head(1000)), simply removing the line preserves df as the full dataset.
+
+      # Conditional subsampling
+      - If the subsampling is inside an if-block (if len(X) > N: X = X.sample(N)), remove the entire if-block, not just the body.
+      - If the if-block has an else clause, verify what the else clause does and preserve any necessary logic from it.
+
+      # Downstream dependency checks
+      - Verify no downstream code depends on the subsampled size being a specific value (e.g., batch_size = len(X) // 10 assuming X was subsampled to 1000).
+      - If nrows was used in pd.read_csv(..., nrows=N), remove the nrows parameter to load the full file.
+      - If a SAMPLE_SIZE constant is defined solely for subsampling, remove the constant definition as well.
+      </best_practices>
+
+      <output_format>
+      Respond with a single markdown code block (wrapped in ```) containing the modified code block.
+      </output_format>
     variables:
       - code_block_with_subsampling
 
@@ -79,20 +187,58 @@ templates:
     variant: contamination_check
     figure_ref: "Figure 28"
     template: |
-      Your task is to check whether the python solution is similar to the reference discussion.
-      Now we will give you reference discussion and our python solution.
+      <role>
+      You are a solution originality assessor specializing in evaluating whether ML solutions are substantially novel implementations or closely replicate publicly available reference material. You compare solutions against reference discussions with attention to model architecture choices, preprocessing approaches, feature engineering, and implementation patterns — distinguishing between legitimate inspiration and direct copying.
+      </role>
 
+      <context>
       # Reference discussion
       {reference_discussion}
 
-      # Python solution
+      # Solution to assess
       {final_solution}
+      </context>
 
-      # Your task
-      - Check whether the python solution just copy and pastes the reference discussion.
-      - If it is sufficiently novel and different, please answer 'Novel'.
-      - Otherwise, if you think it is too similar, please answer 'Same'.
-      - Your answer should be only one of 'Novel' or 'Same'.
+      <task>
+      Compare the solution against the reference discussion and assess its originality.
+
+      - If the solution is sufficiently novel and different from the reference (different approach, original implementation, distinct methodology), respond 'Novel'.
+      - If the solution appears to copy or closely replicate the reference discussion, respond 'Same'.
+
+      Base your assessment on the substance of the approach, not superficial differences like variable naming or code formatting.
+      </task>
+
+      <best_practices>
+      Use the following criteria to assess originality vs. contamination:
+
+      # "Same" indicators — the solution likely copies the reference
+      - Identical or near-identical model architecture (same model type with same hyperparameters).
+      - Copied preprocessing pipeline: same sequence of transformations applied in the same order.
+      - Same feature engineering: identical derived features, same column combinations, same mathematical transformations.
+      - Similar variable names and code structure that mirror the reference closely.
+      - Same train/val split strategy with identical parameters (same random_state, same split ratio).
+      - Identical ensembling strategy (same models, same weights, same blending approach).
+      - Code comments or docstrings that match the reference discussion text.
+
+      # "Novel" indicators — the solution is substantially original
+      - Different model choice (e.g., reference uses XGBoost but solution uses neural network or linear model).
+      - Original feature engineering: different derived features, creative domain-specific transformations not in the reference.
+      - Different preprocessing approach: alternative scaling, different encoding strategy, different imputation method.
+      - Unique model architecture or hyperparameter configuration that diverges meaningfully from the reference.
+      - Different cross-validation strategy or evaluation approach.
+      - Novel ensembling or stacking approach not described in the reference.
+      - Substantially different code organization and implementation logic.
+
+      # Judgment guidelines
+      - Superficial changes (renaming variables, reordering imports, changing comments) do NOT make a copied solution novel.
+      - Using the same general approach (e.g., both use gradient boosting) is NOT contamination if the specific implementation differs meaningfully.
+      - Sharing common preprocessing steps that are standard for the data type (e.g., StandardScaler on numeric features) is NOT contamination — focus on non-obvious choices.
+      - When in doubt, weigh the core modeling decisions (model choice, feature engineering, training strategy) more heavily than boilerplate code.
+      </best_practices>
+
+      <output_format>
+      Respond with exactly one word: 'Novel' or 'Same'.
+      </output_format>
     variables:
       - reference_discussion
       - final_solution

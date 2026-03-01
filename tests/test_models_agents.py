@@ -52,6 +52,7 @@ AGENT_TYPE_VALUES: list[str] = [
     "leakage",
     "data",
     "test",
+    "validator",
 ]
 
 LEAKAGE_STATUS_VALUES: list[str] = [
@@ -135,8 +136,8 @@ class TestAgentType:
         assert issubclass(AgentType, StrEnum)
 
     def test_member_count(self) -> None:
-        """Enum has exactly 16 members (14 original + baseline + researcher)."""
-        assert len(AgentType) == 16
+        """Enum has exactly 17 members (14 original + baseline + researcher + validator)."""
+        assert len(AgentType) == 17
 
     @pytest.mark.parametrize("value", AGENT_TYPE_VALUES)
     def test_contains_expected_value(self, value: str) -> None:

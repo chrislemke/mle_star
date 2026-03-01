@@ -306,7 +306,7 @@ class TestAblationResponseOverhead:
         previous_summaries = ["summary " * 100 for _ in range(5)]
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="print('ablation')"),
         ):
             mock_template = mock_registry_cls.return_value.get.return_value
@@ -468,7 +468,7 @@ class TestAblationInvocationLogging:
         summaries = ["summary_one", "summary_two"]
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="print('ablation')"),
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
@@ -499,7 +499,7 @@ class TestAblationInvocationLogging:
         solution = _make_solution()
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=ablation_code),
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
@@ -527,7 +527,7 @@ class TestAblationInvocationLogging:
         solution = _make_solution()
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
@@ -706,7 +706,7 @@ class TestSummarizeInvocationLogging:
         raw_output = "Feature X is most important"
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
             mock_template = mock_registry_cls.return_value.get.return_value
@@ -734,7 +734,7 @@ class TestSummarizeInvocationLogging:
         client.send_message = AsyncMock(return_value=summary_text)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
             mock_template = mock_registry_cls.return_value.get.return_value
@@ -776,7 +776,7 @@ class TestExtractorInvocationLogging:
         previous_blocks = ["block1", "block2"]
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
             mock_template = mock_registry_cls.return_value.get.return_value
@@ -807,7 +807,7 @@ class TestExtractorInvocationLogging:
         solution = _make_solution(content="code model.fit(df) end")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
             mock_template = mock_registry_cls.return_value.get.return_value
@@ -835,7 +835,7 @@ class TestExtractorInvocationLogging:
         solution = _make_solution()
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
         ):
             mock_template = mock_registry_cls.return_value.get.return_value
@@ -1394,7 +1394,7 @@ class TestAblationScriptSelfContainment:
         solution = _make_solution()
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="print('ablation')"),
         ):
             mock_template = mock_registry_cls.return_value.get.return_value
@@ -1418,7 +1418,7 @@ class TestAblationScriptSelfContainment:
         solution = _make_solution()
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=extracted),
         ):
             mock_template = mock_registry_cls.return_value.get.return_value

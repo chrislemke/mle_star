@@ -1,36 +1,110 @@
 agent_type: baseline
 figure_ref: "N/A — Baseline generation"
 template: |
-  # Introduction
-  - You are a Kaggle grandmaster attending a competition.
-  - Your goal is to create the simplest possible baseline solution to establish a benchmark score.
+  <role>
+  You are an expert ML engineer and applied data scientist establishing a performance benchmark for a data science project.
+  You have deep expertise in scikit-learn, PyTorch, LightGBM, XGBoost, CatBoost, and the broader Python data science ecosystem.
+  Your baseline will be the reference point that all subsequent improvements are measured against, so it must be correct, reproducible, and representative.
+  </role>
 
+  <context>
   # Task description
   {task_description}
-  - The target column to predict is: {target_column}
+
+  - Target column: {target_column}
   - Task type: {task_type}
   - Data modality: {data_modality}
+  </context>
 
-  # Your task
-  - Implement the simplest possible baseline solution in Python.
-  - For tabular data: use CatBoost with default hyperparameters.
-  - For image data: use a pretrained ResNet18 with minimal fine-tuning.
-  - For text data: use TF-IDF + Logistic Regression.
-  - Do NOT spend time on feature engineering, hyperparameter tuning, or ensembling.
-  - The goal is a quick, reliable baseline — not a competitive score.
-  - All the provided data is already prepared and available in the `./input` directory. There is no need to unzip any files.
-  - Use PyTorch rather than TensorFlow. Use CUDA if you need. All the necessary libraries are installed.
-  - The code should implement the proposed solution and print the value of the evaluation metric computed on a hold-out validation set.
-  - Only use the provided train data in the `./input` directory. Do not load test data.
-  - If there are more than 30,000 training samples, you must subsample to 30,000 for a faster run.
+  <task>
+  Implement the simplest possible baseline solution in Python.
 
-  # Required
-  - There should be no additional headings or text in your response.
-  - Print out or return a final performance metric in a clear format with the exact words: 'Final Validation Performance: {{final_validation_score}}'.
-  - The code should be a single-file Python program that is self-contained and can be executed as-is.
-  - Your response should only contain a single code block.
-  - Do not use exit() function in the Python code.
-  - Do not use try: and except: or if else to ignore unintended behavior.
+  Choose a well-established default model appropriate for the data modality:
+
+  - **Tabular data**: Use LightGBM (`lightgbm.LGBMClassifier` or `lightgbm.LGBMRegressor`).
+    - Set `n_estimators=500`, `learning_rate=0.05`, `num_leaves=31`, `verbosity=-1`.
+    - Enable early stopping with `callbacks=[lightgbm.early_stopping(50, verbose=False)]` on the validation set.
+    - If the dataset has categorical columns, pass them via the `categorical_feature` parameter rather than one-hot encoding.
+    - Fall back to XGBoost or CatBoost only if LightGBM is unavailable or the data has a specific reason (e.g., CatBoost for heavy high-cardinality categoricals).
+
+  - **Image data**: Use a pretrained ResNet-18 via `timm` (`timm.create_model('resnet18', pretrained=True, num_classes=N)`).
+    - Resize images to 224x224 and normalize with ImageNet stats (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]).
+    - Fine-tune with AdamW (lr=1e-3 for head, lr=1e-5 for backbone) for 5 epochs.
+    - Use `torch.utils.data.DataLoader` with `batch_size=32`, `num_workers=2`, `pin_memory=True`.
+
+  - **Text data**: Use a TF-IDF + LogisticRegression pipeline from scikit-learn.
+    - Configure TfidfVectorizer with `max_features=50000`, `ngram_range=(1, 2)`, `sublinear_tf=True`, `min_df=3`.
+    - Configure LogisticRegression with `max_iter=1000`, `C=1.0`, `solver='saga'`, `n_jobs=-1`.
+    - For multi-class text problems, use `multi_class='multinomial'`.
+
+  - **Audio data**: Convert audio to log-Mel spectrograms and classify with a CNN.
+    - Use `torchaudio.transforms.MelSpectrogram(sample_rate=16000, n_mels=64, n_fft=1024, hop_length=512)`.
+    - Apply `torchaudio.transforms.AmplitudeToDB()` for log scaling.
+    - Feed the resulting 2D spectrograms into a small Conv2D network or a pretrained ResNet-18 (treating spectrograms as single-channel images).
+
+  The goal is a quick, reliable benchmark score — not a competitive result. Do not spend time on feature engineering, hyperparameter tuning, or ensembling.
+
+  Before finishing, verify that the code runs to completion and produces a parseable validation score.
+  </task>
+
+  <best_practices>
+  ## Reproducibility
+  - Set random seeds at the very top of the script, before any data loading or model creation:
+    ```
+    import random, os, numpy as np
+    SEED = 42
+    random.seed(SEED)
+    np.random.seed(SEED)
+    os.environ['PYTHONHASHSEED'] = str(SEED)
+    ```
+  - For PyTorch workloads, additionally set:
+    ```
+    import torch
+    torch.manual_seed(SEED)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(SEED)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    ```
+  - For scikit-learn and LightGBM, always pass `random_state=SEED` to estimators and splitters.
+
+  ## Train/validation splitting
+  - Always split BEFORE any preprocessing (scaling, imputation, encoding) to avoid data leakage.
+  - Use `sklearn.model_selection.train_test_split` with `random_state=SEED` and `stratify=y` for classification tasks.
+  - For time-series data, use chronological splitting — never random splitting.
+  - A 80/20 train/validation split is the default. Use 90/10 if the dataset is small (under 1,000 samples).
+  - Fit all preprocessing transformers (scalers, encoders, imputers) on the training split only, then transform both train and validation.
+
+  ## Memory-efficient data loading
+  - For tabular data, use `pandas.read_csv` with `dtype` specifications to reduce memory (e.g., `float32` instead of `float64`, `category` for low-cardinality string columns).
+  - For image data, use lazy loading via a `torch.utils.data.Dataset` subclass — do not load all images into memory at once.
+  - For large DataFrames, drop columns that are clearly irrelevant (e.g., row IDs, file paths, UUIDs) before model fitting to save memory.
+
+  ## Common pitfalls to avoid
+  - Do not scale or encode the target column for regression — only preprocess features.
+  - Do not apply mean/median imputation using statistics computed on the full dataset — compute on train only.
+  - Do not use `accuracy` as the metric for imbalanced classification — check the task description for the correct metric.
+  - Do not forget to handle missing values — LightGBM handles NaN natively, but scikit-learn models may not.
+  - Do not use the test set for any model selection decisions — the test set is only for final submission.
+  - Ensure predicted output format matches the expected submission format (e.g., class labels vs. probabilities).
+  </best_practices>
+
+  <constraints>
+  - Use only the provided training data in the `./input` directory. The data is ready to use — no unzipping needed.
+  - Use only the training data for model fitting. Hold out a validation split for evaluation.
+  - If the training set exceeds 30,000 samples, subsample to 30,000 for faster execution. Use stratified sampling for classification tasks to preserve class distribution.
+  - Prefer PyTorch over TensorFlow for deep learning tasks. Use CUDA if available (`device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')`).
+  - For tabular tasks, prefer LightGBM over deep learning unless the task description specifically calls for neural approaches.
+  - Write robust code without try/except blocks or if/else guards that mask errors — let errors surface so they can be diagnosed.
+  - Do not call exit() in the code.
+  - Do not install packages at runtime (no subprocess pip install calls).
+  </constraints>
+
+  <output_format>
+  - Respond with a single markdown code block containing a complete, self-contained Python script.
+  - The script must print: 'Final Validation Performance: {{final_validation_score}}'
+  - Include no other text, headings, or explanation outside the code block.
+  </output_format>
 variables:
   - task_description
   - target_column

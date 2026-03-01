@@ -172,7 +172,7 @@ class TestRemoveSubsamplingReturnType:
             side_effect=[extraction_response, removal_response]
         )
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "rendered prompt"
@@ -190,7 +190,7 @@ class TestRemoveSubsamplingReturnType:
         # Extraction returns empty block
         client.send_message = AsyncMock(return_value="```python\n\n```")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "rendered prompt"
@@ -220,7 +220,7 @@ class TestExtractionPromptVariant:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="no code found")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -240,7 +240,7 @@ class TestExtractionPromptVariant:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -270,7 +270,7 @@ class TestExtractionPromptVariant:
         client.send_message = AsyncMock(return_value="no block")
         expected_prompt = "rendered extraction prompt content"
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = expected_prompt
@@ -301,7 +301,7 @@ class TestExtractionParsing:
         client.send_message = AsyncMock(return_value=extraction_raw_response)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="") as mock_extract,
         ):
             mock_registry = mock_registry_cls.return_value
@@ -325,7 +325,7 @@ class TestExtractionParsing:
             side_effect=[extraction_response, removal_response]
         )
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -357,7 +357,7 @@ class TestNoSubsamplingPassthroughEmpty:
         solution = _make_solution(content="original_content_marker")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -377,7 +377,7 @@ class TestNoSubsamplingPassthroughEmpty:
         client.send_message = AsyncMock(return_value="nothing here")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -410,7 +410,7 @@ class TestNoSubsamplingPassthroughNotSubstring:
         solution = _make_solution(content="completely different content")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="not_in_solution_at_all",
@@ -433,7 +433,7 @@ class TestNoSubsamplingPassthroughNotSubstring:
         client.send_message = AsyncMock(return_value="response")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="not_present_in_content",
@@ -474,7 +474,7 @@ class TestRemovalPromptVariant:
             side_effect=[extraction_response, removal_response]
         )
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -500,7 +500,7 @@ class TestRemovalPromptVariant:
         render_kwargs_captured: list[dict[str, Any]] = []
         get_call_variants: list[str | None] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
 
             def make_template_for_variant(
@@ -561,7 +561,7 @@ class TestRemovalParsing:
             return REPLACEMENT_BLOCK
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 side_effect=tracking_extract,
@@ -602,7 +602,7 @@ class TestReplacementViaReplaceBlock:
 
         solution = _make_solution()
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -627,7 +627,7 @@ class TestReplacementViaReplaceBlock:
         solution = _make_solution()
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch.object(
                 SolutionScript,
                 "replace_block",
@@ -670,7 +670,7 @@ class TestReplaceBlockValueErrorHandling:
         solution = _make_solution()
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch.object(
                 SolutionScript,
                 "replace_block",
@@ -700,7 +700,7 @@ class TestReplaceBlockValueErrorHandling:
         )
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch.object(
                 SolutionScript,
                 "replace_block",
@@ -729,7 +729,7 @@ class TestReplaceBlockValueErrorHandling:
         )
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch.object(
                 SolutionScript,
                 "replace_block",
@@ -765,7 +765,7 @@ class TestGracefulDegradationExtractionFailure:
 
         solution = _make_solution(content="original_code_safe")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -784,7 +784,7 @@ class TestGracefulDegradationExtractionFailure:
 
         solution = _make_solution(content="timeout_safe_content")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -805,7 +805,7 @@ class TestGracefulDegradationExtractionFailure:
 
         solution = _make_solution()
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -838,7 +838,7 @@ class TestGracefulDegradationRemovalFailure:
 
         solution = _make_solution(content=SOLUTION_WITH_SUBSAMPLING)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -860,7 +860,7 @@ class TestGracefulDegradationRemovalFailure:
 
         solution = _make_solution()
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -888,7 +888,7 @@ class TestAgentTypeUsage:
         client.send_message = AsyncMock(return_value="empty")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -912,7 +912,7 @@ class TestAgentTypeUsage:
             side_effect=[extraction_response, removal_response]
         )
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -935,7 +935,7 @@ class TestAgentTypeUsage:
             side_effect=[extraction_response, removal_response]
         )
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -968,7 +968,7 @@ class TestHappyPathPipeline:
 
         solution = _make_solution(content=SOLUTION_WITH_SUBSAMPLING)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -995,7 +995,7 @@ class TestHappyPathPipeline:
 
         get_call_variants: list[str | None] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
 
             def make_template_for_variant(
@@ -1030,7 +1030,7 @@ class TestHappyPathPipeline:
                 side_effect=[extraction_response, removal_response]
             )
 
-            with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+            with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
                 mock_registry = mock_registry_cls.return_value
                 mock_template = MagicMock()
                 mock_template.render.return_value = "prompt"
@@ -1064,7 +1064,7 @@ class TestEdgeCases:
         solution = _make_solution(content="my code")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="   "),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1089,7 +1089,7 @@ class TestEdgeCases:
         solution = _make_solution(score=0.95)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1113,7 +1113,7 @@ class TestEdgeCases:
         raw_removal = "# no subsampling needed"
         client.send_message = AsyncMock(side_effect=[extraction_response, raw_removal])
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1135,7 +1135,7 @@ class TestEdgeCases:
         solution = _make_solution(content="")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="some_block"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1155,7 +1155,7 @@ class TestEdgeCases:
         client = AsyncMock()
         client.send_message = AsyncMock(side_effect=KeyboardInterrupt)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1184,7 +1184,7 @@ class TestPromptTemplateRendering:
         rendered_kwargs: list[dict[str, Any]] = []
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1221,7 +1221,7 @@ class TestPromptTemplateRendering:
         render_calls: list[dict[str, Any]] = []
         call_count = 0
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
 
             def make_template(agent_type: AgentType, variant: str | None = None) -> Any:
@@ -1297,7 +1297,7 @@ class TestRemoveSubsamplingParametrized:
             client.send_message = AsyncMock(return_value="response")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value=extracted_block,
@@ -1331,7 +1331,7 @@ class TestRemoveSubsamplingParametrized:
 
         solution = _make_solution(content="safe_original")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1372,7 +1372,7 @@ class TestRemoveSubsamplingPropertyBased:
         solution = _make_solution(content=content)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1404,7 +1404,7 @@ class TestRemoveSubsamplingPropertyBased:
 
         solution = _make_solution(content=content)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1431,7 +1431,7 @@ class TestRemoveSubsamplingPropertyBased:
         solution = _make_solution(phase=phase)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1502,7 +1502,7 @@ class TestRemoveSubsamplingPropertyBased:
             return replacement
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", side_effect=mock_extract),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1544,7 +1544,7 @@ class TestRemoveSubsamplingPropertyBased:
         solution = _make_solution(content=content)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value=unique_sentinel,

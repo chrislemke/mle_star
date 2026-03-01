@@ -9,8 +9,9 @@ new refinement strategy.
 ``run_phase2_inner_loop`` orchestrates K iterations of the inner loop:
 k=0 uses the initial plan from A_extractor (no planner); k>=1 invokes
 A_planner with accumulated history.  Each iteration calls A_coder with
-the ORIGINAL code block, replaces against the ORIGINAL solution, evaluates,
-and tracks the best score using >= semantics.
+the CURRENT BEST code block, replaces against the CURRENT BEST solution,
+evaluates, and tracks the best score using >= semantics.  When a k-step
+produces an improvement, subsequent steps compound on that improvement.
 
 Refs:
     SRS 06a — Phase 2 Inner Agents (REQ-P2I-001 through REQ-P2I-015).
@@ -33,7 +34,7 @@ from mle_star.models import (
     SolutionScript,
     TaskDescription,
 )
-from mle_star.prompts import PromptRegistry
+from mle_star.prompts import get_registry
 from mle_star.safety import (
     check_and_fix_leakage,
     extract_code_block,
@@ -78,17 +79,22 @@ async def invoke_coder(
     code_block: str,
     plan: str,
     client: ClaudeCodeClient,
+    *,
+    task: TaskDescription | None = None,
+    current_score: float | None = None,
 ) -> str | None:
     """Invoke A_coder to implement a refinement plan on a code block (REQ-P2I-005).
 
-    Renders the coder prompt template with the target code block and plan,
-    sends it to the A_coder agent via the SDK client, and extracts the
-    improved code block from the response.
+    Renders the coder prompt template with the target code block, plan, and
+    task context, sends it to the A_coder agent via the SDK client, and
+    extracts the improved code block from the response.
 
     Args:
         code_block: The target code block content to be improved (c_t).
         plan: The natural language refinement plan to implement (p_k).
         client: SDK client for agent invocation.
+        task: Task description for context (metric, modality, etc.).
+        current_score: Current best score for context.
 
     Returns:
         The extracted improved code block string, or ``None`` if the
@@ -104,9 +110,17 @@ async def invoke_coder(
         msg = "plan must not be empty"
         raise ValueError(msg)
 
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.CODER)
-    prompt = template.render(code_block=code_block, plan=plan)
+    prompt = template.render(
+        code_block=code_block,
+        plan=plan,
+        task_description=task.description if task else "Not specified",
+        evaluation_metric=task.evaluation_metric if task else "Not specified",
+        metric_direction=task.metric_direction if task else "Not specified",
+        data_modality=task.data_modality if task else "Not specified",
+        current_score=current_score if current_score is not None else "N/A",
+    )
 
     response: str = await client.send_message(
         agent_type=AgentType.CODER,
@@ -128,19 +142,24 @@ async def invoke_planner(
     client: ClaudeCodeClient,
     *,
     notes_context: str = "",
+    task: TaskDescription | None = None,
+    current_score: float | None = None,
 ) -> str | None:
     """Invoke A_planner to propose a new refinement strategy (REQ-P2I-013).
 
     Validates inputs, formats the history of prior plans and scores,
-    renders the planner prompt template, and invokes the A_planner agent.
-    Returns the agent's full text response (no code block extraction).
+    renders the planner prompt template with task context, and invokes
+    the A_planner agent.  Returns the agent's full text response (no
+    code block extraction).
 
     Args:
-        code_block: The original target code block (c_t).
+        code_block: The current target code block (c_t).
         plans: List of previous refinement plan texts (p_0 … p_{k-1}).
         scores: Corresponding scores; ``None`` for failed evaluations.
         client: SDK client for agent invocation.
         notes_context: Formatted notes from previous agents.
+        task: Task description for context (metric, modality, etc.).
+        current_score: Current best score for context.
 
     Returns:
         The refinement plan string, or ``None`` if the response is empty.
@@ -161,12 +180,17 @@ async def invoke_planner(
 
     plan_history = _format_plan_history(plans, scores)
 
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.PLANNER)
     prompt = template.render(
         code_block=code_block,
         plan_history=plan_history,
         notes_context=notes_context,
+        task_description=task.description if task else "Not specified",
+        evaluation_metric=task.evaluation_metric if task else "Not specified",
+        metric_direction=task.metric_direction if task else "Not specified",
+        data_modality=task.data_modality if task else "Not specified",
+        current_score=current_score if current_score is not None else "N/A",
     )
 
     response: str = await client.send_message(
@@ -185,13 +209,13 @@ async def invoke_planner(
 async def _execute_coder_step(
     k: int,
     plan: str,
-    original_code: str,
+    current_code: str,
     solution: SolutionScript,
     task: TaskDescription,
     config: PipelineConfig,
     client: ClaudeCodeClient,
 ) -> dict[str, Any]:
-    """Execute the coder → replace → leakage → eval portion of one inner step.
+    """Execute the coder → replace → eval portion of one inner step.
 
     Returns a dict with keys: ``plan``, ``score``, ``code_block``,
     ``was_improvement`` (always ``False``), ``_candidate``,
@@ -204,8 +228,8 @@ async def _execute_coder_step(
     Args:
         k: Inner step index.
         plan: Refinement plan for this step.
-        original_code: Original code block content (c_t).
-        solution: Original solution (s_t) used as replacement base.
+        current_code: Current best code block content to improve.
+        solution: Current best solution used as replacement base.
         task: Task description for evaluation context.
         config: Pipeline configuration.
         client: SDK client for agent invocation.
@@ -214,7 +238,9 @@ async def _execute_coder_step(
         Dict with step results and internal tracking keys.
     """
     logger.info("A_coder invocation start: k=%d, plan=%.200s", k, plan)
-    coder_output = await invoke_coder(original_code, plan, client)
+    coder_output = await invoke_coder(
+        current_code, plan, client, task=task, current_score=solution.score
+    )
     if coder_output is None:
         logger.info("A_coder invocation complete: k=%d, result=failed to parse", k)
         logger.warning("A_coder returned None at k=%d; skipping eval", k)
@@ -228,7 +254,7 @@ async def _execute_coder_step(
     logger.info("A_coder invocation complete: k=%d, code_len=%d", k, len(coder_output))
 
     try:
-        candidate = solution.replace_block(original_code, coder_output)
+        candidate = solution.replace_block(current_code, coder_output)
     except ValueError:
         logger.warning("replace_block failed at k=%d; code block not found", k)
         return {
@@ -241,20 +267,8 @@ async def _execute_coder_step(
     logger.debug(
         "Code block replacement success: k=%d, old_len=%d, new_len=%d",
         k,
-        len(original_code),
+        len(current_code),
         len(coder_output),
-    )
-
-    # Leakage check (REQ-P2I-030).
-    logger.info("Leakage check start: k=%d, content_len=%d", k, len(candidate.content))
-    pre_leakage = candidate
-    candidate = await check_and_fix_leakage(candidate, task, client)
-    content_changed = candidate is not pre_leakage
-    logger.info(
-        "Leakage check complete: k=%d, leakage_found=%s, content_changed=%s",
-        k,
-        "yes" if content_changed else "no",
-        "yes" if content_changed else "no",
     )
 
     # Evaluate with debug retry (REQ-P2I-031).
@@ -302,14 +316,17 @@ async def run_phase2_inner_loop(
     - **k=0**: Uses ``initial_plan`` directly (no A_planner call, REQ-P2I-018).
     - **k>=1**: Invokes A_planner with full accumulated history (REQ-P2I-020).
 
-    A_coder always receives the **original** ``code_block.content`` (REQ-P2I-021).
-    ``replace_block`` is always called against the **original** ``solution``
-    (REQ-P2I-022/023).  Before each evaluation, ``check_and_fix_leakage`` is
-    called on the candidate (REQ-P2I-030/REQ-SF-022).  Evaluation uses
+    A_coder receives the **current best** code block, compounding improvements
+    from prior iterations.  ``replace_block`` is called against the **current
+    best** solution.  Leakage check runs once after the best inner result is
+    selected (not per-k) for efficiency.  Evaluation uses
     ``evaluate_with_retry`` with ``make_debug_callback`` for error recovery
     (REQ-P2I-031).  Best score is updated using ``is_improvement_or_equal``
     (>= semantics, REQ-P2I-026).  ``InnerLoopResult.improved`` uses strict
     ``is_improvement`` (REQ-P2I-036).
+
+    Early stopping: exits when ``early_stop_patience`` (default 2) consecutive
+    iterations show no improvement.
 
     Args:
         client: SDK client for agent invocation.
@@ -322,7 +339,7 @@ async def run_phase2_inner_loop(
         notes_context: Formatted notes from previous agents.
 
     Returns:
-        ``InnerLoopResult`` with the best solution, best score, all K
+        ``InnerLoopResult`` with the best solution, best score, all
         ``RefinementAttempt`` records, and the ``improved`` flag.
     """
     k_steps: int = config.inner_loop_steps
@@ -341,17 +358,23 @@ async def run_phase2_inner_loop(
     local_best_score = best_score
     local_best_solution = solution
 
+    # Track current working code and solution for compounding improvements.
+    current_code = original_code
+    current_solution = solution
+
     accumulated_plans: list[str] = []
     accumulated_scores: list[float | None] = []
     attempts: list[RefinementAttempt] = []
     successful_evals = 0
+    no_improvement_streak = 0
+    early_stop_patience = 2
 
     for k in range(k_steps):
         step_result = await _run_inner_step(
             k,
             initial_plan,
-            original_code,
-            solution,
+            current_code,
+            current_solution,
             accumulated_plans,
             accumulated_scores,
             task,
@@ -375,7 +398,14 @@ async def run_phase2_inner_loop(
             local_best_score = score
             local_best_solution = step_result["_candidate"]
             was_improvement = True
+            no_improvement_streak = 0
             logger.info("Best score updated: k=%d, old=%s, new=%s", k, old_best, score)
+
+            # Compound: update working code and solution for next iteration.
+            current_code = step_result["code_block"]
+            current_solution = step_result["_candidate"]
+        else:
+            no_improvement_streak += 1
 
         if score is not None and step_result.get("_successful"):
             successful_evals += 1
@@ -388,6 +418,39 @@ async def run_phase2_inner_loop(
                 was_improvement=was_improvement,
             )
         )
+
+        # Early stopping: exit if no improvement for N consecutive iterations.
+        if no_improvement_streak >= early_stop_patience and k < k_steps - 1:
+            logger.info(
+                "Inner loop early stop: k=%d, no improvement for %d consecutive steps",
+                k,
+                no_improvement_streak,
+            )
+            break
+
+    # Single leakage check on the best result (moved from per-k for efficiency).
+    if local_best_solution is not solution:
+        logger.info(
+            "Post-inner-loop leakage check: content_len=%d",
+            len(local_best_solution.content),
+        )
+        pre_leakage = local_best_solution
+        local_best_solution = await check_and_fix_leakage(
+            local_best_solution, task, client
+        )
+        if local_best_solution is not pre_leakage:
+            logger.info("Leakage detected and corrected in best inner loop result")
+            # Re-evaluate after leakage fix.
+            debug_callback = make_debug_callback(task, config, client)
+            local_best_solution, reeval_result = await evaluate_with_retry(
+                local_best_solution, task, config, debug_callback
+            )
+            if not reeval_result.is_error and reeval_result.score is not None:
+                local_best_score = reeval_result.score
+            else:
+                logger.warning(
+                    "Re-evaluation after leakage fix failed; keeping pre-leakage score"
+                )
 
     # REQ-P2I-036/037: Construct result. improved uses strict is_improvement.
     improved = is_improvement(local_best_score, best_score, task.metric_direction)
@@ -412,8 +475,8 @@ async def run_phase2_inner_loop(
 async def _run_inner_step(
     k: int,
     initial_plan: str,
-    original_code: str,
-    solution: SolutionScript,
+    current_code: str,
+    current_solution: SolutionScript,
     accumulated_plans: list[str],
     accumulated_scores: list[float | None],
     task: TaskDescription,
@@ -425,14 +488,14 @@ async def _run_inner_step(
     """Execute one inner loop step: plan determination + coder step.
 
     Handles the plan source selection (initial_plan at k=0, A_planner at
-    k>=1) and delegates the coder → replace → leakage → eval chain to
+    k>=1) and delegates the coder → replace → eval chain to
     ``_execute_coder_step``.
 
     Args:
         k: Inner step index.
         initial_plan: Initial plan from A_extractor (used at k=0).
-        original_code: Original code block content (c_t).
-        solution: Original solution (s_t) used as replacement base.
+        current_code: Current best code block content to improve.
+        current_solution: Current best solution used as replacement base.
         accumulated_plans: Plans from previous steps.
         accumulated_scores: Scores from previous steps.
         task: Task description for evaluation context.
@@ -453,8 +516,10 @@ async def _run_inner_step(
             len(accumulated_plans),
         )
         plan_result = await invoke_planner(
-            original_code, list(accumulated_plans), list(accumulated_scores), client,
+            current_code, list(accumulated_plans), list(accumulated_scores), client,
             notes_context=notes_context,
+            task=task,
+            current_score=current_solution.score,
         )
         if plan_result is None:
             logger.warning("A_planner returned None at k=%d; skipping", k)
@@ -473,5 +538,5 @@ async def _run_inner_step(
         plan = plan_result
 
     return await _execute_coder_step(
-        k, plan, original_code, solution, task, config, client
+        k, plan, current_code, current_solution, task, config, client
     )

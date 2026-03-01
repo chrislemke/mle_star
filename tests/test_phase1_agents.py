@@ -121,7 +121,7 @@ class TestRetrieveModelsPromptRegistry:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json())
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "rendered retriever prompt"
@@ -142,7 +142,7 @@ class TestRetrieveModelsPromptRegistry:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -170,7 +170,7 @@ class TestRetrieveModelsPromptRegistry:
 
         expected_prompt = "rendered retriever prompt content xyz"
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = expected_prompt
@@ -200,7 +200,7 @@ class TestRetrieveModelsAgentInvocation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json())
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -220,7 +220,7 @@ class TestRetrieveModelsAgentInvocation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json())
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -253,7 +253,7 @@ class TestRetrieveModelsResponseParsing:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -276,7 +276,7 @@ class TestRetrieveModelsResponseParsing:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json())
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -312,7 +312,7 @@ class TestRetrieveModelsFewerThanM:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -337,7 +337,7 @@ class TestRetrieveModelsFewerThanM:
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.logger") as mock_logger,
         ):
             mock_registry = mock_registry_cls.return_value
@@ -364,7 +364,7 @@ class TestRetrieveModelsFewerThanM:
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.logger") as mock_logger,
         ):
             mock_registry = mock_registry_cls.return_value
@@ -405,7 +405,7 @@ class TestRetrieveModelsZeroModels:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -426,7 +426,7 @@ class TestRetrieveModelsZeroModels:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -458,7 +458,7 @@ class TestRetrieveModelsFiltering:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -482,7 +482,7 @@ class TestRetrieveModelsFiltering:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -506,7 +506,7 @@ class TestRetrieveModelsFiltering:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -530,7 +530,7 @@ class TestRetrieveModelsFiltering:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -556,7 +556,7 @@ class TestRetrieveModelsFiltering:
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.logger") as mock_logger,
         ):
             mock_registry = mock_registry_cls.return_value
@@ -585,7 +585,7 @@ class TestRetrieveModelsFiltering:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -716,7 +716,7 @@ class TestGenerateCandidatePromptRegistry:
         client.send_message = AsyncMock(return_value="```python\nimport xgboost\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -746,7 +746,7 @@ class TestGenerateCandidatePromptRegistry:
         render_kwargs_captured: list[dict[str, Any]] = []
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -785,7 +785,7 @@ class TestGenerateCandidatePromptRegistry:
         expected_prompt = "rendered init prompt content abc"
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -824,7 +824,7 @@ class TestGenerateCandidateAgentInvocation:
         client.send_message = AsyncMock(return_value="```python\nimport xgboost\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -853,7 +853,7 @@ class TestGenerateCandidateAgentInvocation:
         client.send_message = AsyncMock(return_value="```python\nimport xgboost\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -892,7 +892,7 @@ class TestGenerateCandidateCodeExtraction:
         client.send_message = AsyncMock(return_value=agent_response)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -920,7 +920,7 @@ class TestGenerateCandidateCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nimport xgboost\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -951,7 +951,7 @@ class TestGenerateCandidateCodeExtraction:
         )
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value=extracted_code,
@@ -980,7 +980,7 @@ class TestGenerateCandidateCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nimport xgboost\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -1009,7 +1009,7 @@ class TestGenerateCandidateCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nimport xgboost\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -1038,7 +1038,7 @@ class TestGenerateCandidateCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nimport xgboost\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -1067,7 +1067,7 @@ class TestGenerateCandidateCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nimport xgboost\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import xgboost",
@@ -1107,7 +1107,7 @@ class TestGenerateCandidateReturnsNoneOnFailure:
         client.send_message = AsyncMock(return_value="no code here")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1132,7 +1132,7 @@ class TestGenerateCandidateReturnsNoneOnFailure:
         client.send_message = AsyncMock(return_value="")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1157,7 +1157,7 @@ class TestGenerateCandidateReturnsNoneOnFailure:
         client.send_message = AsyncMock(return_value="   \n  ")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="   "),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1182,7 +1182,7 @@ class TestGenerateCandidateReturnsNoneOnFailure:
         client.send_message = AsyncMock(return_value="")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1234,7 +1234,7 @@ class TestMergeSolutionsPromptRegistry:
         client.send_message = AsyncMock(return_value="```python\nmerged code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1264,7 +1264,7 @@ class TestMergeSolutionsPromptRegistry:
         render_kwargs_captured: list[dict[str, Any]] = []
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1301,7 +1301,7 @@ class TestMergeSolutionsPromptRegistry:
         expected_prompt = "rendered merger prompt content def"
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1340,7 +1340,7 @@ class TestMergeSolutionsAgentInvocation:
         client.send_message = AsyncMock(return_value="```python\nmerged code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1369,7 +1369,7 @@ class TestMergeSolutionsAgentInvocation:
         client.send_message = AsyncMock(return_value="```python\nmerged code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1408,7 +1408,7 @@ class TestMergeSolutionsCodeExtraction:
         client.send_message = AsyncMock(return_value=agent_response)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged",
@@ -1436,7 +1436,7 @@ class TestMergeSolutionsCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nmerged code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1465,7 +1465,7 @@ class TestMergeSolutionsCodeExtraction:
         client.send_message = AsyncMock(return_value=f"```python\n{merged_code}\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value=merged_code,
@@ -1494,7 +1494,7 @@ class TestMergeSolutionsCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nmerged code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1523,7 +1523,7 @@ class TestMergeSolutionsCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nmerged code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1552,7 +1552,7 @@ class TestMergeSolutionsCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nmerged code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1581,7 +1581,7 @@ class TestMergeSolutionsCodeExtraction:
         client.send_message = AsyncMock(return_value="```python\nmerged code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged code",
@@ -1620,7 +1620,7 @@ class TestMergeSolutionsReturnsNoneOnFailure:
         client.send_message = AsyncMock(return_value="no code")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1645,7 +1645,7 @@ class TestMergeSolutionsReturnsNoneOnFailure:
         client.send_message = AsyncMock(return_value="")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1670,7 +1670,7 @@ class TestMergeSolutionsReturnsNoneOnFailure:
         client.send_message = AsyncMock(return_value="  \n  ")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="   "),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1695,7 +1695,7 @@ class TestMergeSolutionsReturnsNoneOnFailure:
         client.send_message = AsyncMock(return_value="")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1878,7 +1878,7 @@ class TestRetrieveModelsEdgeCases:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1901,7 +1901,7 @@ class TestRetrieveModelsEdgeCases:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1929,7 +1929,7 @@ class TestRetrieveModelsEdgeCases:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1958,7 +1958,7 @@ class TestGenerateCandidateEdgeCases:
         )
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value=multiline_code,
@@ -1988,7 +1988,7 @@ class TestGenerateCandidateEdgeCases:
             client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
             with (
-                patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+                patch(f"{_MODULE}.get_registry") as mock_registry_cls,
                 patch(
                     f"{_MODULE}.extract_code_block",
                     return_value="code",
@@ -2026,7 +2026,7 @@ class TestMergeSolutionsEdgeCases:
         client.send_message = AsyncMock(return_value="```python\nmerged\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged",
@@ -2061,7 +2061,7 @@ class TestMergeSolutionsEdgeCases:
         client.send_message = AsyncMock(return_value="```python\nmerged\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="merged",
@@ -2110,7 +2110,7 @@ class TestRetrieveModelsPropertyBased:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -2149,7 +2149,7 @@ class TestRetrieveModelsPropertyBased:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_make_retriever_json(models_data))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -2186,7 +2186,7 @@ class TestGenerateCandidatePropertyBased:
         client.send_message = AsyncMock(return_value=f"```python\n{code}\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=code),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -2220,7 +2220,7 @@ class TestGenerateCandidatePropertyBased:
         client.send_message = AsyncMock(return_value="")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -2262,7 +2262,7 @@ class TestMergeSolutionsPropertyBased:
         client.send_message = AsyncMock(return_value=f"```python\n{merged_code}\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=merged_code),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -2300,7 +2300,7 @@ class TestMergeSolutionsPropertyBased:
         render_kwargs_captured: list[dict[str, Any]] = []
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="merged"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -2384,7 +2384,7 @@ class TestGenerateCandidateParametrized:
         client.send_message = AsyncMock(return_value=empty_response)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -2419,7 +2419,7 @@ class TestMergeSolutionsParametrized:
         client.send_message = AsyncMock(return_value=empty_response)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value

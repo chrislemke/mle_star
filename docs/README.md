@@ -1,15 +1,17 @@
 # MLE-STAR
 
-MLE-STAR (Machine Learning Engineering with Systematic Targeted Ablation and Refinement) is an autonomous ML engineering agent that solves Kaggle competitions end-to-end. It implements a multi-phase pipeline with 14 specialized AI agents that retrieve models, generate and refine solutions, run ablation studies, construct ensembles, and produce validated submissions -- all with built-in safety guardrails and time budgeting.
+MLE-STAR (Machine Learning Engineering with Systematic Targeted Ablation and Refinement) is an autonomous ML engineering agent that solves Kaggle competitions end-to-end. It implements a multi-phase pipeline with 17 specialized AI agents that research techniques, retrieve models, generate and refine solutions, validate results, run ablation studies, construct ensembles, and produce validated submissions -- all with built-in safety guardrails and time budgeting.
 
 ## How It Works
 
 The pipeline progresses through four phases plus finalization:
 
 ```
-Phase 1: Model Retrieval & Initial Solution
+Phase 1: Research, Baseline & Initial Solution
     |
-    |   Retrieve M models -> Generate candidates -> Evaluate -> Merge -> Safety checks
+    |   Research & Baseline (parallel) -> Retrieve M models ->
+    |   Generate candidates -> Evaluate -> Merge -> Safety checks
+    |   [Validation gate if score beats baseline]
     |
     v
 Phase 2: Targeted Refinement (L parallel paths)
@@ -18,12 +20,14 @@ Phase 2: Targeted Refinement (L parallel paths)
     |     Ablation study -> Summarize -> Extract code blocks ->
     |       For each block, repeat K inner steps:
     |         Plan refinement -> Implement -> Evaluate -> Keep if improved
+    |   [Validation gate per path if score beats baseline]
     |
     v
 Phase 3: Ensemble Construction (skipped if L=1)
     |
     |   Combine L refined solutions over R rounds:
     |     Plan ensemble strategy -> Implement -> Evaluate -> Keep best
+    |   [Validation gate if score beats baseline]
     |
     v
 Finalization
@@ -32,19 +36,20 @@ Finalization
     |   Evaluate -> Verify submission -> Contamination check
     |
     v
-  Result (submission.csv + scores + diagnostics)
+  Result (submission.csv + scores + diagnostics + validation)
 ```
 
 ## Pipeline Phases
 
-### Phase 1: Model Retrieval and Initial Solution
+### Phase 1: Research, Baseline and Initial Solution
 
 Phase 1 produces the initial solution `s_0` that seeds all subsequent refinement.
 
-1. **Retrieve** -- `A_retriever` searches the web for M candidate ML models suitable for the competition task, returning structured `(model_name, example_code)` pairs.
-2. **Generate** -- For each retrieved model, `A_init` generates a complete solution script. Each candidate is evaluated and scored.
-3. **Sort and Merge** -- Candidates are sorted by score. `A_merger` iteratively merges the best solution with each subsequent candidate, keeping the merge only if the score improves or stays equal.
-4. **Safety Checks** -- The merged solution passes through `A_data` (data usage verification) and `A_leakage` (data leakage detection and correction). If a safety agent modifies the solution, it is re-evaluated to confirm the fix did not degrade performance.
+1. **Research & Baseline** -- `A_researcher` and `A_baseline` run in parallel. The researcher searches the web for model architectures, feature engineering ideas, and competition-specific techniques, writing findings to the shared notes directory. The baseline agent generates a simple default model (e.g., CatBoost with defaults for tabular data) to establish a benchmark score. Research context is injected into the retriever prompt; notes are available to all downstream agents.
+2. **Retrieve** -- `A_retriever` searches the web for M candidate ML models suitable for the competition task, returning structured `(model_name, example_code)` pairs. Research findings inform the search.
+3. **Generate** -- For each retrieved model, `A_init` generates a complete solution script. Each candidate is evaluated and scored.
+4. **Sort and Merge** -- Candidates are sorted by score. `A_merger` iteratively merges the best solution with each subsequent candidate, keeping the merge only if the score improves or stays equal.
+5. **Safety Checks** -- The merged solution passes through `A_data` (data usage verification) and `A_leakage` (data leakage detection and correction). If a safety agent modifies the solution, it is re-evaluated to confirm the fix did not degrade performance.
 
 ### Phase 2: Targeted Refinement
 
@@ -60,6 +65,17 @@ Phase 2 runs L independent paths in parallel (via `asyncio.gather`), each starti
 2. `A_coder` implements the plan, producing a modified solution.
 3. The candidate is checked for leakage (`A_leakage`) and evaluated. If the score improves, it becomes the new best.
 4. On evaluation errors, `A_debugger` attempts to fix the script (up to `max_debug_attempts` retries).
+
+### Validation
+
+After each major phase, when the solution score beats `baseline_value`, a validation gate runs four concurrent checks via `asyncio.gather`:
+
+1. **Reproducibility** (mechanical) -- Re-runs the solution with `validation_seed_runs` different seeds and checks that the coefficient of variation stays below `validation_score_tolerance`.
+2. **Sanity** -- `A_validator` (sanity variant) generates a modified script that shuffles target labels before training. If the shuffled version performs similarly, the model likely has leakage.
+3. **Deep Leakage** -- `A_leakage` (deep_analysis variant) performs thorough analysis covering feature-target correlation, train-test overlap, preprocessing leakage, temporal leakage, and score suspicion.
+4. **Overfitting** -- `A_validator` (overfitting variant) generates a script that reports both training and validation scores. A train-val gap exceeding `validation_overfit_threshold` indicates overfitting.
+
+Validation uses graceful degradation: exceptions in any check result in a SKIPPED status rather than crashing the pipeline. Results are diagnostic and attached to the `FinalResult` but do not halt execution.
 
 ### Phase 3: Ensemble Construction
 
@@ -82,24 +98,27 @@ When L = 1, Phase 3 is skipped entirely and the single refined solution proceeds
 6. **Contamination Check** -- `A_test` compares the solution against reference discussions to detect data contamination (result: "Novel" or "Same").
 7. **Fallback** -- If evaluation fails or the submission is invalid, the pipeline falls back to the pre-finalization solution.
 
-## The 14 Agents
+## The 17 Agents
 
 | Agent | Type | Role | Tools | Output Format |
 |---|---|---|---|---|
-| A_retriever | `retriever` | Search web for ML models | WebSearch, WebFetch | Structured JSON (`RetrieverOutput`) |
+| A_baseline | `baseline` | Generate simple baseline solution | Bash, Edit, Write, Read | Code block |
+| A_researcher | `researcher` | Research model architectures and techniques | WebSearch, WebFetch, Write | Structured JSON (`ResearchFindings`) |
+| A_retriever | `retriever` | Search web for ML models | WebSearch, WebFetch, Write | Structured JSON (`RetrieverOutput`) |
 | A_init | `init` | Generate initial solution scripts | Bash, Edit, Write, Read | Code block |
 | A_merger | `merger` | Merge candidate solutions | Bash, Edit, Write, Read | Code block |
 | A_ablation | `ablation` | Run ablation studies | Bash, Edit, Write, Read | Code block |
-| A_summarize | `summarize` | Summarize ablation results | Read | Free text |
-| A_extractor | `extractor` | Extract code blocks for refinement | Read | Structured JSON (`ExtractorOutput`) |
-| A_planner | `planner` | Plan code refinements | Read | Free text |
+| A_summarize | `summarize` | Summarize ablation results | Read, Write | Free text |
+| A_extractor | `extractor` | Extract code blocks for refinement | Read, Write | Structured JSON (`ExtractorOutput`) |
+| A_planner | `planner` | Plan code refinements | Read, Write | Free text |
 | A_coder | `coder` | Implement refinement plans | Bash, Edit, Write, Read | Code block |
-| A_ens_planner | `ens_planner` | Plan ensemble strategies | Read | Free text |
+| A_ens_planner | `ens_planner` | Plan ensemble strategies | Read, Write | Free text |
 | A_ensembler | `ensembler` | Implement ensemble scripts | Bash, Edit, Write, Read | Code block |
 | A_debugger | `debugger` | Fix failing scripts | Bash, Edit, Write, Read | Code block |
 | A_leakage | `leakage` | Detect/correct data leakage | Read | Structured JSON (`LeakageDetectionOutput`) |
 | A_data | `data` | Verify correct data usage | Read | Free text |
 | A_test | `test` | Generate test submissions, check contamination | Read | Code block / Structured JSON |
+| A_validator | `validator` | Validate reproducibility, sanity, leakage, overfitting | Bash, Edit, Write, Read | Structured (`ValidationCheck`) |
 
 ## Installation
 
@@ -169,6 +188,11 @@ time_limit_seconds: 86400     # Total pipeline time budget (24 hours)
 subsample_limit: 30000        # Max training samples during refinement
 max_debug_attempts: 3         # Debug retries before fallback
 
+ablation_timeout_cap: 600     # Max seconds for a single ablation run
+validation_seed_runs: 3       # Reproducibility check seed count
+validation_score_tolerance: 0.1   # Max CV for reproducibility pass
+validation_overfit_threshold: 0.15  # Max train-val gap before flagging
+
 permission_mode: "dangerously-skip-permissions"
 model: "opus"               # Claude model to use
 log_level: "INFO"
@@ -204,6 +228,7 @@ description: |
   Test data: test.csv (predict Survived)
   Submission format: PassengerId, Survived
 target_column: "Survived"          # Column to predict (optional, aids agents)
+baseline_value: null               # External baseline score; triggers validation gate when beaten
 data_dir: "./input"                # Must exist with data before running
 output_dir: "./final"              # Path for submission output
 ```
@@ -218,14 +243,16 @@ src/mle_star/
                           time control, SDK client lifecycle, hooks
   models.py               Pydantic models, enums, configs, agent definitions
   scoring.py              Score parsing, comparison (is_improvement,
-                          is_improvement_or_equal), ScoreFunction protocol
+                          is_improvement_or_equal, beats_baseline), ScoreFunction protocol
   execution.py            Script execution harness: env setup, async subprocess,
                           output parsing, evaluation pipeline, subsampling,
                           submission verification, batch evaluation, ranking
   safety.py               Safety agents: debugger, leakage, data verification,
                           code block extraction
-  phase1.py               Phase 1: retrieve_models, generate_candidate,
-                          merge_solutions, run_phase1
+  validation.py           Validation checks: reproducibility, sanity,
+                          deep leakage, overfitting (asyncio.gather)
+  phase1.py               Phase 1: research, baseline, retrieve_models,
+                          generate_candidate, merge_solutions, run_phase1
   phase2_inner.py         Phase 2 inner loop: coder/planner agents,
                           run_phase2_inner_loop with safety integration
   phase2_outer.py         Phase 2 outer loop: ablation, summarize, extractor
@@ -235,7 +262,7 @@ src/mle_star/
                           contamination check, run_finalization
   prompts/                YAML prompt templates (one per agent)
     __init__.py           PromptRegistry: loads and renders templates
-    retriever.yaml        ... through test.yaml (14 templates)
+    retriever.yaml        ... through validator.yaml (17 templates)
 
 tests/                    pytest test suite (90% coverage minimum)
 ```
@@ -303,6 +330,14 @@ Safety checks are woven throughout the pipeline, not bolted on at the end:
 - **A_data** runs once after Phase 1 merging to verify correct data usage.
 - **A_debugger** retries failed evaluations with error tracebacks across all phases.
 - Graceful degradation: safety agent failures are caught and logged, never crashing the pipeline. The pre-check solution is preserved as fallback.
+
+### Shared Notes System
+
+A shared notes directory (`<data_dir>/notes/`) enables cross-agent knowledge transfer. Research and planning agents (`A_researcher`, `A_retriever`, `A_summarize`, `A_extractor`, `A_planner`, `A_ens_planner`) write notes after completing their tasks, documenting key findings, approach rationale, and warnings. Downstream agents read these notes as context injected into their system prompts. Sub-directories (`notes/phase2/`, `notes/phase3/`) keep phase-specific notes organized.
+
+### Validation Gates
+
+After each major phase (Phase 1, each Phase 2 path, and Phase 3), a validation gate runs when the solution score beats `baseline_value`. Four checks execute concurrently via `asyncio.gather`: reproducibility (mechanical seed variation), sanity (shuffled labels), deep leakage analysis, and overfitting detection (train-val gap). Validation uses graceful degradation — exceptions in any check yield SKIPPED status rather than crashing the pipeline. Results are diagnostic and attached to the `FinalResult` but do not halt the pipeline.
 
 ### Error Recovery
 

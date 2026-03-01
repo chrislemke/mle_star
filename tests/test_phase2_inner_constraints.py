@@ -150,7 +150,8 @@ class TestNeverRaisesOnAgentFailure:
 
         assert isinstance(result, InnerLoopResult)
         assert result.improved is False
-        assert len(result.attempts) == 4
+        # Early stopping (patience=2): k=0 fails (streak=1), k=1 fails (streak=2, break)
+        assert len(result.attempts) == 2
 
     async def test_all_planner_failures_returns_valid_result(self) -> None:
         """When all planner calls return None (k>=1), returns valid InnerLoopResult."""
@@ -201,7 +202,8 @@ class TestNeverRaisesOnAgentFailure:
 
         assert isinstance(result, InnerLoopResult)
         assert result.improved is False
-        assert len(result.attempts) == 4
+        # Early stopping (patience=2): k=0 coder fails (streak=1), k=1 planner fails (streak=2, break)
+        assert len(result.attempts) == 2
 
     async def test_mixed_failures_returns_valid_result(self) -> None:
         """When a mix of coder/planner failures occur, returns valid InnerLoopResult."""
@@ -264,7 +266,9 @@ class TestNeverRaisesOnAgentFailure:
             )
 
         assert isinstance(result, InnerLoopResult)
-        assert len(result.attempts) == 4
+        # Early stopping (patience=2): k=0 succeeds (streak=0), k=1 planner fails (streak=1),
+        # k=2 coder fails (streak=2, break)
+        assert len(result.attempts) == 3
         # At least some attempts should have score=None (failed)
         failed_attempts = [a for a in result.attempts if a.score is None]
         assert len(failed_attempts) >= 1
@@ -319,7 +323,8 @@ class TestNeverRaisesOnAgentFailure:
 
         assert isinstance(result, InnerLoopResult)
         assert result.improved is False
-        assert len(result.attempts) == 4
+        # Early stopping (patience=2): k=0 eval error (streak=1), k=1 eval error (streak=2, break)
+        assert len(result.attempts) == 2
 
 
 # ===========================================================================
@@ -1193,7 +1198,7 @@ class TestLeakageLogging:
     async def test_leakage_check_start_logs_info(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Leakage check start is logged at INFO with step k and solution content length."""
+        """Leakage check start is logged at INFO with solution content length."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -1201,6 +1206,8 @@ class TestLeakageLogging:
         code_block = _make_code_block()
         task = _make_task()
         config = _make_config(inner_loop_steps=1)
+
+        eval_solution = _make_solution(content="improved with TARGET_BLOCK here")
 
         with (
             patch(
@@ -1222,10 +1229,10 @@ class TestLeakageLogging:
             patch(
                 f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
+                return_value=(eval_solution, _make_eval_result(0.85)),
             ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
-            patch(f"{_MODULE}.is_improvement", return_value=False),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=True),
             caplog.at_level(logging.DEBUG, logger="mle_star.phase2_inner"),
         ):
             await run_phase2_inner_loop(
@@ -1241,7 +1248,6 @@ class TestLeakageLogging:
         info_msgs = [r for r in caplog.records if r.levelno == logging.INFO]
         all_info_text = " ".join(r.message for r in info_msgs)
         assert "leak" in all_info_text.lower()
-        assert "k=0" in all_info_text or "0" in all_info_text
 
     async def test_leakage_check_complete_no_change_logs_info(
         self, caplog: pytest.LogCaptureFixture
@@ -1255,7 +1261,10 @@ class TestLeakageLogging:
         task = _make_task()
         config = _make_config(inner_loop_steps=1)
 
+        eval_solution = _make_solution(content="improved with TARGET_BLOCK here")
+
         # check_and_fix_leakage returns the same solution (no change)
+        # Need is_improvement_or_equal=True so leakage check is triggered post-loop
         with (
             patch(
                 f"{_MODULE}.invoke_coder",
@@ -1276,10 +1285,10 @@ class TestLeakageLogging:
             patch(
                 f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
+                return_value=(eval_solution, _make_eval_result(0.85)),
             ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
-            patch(f"{_MODULE}.is_improvement", return_value=False),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=True),
             caplog.at_level(logging.DEBUG, logger="mle_star.phase2_inner"),
         ):
             await run_phase2_inner_loop(
@@ -1296,8 +1305,6 @@ class TestLeakageLogging:
         all_info_text = " ".join(r.message for r in info_msgs)
         # Should mention leakage check result
         assert "leak" in all_info_text.lower()
-        # Should indicate no change or no leakage found
-        assert "no" in all_info_text.lower() or "changed" in all_info_text.lower()
 
     async def test_leakage_check_complete_with_change_logs_info(
         self, caplog: pytest.LogCaptureFixture
@@ -1311,11 +1318,14 @@ class TestLeakageLogging:
         task = _make_task()
         config = _make_config(inner_loop_steps=1)
 
+        eval_solution = _make_solution(content="improved with TARGET_BLOCK here")
+
         # check_and_fix_leakage returns a DIFFERENT solution
         modified_solution = _make_solution(
             content="leakage-fixed code with TARGET_BLOCK here"
         )
 
+        # Need is_improvement_or_equal=True so leakage check is triggered post-loop
         with (
             patch(
                 f"{_MODULE}.invoke_coder",
@@ -1336,10 +1346,10 @@ class TestLeakageLogging:
             patch(
                 f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
-                return_value=(modified_solution, _make_eval_result(0.85)),
+                return_value=(eval_solution, _make_eval_result(0.85)),
             ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
-            patch(f"{_MODULE}.is_improvement", return_value=False),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=True),
             caplog.at_level(logging.DEBUG, logger="mle_star.phase2_inner"),
         ):
             await run_phase2_inner_loop(
@@ -1360,6 +1370,8 @@ class TestLeakageLogging:
             "yes" in all_info_text.lower()
             or "changed" in all_info_text.lower()
             or "found" in all_info_text.lower()
+            or "detected" in all_info_text.lower()
+            or "corrected" in all_info_text.lower()
         )
 
 
@@ -1823,7 +1835,7 @@ class TestSequentialExecution:
         call_order: list[int] = []
         call_completed: list[int] = []
 
-        async def tracked_coder(code: str, plan: str, client: Any) -> str:
+        async def tracked_coder(code: str, plan: str, client: Any, **kwargs: Any) -> str:
             step = len(call_order)
             call_order.append(step)
             # Verify the previous call completed before this one started
@@ -1837,6 +1849,7 @@ class TestSequentialExecution:
         eval_solution = _make_solution(content="evaluated with TARGET_BLOCK here")
         eval_result = _make_eval_result(0.85)
 
+        # Use is_improvement_or_equal=True to avoid early stopping with K=3
         with (
             patch(f"{_MODULE}.invoke_coder", side_effect=tracked_coder),
             patch(
@@ -1855,8 +1868,8 @@ class TestSequentialExecution:
                 new_callable=AsyncMock,
                 return_value=(eval_solution, eval_result),
             ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
-            patch(f"{_MODULE}.is_improvement", return_value=False),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=True),
         ):
             await run_phase2_inner_loop(
                 client=client,
@@ -1949,8 +1962,9 @@ class TestMonotonicBestScore:
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
-        solution = _make_solution()
-        code_block = _make_code_block()
+        # Use "improved code" as the code block so replace_block works after compounding
+        solution = _make_solution(content="original code with improved code here")
+        code_block = _make_code_block(content="improved code")
         task = _make_task(direction=MetricDirection.MAXIMIZE)
         config = _make_config(inner_loop_steps=4)
 
@@ -1963,8 +1977,9 @@ class TestMonotonicBestScore:
             score = scores[eval_call_count]
             eval_call_count += 1
             eval_result = _make_eval_result(score)
+            # Return solution containing "improved code" so replace_block works on next iteration
             return (
-                _make_solution(content=f"sol-{eval_call_count} with TARGET_BLOCK"),
+                _make_solution(content=f"sol-{eval_call_count} with improved code here"),
                 eval_result,
             )
 
@@ -2025,8 +2040,9 @@ class TestMonotonicBestScore:
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
-        solution = _make_solution()
-        code_block = _make_code_block()
+        # Use "improved code" as the code block so replace_block works after compounding
+        solution = _make_solution(content="original code with improved code here")
+        code_block = _make_code_block(content="improved code")
         task = _make_task(direction=MetricDirection.MINIMIZE)
         config = _make_config(inner_loop_steps=4)
 
@@ -2040,7 +2056,7 @@ class TestMonotonicBestScore:
             eval_call_count += 1
             eval_result = _make_eval_result(score)
             return (
-                _make_solution(content=f"sol-{eval_call_count} with TARGET_BLOCK"),
+                _make_solution(content=f"sol-{eval_call_count} with improved code here"),
                 eval_result,
             )
 
@@ -2091,8 +2107,9 @@ class TestMonotonicBestScore:
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
-        solution = _make_solution()
-        code_block = _make_code_block()
+        # Use "improved code" as the code block so replace_block works after compounding
+        solution = _make_solution(content="original code with improved code here")
+        code_block = _make_code_block(content="improved code")
         task = _make_task(direction=MetricDirection.MAXIMIZE)
         config = _make_config(inner_loop_steps=3)
 
@@ -2106,7 +2123,7 @@ class TestMonotonicBestScore:
             eval_call_count += 1
             eval_result = _make_eval_result(score=score, is_error=(score is None))
             return (
-                _make_solution(content=f"sol-{eval_call_count} with TARGET_BLOCK"),
+                _make_solution(content=f"sol-{eval_call_count} with improved code here"),
                 eval_result,
             )
 
@@ -2173,7 +2190,9 @@ class TestIterationCount:
         task = _make_task()
         config = _make_config(inner_loop_steps=4)
 
-        eval_solution = _make_solution(content="evaluated with TARGET_BLOCK here")
+        # eval_solution must contain the coder output so replace_block works
+        # after compounding improvements
+        eval_solution = _make_solution(content="evaluated with improved code here")
         eval_result = _make_eval_result(0.85)
 
         with (
@@ -2214,7 +2233,7 @@ class TestIterationCount:
         assert len(result.attempts) == 4
 
     async def test_exactly_k_attempts_all_failure(self) -> None:
-        """All K iterations fail (coder returns None) and still produce K attempts."""
+        """All K iterations fail (coder returns None) and early stop produces fewer attempts."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2258,10 +2277,11 @@ class TestIterationCount:
                 config=config,
             )
 
-        assert len(result.attempts) == 4
+        # Early stopping (patience=2): k=0 fails (streak=1), k=1 fails (streak=2, break)
+        assert len(result.attempts) == 2
 
     async def test_exactly_k_attempts_mixed_planner_coder_failures(self) -> None:
-        """Mixed planner and coder failures still produce exactly K attempts."""
+        """Mixed planner and coder failures with early stopping produce correct attempt count."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2270,7 +2290,7 @@ class TestIterationCount:
         task = _make_task()
         config = _make_config(inner_loop_steps=5)
 
-        # k=0: coder None, k=1: planner None, k=2: ok, k=3: coder None, k=4: ok
+        # k=0: coder None (fail), k=1: planner None (fail) -> streak=2, early stop
         coder_returns = [None, "code_v1", "code_v2", None, "code_v3"]
         planner_returns = [None, "plan2", None, "plan4"]  # k>=1 only
 
@@ -2307,7 +2327,8 @@ class TestIterationCount:
                 config=config,
             )
 
-        assert len(result.attempts) == 5
+        # Early stopping (patience=2): k=0 coder fails (streak=1), k=1 planner fails (streak=2, break)
+        assert len(result.attempts) == 2
 
     async def test_k_equals_1_produces_single_attempt(self) -> None:
         """K=1 produces exactly 1 RefinementAttempt."""
@@ -2486,13 +2507,14 @@ class TestImmutableInputSolution:
         # Track solution content at each coder invocation
         observed_contents: list[str] = []
 
-        async def tracking_coder(code: str, plan: str, client: Any) -> str:
-            # At each call, record the solution's content
+        async def tracking_coder(code: str, plan: str, client: Any, **kwargs: Any) -> str:
+            # At each call, record the original solution's content
             # (we capture via closure)
             observed_contents.append(solution.content)
             return "improved code"
 
-        eval_solution = _make_solution(content="evaluated with TARGET_BLOCK here")
+        # eval_solution must contain coder output for compounding to work
+        eval_solution = _make_solution(content="evaluated with improved code here")
         eval_result = _make_eval_result(0.90)
 
         with (
@@ -2639,7 +2661,7 @@ class TestImmutableCodeBlock:
         assert code_block.category == original_category
 
     async def test_coder_receives_original_code_block_every_iteration(self) -> None:
-        """invoke_coder is always called with the ORIGINAL code_block.content, not a modified version."""
+        """When no improvement occurs, invoke_coder always receives the original code_block.content."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2651,7 +2673,7 @@ class TestImmutableCodeBlock:
 
         received_code_blocks: list[str] = []
 
-        async def tracking_coder(code: str, plan: str, client: Any) -> str:
+        async def tracking_coder(code: str, plan: str, client: Any, **kwargs: Any) -> str:
             received_code_blocks.append(code)
             return "improved_" + code
 
@@ -2689,6 +2711,7 @@ class TestImmutableCodeBlock:
                 config=config,
             )
 
-        # All coder calls should receive the original code block content
+        # All coder calls should receive the original code block content (no compounding when no improvement)
         assert all(cb == original_block for cb in received_code_blocks)
-        assert len(received_code_blocks) == 3
+        # Early stopping (patience=2): k=0 fails (streak=1), k=1 fails (streak=2, break)
+        assert len(received_code_blocks) == 2

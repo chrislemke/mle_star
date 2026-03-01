@@ -26,6 +26,7 @@ Refs:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -49,7 +50,7 @@ from mle_star.models import (
     TaskDescription,
 )
 from mle_star.phase2_inner import run_phase2_inner_loop
-from mle_star.prompts import PromptRegistry
+from mle_star.prompts import get_registry
 from mle_star.safety import extract_code_block, make_debug_callback
 from mle_star.scoring import is_improvement_or_equal
 
@@ -124,7 +125,7 @@ async def invoke_ablation(
         len(previous_summaries),
     )
 
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.ABLATION)
 
     previous_text = _format_previous_ablations(previous_summaries)
@@ -162,19 +163,20 @@ async def invoke_ablation(
 def compute_ablation_timeout(config: PipelineConfig) -> int:
     """Compute the execution timeout for ablation scripts (REQ-P2O-035).
 
-    Formula: ``min(time_limit_seconds // (outer_loop_steps * 2), 600)``.
-    Caps at 600 seconds to prevent a single ablation study from consuming
-    an excessive portion of the total time budget.
+    Formula: ``min(time_limit_seconds // (outer_loop_steps * 2), cap)``.
+    Caps at ``config.ablation_timeout_cap`` (default 600s) to prevent a
+    single ablation study from consuming an excessive portion of the total
+    time budget.
 
     Args:
         config: Pipeline configuration providing time limit and outer steps.
 
     Returns:
-        Timeout in seconds (positive integer, at most 600).
+        Timeout in seconds (positive integer, at most the configured cap).
     """
     return min(
         config.time_limit_seconds // (config.outer_loop_steps * 2),
-        _ABLATION_TIMEOUT_CAP,
+        config.ablation_timeout_cap,
     )
 
 
@@ -344,7 +346,7 @@ async def invoke_summarize(
         len(raw_output),
     )
 
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.SUMMARIZE)
 
     prompt = template.render(
@@ -372,17 +374,81 @@ async def invoke_summarize(
 # ---------------------------------------------------------------------------
 
 
+_TRAILING_WS_PATTERN = re.compile(r"[ \t]+$", re.MULTILINE)
+
+
+def _normalize_whitespace(text: str) -> str:
+    """Normalize whitespace for fuzzy matching: collapse runs of spaces/tabs."""
+    # Normalize line endings
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    # Collapse trailing whitespace on each line
+    text = _TRAILING_WS_PATTERN.sub("", text)
+    # Strip trailing newlines
+    return text.strip()
+
+
 def validate_code_block(code_block: str, solution: SolutionScript) -> bool:
-    """Check whether *code_block* is an exact substring of the solution.
+    """Check whether *code_block* is a substring of the solution.
+
+    First tries exact substring match.  If that fails, normalizes
+    whitespace on both sides and retries.  As a final fallback, uses
+    ``difflib.SequenceMatcher`` with a 0.95 similarity threshold to
+    find the best matching region.
 
     Args:
         code_block: Candidate code block extracted by A_extractor.
         solution: Current best solution to validate against.
 
     Returns:
-        ``True`` if *code_block* appears verbatim in ``solution.content``.
+        ``True`` if *code_block* appears in ``solution.content``
+        (exact, whitespace-normalized, or fuzzy with ratio >= 0.95).
     """
-    return code_block in solution.content
+    # 1. Exact match (fast path).
+    if code_block in solution.content:
+        return True
+
+    # 2. Whitespace-normalized match.
+    norm_block = _normalize_whitespace(code_block)
+    norm_content = _normalize_whitespace(solution.content)
+    if norm_block in norm_content:
+        return True
+
+    # 2.5 Case-sensitive guard: reject if the block differs only in case.
+    lower_idx = norm_content.lower().find(norm_block.lower())
+    if lower_idx >= 0:
+        actual_case = norm_content[lower_idx : lower_idx + len(norm_block)]
+        if actual_case.lower() == norm_block.lower() and actual_case != norm_block:
+            return False
+
+    # 3. Fuzzy match using SequenceMatcher on the normalized text.
+    from difflib import SequenceMatcher
+
+    # Only attempt fuzzy if code block is reasonably sized.
+    if len(norm_block) < 10:
+        return False
+
+    matcher = SequenceMatcher(None, norm_content, norm_block, autojunk=False)
+    # find_longest_match gives us the best contiguous match region.
+    # But we want to see if the entire block matches somewhere, so use ratio
+    # on a sliding window of similar length.
+    block_len = len(norm_block)
+    best_ratio = 0.0
+    # Use get_matching_blocks to find the primary alignment.
+    for match in matcher.get_matching_blocks():
+        if match.size == 0:
+            continue
+        # Extract a window around the match in the solution.
+        start = max(0, match.a - (block_len - match.size) // 2)
+        end = min(len(norm_content), start + block_len + 100)
+        window = norm_content[start:end]
+        local_matcher = SequenceMatcher(None, window, norm_block, autojunk=False)
+        ratio = local_matcher.ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+        if best_ratio >= 0.95:
+            return True
+
+    return best_ratio >= 0.95
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +489,7 @@ async def invoke_extractor(
         len(previous_blocks),
     )
 
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.EXTRACTOR)
 
     blocks_text = _format_previous_blocks(previous_blocks)
@@ -533,42 +599,70 @@ async def _run_outer_step(
         logger.warning("Extractor returned None at t=%d; skipping iteration", t)
         return _make_skipped_step(t, summary, h_best)
 
-    # Use FIRST plan (REQ-P2O-026).
-    c_t = extractor_output.plans[0].code_block
-    p_0 = extractor_output.plans[0].plan
+    # Try multiple extractor plans (up to 3), using the first valid one
+    # that passes code block validation.  Run inner loop on the best plan.
+    max_plans_to_try = min(len(extractor_output.plans), 3)
+    best_inner_result = None
+    best_c_t = ""
+    best_p_0 = ""
 
-    # Validate code block (REQ-P2O-017).
-    if not validate_code_block(c_t, s_t):
-        logger.warning("Code block validation failed at t=%d; skipping iteration", t)
+    for plan_idx in range(max_plans_to_try):
+        c_t = extractor_output.plans[plan_idx].code_block
+        p_0 = extractor_output.plans[plan_idx].plan
+
+        # Validate code block (REQ-P2O-017).
+        if not validate_code_block(c_t, s_t):
+            logger.warning(
+                "Code block validation failed at t=%d plan_idx=%d; trying next plan",
+                t,
+                plan_idx,
+            )
+            continue
+
+        logger.info("Code block validation passed at t=%d plan_idx=%d", t, plan_idx)
+
+        # Run inner loop on this plan.
+        logger.info(
+            "Inner loop handoff: plan_idx=%d, block_length=%d, plan=%.200s",
+            plan_idx,
+            len(c_t),
+            p_0,
+        )
+        code_block = CodeBlock(content=c_t, outer_step=t)
+        inner_result = await run_phase2_inner_loop(
+            client=client,
+            solution=s_t,
+            code_block=code_block,
+            initial_plan=p_0,
+            best_score=h_best,
+            task=task,
+            config=config,
+            notes_context=notes_context,
+        )
+
+        # Keep the best inner result across plans.
+        if best_inner_result is None or is_improvement_or_equal(
+            inner_result.best_score, best_inner_result.best_score, task.metric_direction
+        ):
+            best_inner_result = inner_result
+            best_c_t = c_t
+            best_p_0 = p_0
+
+        # If this plan improved, no need to try more.
+        if inner_result.improved:
+            break
+
+    if best_inner_result is None:
+        logger.warning("No valid code blocks at t=%d; skipping iteration", t)
         return _make_skipped_step(t, summary, h_best)
-
-    logger.info("Code block validation passed at t=%d (exact match)", t)
-
-    # Step 5: Run inner loop (REQ-P2O-026).
-    logger.info(
-        "Inner loop handoff: block_length=%d, plan=%.200s",
-        len(c_t),
-        p_0,
-    )
-    code_block = CodeBlock(content=c_t, outer_step=t)
-    inner_result = await run_phase2_inner_loop(
-        client=client,
-        solution=s_t,
-        code_block=code_block,
-        initial_plan=p_0,
-        best_score=h_best,
-        task=task,
-        config=config,
-        notes_context=notes_context,
-    )
 
     # Log inner loop return (REQ-P2O-037).
     improved = is_improvement_or_equal(
-        inner_result.best_score, h_best, task.metric_direction
+        best_inner_result.best_score, h_best, task.metric_direction
     )
     logger.info(
         "Inner loop return: best_score=%.6f, improvement=%s",
-        inner_result.best_score,
+        best_inner_result.best_score,
         "yes" if improved else "no",
     )
 
@@ -576,8 +670,8 @@ async def _run_outer_step(
     new_h_best = h_best
     new_best_solution: SolutionScript | None = None
     if improved:
-        new_h_best = inner_result.best_score
-        new_best_solution = inner_result.best_solution
+        new_h_best = best_inner_result.best_score
+        new_best_solution = best_inner_result.best_solution
 
     step_duration = time.monotonic() - step_start
     logger.info(
@@ -590,9 +684,9 @@ async def _run_outer_step(
     return {
         "outer_step": t,
         "ablation_summary": summary,
-        "code_block": c_t,
-        "plan": p_0,
-        "inner_loop_attempts": list(inner_result.attempts),
+        "code_block": best_c_t,
+        "plan": best_p_0,
+        "inner_loop_attempts": list(best_inner_result.attempts),
         "best_score_after_step": new_h_best,
         "was_skipped": False,
         "_new_h_best": new_h_best,
@@ -671,6 +765,8 @@ async def run_phase2_outer_loop(
     step_history: list[dict[str, Any]] = []
 
     s_t = initial_solution
+    no_improvement_streak = 0
+    early_stop_patience = 2
 
     for t in range(config.outer_loop_steps):
         logger.info(
@@ -700,6 +796,11 @@ async def run_phase2_outer_loop(
         if new_best_solution is not None:
             s_final = new_best_solution
             s_t = new_best_solution
+            no_improvement_streak = 0
+        elif not step_record.get("was_skipped", False):
+            # Only count non-skipped steps toward early stopping.
+            # Skipped steps (extractor failures) should not penalize.
+            no_improvement_streak += 1
         h_best = new_h_best
 
         # Accumulate summaries and blocks (REQ-P2O-022, REQ-P2O-023).
@@ -710,9 +811,19 @@ async def run_phase2_outer_loop(
 
         step_history.append(step_record)
 
+        # Early stopping: exit if no improvement for N consecutive outer steps.
+        if no_improvement_streak >= early_stop_patience and t < config.outer_loop_steps - 1:
+            logger.info(
+                "Outer loop early stop: t=%d, no improvement for %d consecutive steps",
+                t,
+                no_improvement_streak,
+            )
+            break
+
     loop_duration = time.monotonic() - loop_start
     logger.info(
-        "Outer loop complete: steps=%d, final_h_best=%.6f, total_duration=%.2fs",
+        "Outer loop complete: steps=%d/%d, final_h_best=%.6f, total_duration=%.2fs",
+        len(step_history),
         config.outer_loop_steps,
         h_best,
         loop_duration,

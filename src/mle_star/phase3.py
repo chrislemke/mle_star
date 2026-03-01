@@ -32,7 +32,7 @@ from mle_star.models import (
     SolutionScript,
     TaskDescription,
 )
-from mle_star.prompts import PromptRegistry
+from mle_star.prompts import get_registry
 from mle_star.safety import (
     check_and_fix_leakage,
     extract_code_block,
@@ -142,7 +142,7 @@ async def invoke_ens_planner(
     solutions_text = _format_solutions(solutions)
     plan_history = _format_ensemble_history(plans, scores)
 
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.ENS_PLANNER)
     prompt = template.render(
         L=len(solutions),
@@ -197,7 +197,7 @@ async def invoke_ensembler(
 
     solutions_text = _format_solutions(solutions)
 
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.ENSEMBLER)
     prompt = template.render(
         L=len(solutions),

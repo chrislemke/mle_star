@@ -81,7 +81,7 @@ class TestConductResearch:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_SAMPLE_FINDINGS_JSON)
 
-        with patch(f"{_PHASE1}.PromptRegistry") as mock_reg_cls:
+        with patch(f"{_PHASE1}.get_registry") as mock_reg_cls:
             mock_reg = mock_reg_cls.return_value
             mock_tmpl = AsyncMock()
             mock_tmpl.render = lambda **kwargs: "research prompt"
@@ -103,7 +103,7 @@ class TestConductResearch:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=_SAMPLE_FINDINGS_JSON)
 
-        with patch(f"{_PHASE1}.PromptRegistry") as mock_reg_cls:
+        with patch(f"{_PHASE1}.get_registry") as mock_reg_cls:
             mock_reg = mock_reg_cls.return_value
             mock_tmpl = AsyncMock()
             mock_tmpl.render = lambda **kwargs: "prompt"
@@ -121,7 +121,7 @@ class TestConductResearch:
         client.send_message = AsyncMock(return_value=_SAMPLE_FINDINGS_JSON)
         render_kwargs: dict[str, Any] = {}
 
-        with patch(f"{_PHASE1}.PromptRegistry") as mock_reg_cls:
+        with patch(f"{_PHASE1}.get_registry") as mock_reg_cls:
             mock_reg = mock_reg_cls.return_value
             mock_tmpl = AsyncMock()
 
@@ -146,7 +146,7 @@ class TestConductResearch:
         client.send_message = AsyncMock(return_value=_SAMPLE_FINDINGS_JSON)
         render_kwargs: dict[str, Any] = {}
 
-        with patch(f"{_PHASE1}.PromptRegistry") as mock_reg_cls:
+        with patch(f"{_PHASE1}.get_registry") as mock_reg_cls:
             mock_reg = mock_reg_cls.return_value
             mock_tmpl = AsyncMock()
 

@@ -171,3 +171,28 @@ class PromptRegistry:
     def __len__(self) -> int:
         """Return the number of unique agent types in the registry (REQ-DM-033)."""
         return len(self._agent_types)
+
+
+# Module-level singleton for reuse across agent invocations.
+_singleton_registry: PromptRegistry | None = None
+
+
+def get_registry() -> PromptRegistry:
+    """Return the singleton PromptRegistry instance.
+
+    Lazily creates the registry on first call. Subsequent calls return
+    the cached instance, avoiding repeated YAML file reads.
+
+    Returns:
+        The shared ``PromptRegistry`` singleton.
+    """
+    global _singleton_registry  # noqa: PLW0603
+    if _singleton_registry is None:
+        _singleton_registry = PromptRegistry()
+    return _singleton_registry
+
+
+def _reset_registry() -> None:
+    """Reset the singleton registry (for testing only)."""
+    global _singleton_registry  # noqa: PLW0603
+    _singleton_registry = None

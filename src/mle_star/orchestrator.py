@@ -40,11 +40,14 @@ from mle_star.models import (
     PipelineConfig,
     SolutionScript,
     TaskDescription,
+    ValidationResult,
     build_default_agent_configs,
 )
 from mle_star.phase1 import _read_notes_context, run_phase1
 from mle_star.phase2_outer import run_phase2_outer_loop
 from mle_star.phase3 import run_phase3
+from mle_star.scoring import beats_baseline
+from mle_star.validation import validate_solution
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +179,7 @@ class ClaudeCodeClient:
         *,
         system_prompt: str,
         agent_configs: dict[AgentType, AgentConfig],
-        model: str = "sonnet",
+        model: str = "opus",
         permission_mode: str = "dangerously-skip-permissions",
     ) -> None:
         """Initialize the Claude Code client.
@@ -721,6 +724,80 @@ def _compute_phase_budgets(
         "finalization": finalization,
         "phase2_per_path": phase2 / config.num_parallel_solutions,
     }
+
+
+# ---------------------------------------------------------------------------
+# Validation gate helper
+# ---------------------------------------------------------------------------
+
+
+async def _validate_if_beats_baseline(
+    solution: SolutionScript,
+    task: TaskDescription,
+    config: PipelineConfig,
+    client: ClaudeCodeClient,
+    phase_label: str,
+) -> tuple[SolutionScript, ValidationResult | None]:
+    """Validate a solution if it beats the external baseline.
+
+    Checks whether the solution's score exceeds ``task.baseline_value``.
+    If so, runs full validation via ``validate_solution()``. Validation
+    failures are logged but do not block the pipeline — the caller
+    decides how to handle them.
+
+    Args:
+        solution: The solution to potentially validate.
+        task: Task description with baseline_value.
+        config: Pipeline configuration.
+        client: Claude Code client.
+        phase_label: Human-readable label for logging (e.g., ``"Phase 1"``).
+
+    Returns:
+        Tuple of (solution, validation_result). The validation_result is
+        ``None`` when the score doesn't beat the baseline or when the
+        solution has no score.
+    """
+    if solution.score is None:
+        logger.info(
+            "%s validation skipped: solution has no score", phase_label
+        )
+        return solution, None
+
+    if not beats_baseline(solution.score, task.baseline_value, task.metric_direction):
+        logger.info(
+            "%s validation skipped: score=%s does not beat baseline=%s",
+            phase_label,
+            solution.score,
+            task.baseline_value,
+        )
+        return solution, None
+
+    logger.info(
+        "%s validation start: score=%s beats baseline=%s",
+        phase_label,
+        solution.score,
+        task.baseline_value,
+    )
+
+    try:
+        result = await validate_solution(solution, task, config, client)
+        if result.passed:
+            logger.info("%s validation passed", phase_label)
+        else:
+            failed_checks = [
+                c.name for c in result.checks if c.status == "failed"
+            ]
+            logger.warning(
+                "%s validation FAILED checks: %s", phase_label, failed_checks
+            )
+        return solution, result
+    except Exception:
+        logger.warning(
+            "%s validation raised exception; continuing without validation",
+            phase_label,
+            exc_info=True,
+        )
+        return solution, None
 
 
 # ---------------------------------------------------------------------------
@@ -1296,6 +1373,13 @@ async def run_pipeline(
         task.metric_direction,
         task.data_dir,
     )
+    if task.baseline_value is not None:
+        logger.info(
+            "External baseline: %s=%s (direction=%s)",
+            task.evaluation_metric,
+            task.baseline_value,
+            task.metric_direction,
+        )
 
     # REQ-OR-054: Verify Claude CLI availability
     check_claude_cli_version()
@@ -1320,6 +1404,14 @@ async def run_pipeline(
         task, resolved_config, client, deadline, pipeline_start
     )
 
+    # Validate Phase 1 solution if it beats the baseline
+    validation_results: list[ValidationResult] = []
+    _, p1_val = await _validate_if_beats_baseline(
+        phase1_result.initial_solution, task, resolved_config, client, "Phase 1"
+    )
+    if p1_val is not None:
+        validation_results.append(p1_val)
+
     # Compute remaining time budgets (REQ-OR-025)
     remaining = max(0.0, deadline - time.monotonic())
     budgets = _compute_phase_budgets(resolved_config, remaining)
@@ -1333,6 +1425,7 @@ async def run_pipeline(
         deadline,
         budgets,
         pipeline_start=pipeline_start,
+        validation_results=validation_results,
     )
 
 
@@ -1345,6 +1438,7 @@ async def _execute_post_phase1(
     budgets: dict[str, float],
     *,
     pipeline_start: float,
+    validation_results: list[ValidationResult] | None = None,
 ) -> FinalResult:
     """Execute Phase 2 through Finalization with graceful shutdown (REQ-OR-030).
 
@@ -1361,10 +1455,12 @@ async def _execute_post_phase1(
         deadline: Absolute monotonic deadline (REQ-OR-024).
         budgets: Phase time budgets from ``_compute_phase_budgets()``.
         pipeline_start: Monotonic time when the pipeline started.
+        validation_results: Accumulated validation results from earlier phases.
 
     Returns:
         The assembled ``FinalResult``.
     """
+    all_validation_results = list(validation_results or [])
     best_solution = phase1_result.initial_solution
     phase2_results: list[Phase2Result] = []
     phase2_solutions: list[SolutionScript] = [phase1_result.initial_solution]
@@ -1418,6 +1514,14 @@ async def _execute_post_phase1(
             phase1_result.initial_score,
             p2_scores,
         )
+
+        # Validate Phase 2 best solutions
+        for i, p2r in enumerate(phase2_results):
+            _, p2_val = await _validate_if_beats_baseline(
+                p2r.best_solution, task, config, client, f"Phase 2 path-{i}"
+            )
+            if p2_val is not None:
+                all_validation_results.append(p2_val)
     else:
         logger.warning("Deadline exceeded; skipping Phase 2")
 
@@ -1427,6 +1531,14 @@ async def _execute_post_phase1(
         client, task, config, phase2_solutions, best_solution, deadline, budgets
     )
     phase_durations["phase3"] = time.monotonic() - p3_start
+
+    # Validate Phase 3 solution if it beats the baseline
+    if phase3_result is not None:
+        _, p3_val = await _validate_if_beats_baseline(
+            phase3_result.best_ensemble, task, config, client, "Phase 3"
+        )
+        if p3_val is not None:
+            all_validation_results.append(p3_val)
 
     # Finalization with error recovery (REQ-OR-043)
     fin_start = time.monotonic()
@@ -1448,13 +1560,20 @@ async def _execute_post_phase1(
     )
     _log_phase_summary(phase_durations)
 
+    # Attach validation results to final result
+    if all_validation_results:
+        final_result = final_result.model_copy(
+            update={"validation_results": all_validation_results}
+        )
+
     # Pipeline completion log
     total_elapsed = time.monotonic() - pipeline_start
     final_score = final_result.final_solution.score
     logger.info(
-        "Pipeline complete | Total: %.1fs | Final score: %s",
+        "Pipeline complete | Total: %.1fs | Final score: %s | Validations: %d",
         total_elapsed,
         final_score,
+        len(all_validation_results),
     )
 
     return final_result

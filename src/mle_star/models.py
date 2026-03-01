@@ -123,10 +123,16 @@ class PipelineConfig(BaseModel):
 
     # Orchestrator fields
     permission_mode: str = "dangerously-skip-permissions"
-    model: str = "sonnet"
+    model: str = "opus"
     log_level: str = "INFO"
     log_file: str | None = None
     phase_time_budget: PhaseTimeBudget | None = None
+    ablation_timeout_cap: int = 600
+
+    # Validation configuration
+    validation_seed_runs: int = 3
+    validation_score_tolerance: float = 0.1
+    validation_overfit_threshold: float = 0.15
 
     @field_validator(
         "num_retrieved_models",
@@ -161,6 +167,7 @@ class TaskDescription(BaseModel):
         metric_direction: Whether to maximize or minimize the metric.
         description: Full task description text (T_task).
         target_column: Name of the column to predict (optional).
+        baseline_value: External baseline score that models must beat (optional).
         data_dir: Path to dataset directory.
         output_dir: Path for submission output.
     """
@@ -174,6 +181,7 @@ class TaskDescription(BaseModel):
     metric_direction: MetricDirection
     description: str
     target_column: str | None = None
+    baseline_value: float | None = None
     data_dir: str = "./input"
     output_dir: str = "./final"
 
@@ -228,7 +236,12 @@ class SolutionScript(BaseModel):
         return self
 
     def replace_block(self, old: str, new: str) -> SolutionScript:
-        """Return a new SolutionScript with the first occurrence of *old* replaced by *new*.
+        """Return a new SolutionScript with *old* replaced by *new*.
+
+        If *old* appears exactly once, replaces it. If *old* appears
+        multiple times, replaces the last occurrence (most likely to be
+        the target block in a solution script where imports/helpers
+        appear early and model code appears later).
 
         Args:
             old: Substring to find in content.
@@ -243,7 +256,13 @@ class SolutionScript(BaseModel):
         if old != "" and old not in self.content:
             msg = f"Block not found in solution content: {old!r}"
             raise ValueError(msg)
-        replaced = self.content.replace(old, new, 1)
+        # Replace the last occurrence to target the main code block
+        # rather than early imports/helpers that might share patterns.
+        idx = self.content.rfind(old)
+        if idx == -1 or old == "":
+            replaced = self.content.replace(old, new, 1)
+        else:
+            replaced = self.content[:idx] + new + self.content[idx + len(old) :]
         return SolutionScript(
             content=replaced,
             phase=self.phase,
@@ -295,10 +314,10 @@ class CodeBlock(BaseModel):
 
 
 class AgentType(StrEnum):
-    """Identifier for each of the 14 MLE-STAR agents (REQ-DM-013).
+    """Identifier for each MLE-STAR agent (REQ-DM-013).
 
-    One value per agent from A_retriever through A_test, matching the paper's
-    agent naming convention (Section 6).
+    One value per agent from A_retriever through A_test plus A_validator,
+    matching the paper's agent naming convention (Section 6).
     """
 
     BASELINE = "baseline"
@@ -317,6 +336,7 @@ class AgentType(StrEnum):
     LEAKAGE = "leakage"
     DATA = "data"
     TEST = "test"
+    VALIDATOR = "validator"
 
 
 # ---------------------------------------------------------------------------
@@ -617,6 +637,55 @@ class EvaluationResult(BaseModel):
     error_traceback: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# Validation Models
+# ---------------------------------------------------------------------------
+
+
+class ValidationStatus(StrEnum):
+    """Outcome status for a single validation check."""
+
+    PASSED = "passed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class ValidationCheck(BaseModel):
+    """Result of a single validation check (e.g., reproducibility, sanity).
+
+    Attributes:
+        name: Check identifier (e.g., ``"reproducibility"``).
+        status: Whether the check passed, failed, or was skipped.
+        details: Human-readable explanation of the outcome.
+        scores: For reproducibility checks, the list of scores across runs.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    status: ValidationStatus
+    details: str
+    scores: list[float] | None = None
+
+
+class ValidationResult(BaseModel):
+    """Aggregated result of all validation checks on a solution.
+
+    Attributes:
+        solution: The solution that was validated.
+        checks: Individual check results.
+        passed: True if ALL checks passed.
+        baseline_beaten: True if the solution score beats the external baseline.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    solution: SolutionScript
+    checks: list[ValidationCheck]
+    passed: bool
+    baseline_beaten: bool
+
+
 class Phase1Result(BaseModel):
     """Output of Phase 1: model retrieval and initial solution (REQ-DM-022).
 
@@ -704,6 +773,7 @@ class FinalResult(BaseModel):
         final_solution: The solution submitted for test evaluation.
         submission_path: Path to submission file.
         total_duration_seconds: Total pipeline wall-clock time.
+        validation_results: Validation results collected across all phases.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -716,6 +786,7 @@ class FinalResult(BaseModel):
     final_solution: SolutionScript
     submission_path: str
     total_duration_seconds: float
+    validation_results: list[ValidationResult] = []
 
 
 # ---------------------------------------------------------------------------
@@ -831,6 +902,9 @@ def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
     Tool assignments follow REQ-OR-008. Output schemas are set per
     REQ-OR-006 and REQ-SF-025.
 
+    All agents use the pipeline default model (opus) unless explicitly
+    overridden per-agent. No per-agent model overrides are set here.
+
     Returns:
         A fresh dict mapping every ``AgentType`` to its default config.
     """
@@ -917,5 +991,10 @@ def build_default_agent_configs() -> dict[AgentType, AgentConfig]:
             agent_type=AgentType.TEST,
             description="Generates test submissions and validates outputs.",
             tools=_READ_ONLY_TOOLS,
+        ),
+        AgentType.VALIDATOR: AgentConfig(
+            agent_type=AgentType.VALIDATOR,
+            description="Validates solutions for reproducibility, sanity, leakage, and overfitting.",
+            tools=_EXECUTION_TOOLS,
         ),
     }

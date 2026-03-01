@@ -108,7 +108,7 @@ class TestInvokeSummarizePromptRegistry:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="Ablation revealed X is key")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "rendered summarize prompt"
@@ -131,7 +131,7 @@ class TestInvokeSummarizePromptRegistry:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -160,7 +160,7 @@ class TestInvokeSummarizePromptRegistry:
         client.send_message = AsyncMock(return_value="Summary output")
         expected_prompt = "rendered summarize prompt xyz"
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = expected_prompt
@@ -192,7 +192,7 @@ class TestInvokeSummarizeAgentInvocation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="Summary result")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -214,7 +214,7 @@ class TestInvokeSummarizeAgentInvocation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="Summary")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -249,7 +249,7 @@ class TestInvokeSummarizeReturnsFullText:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=expected_summary)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -270,7 +270,7 @@ class TestInvokeSummarizeReturnsFullText:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="A summary")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -294,7 +294,7 @@ class TestInvokeSummarizeReturnsFullText:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=response_with_code)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -316,7 +316,7 @@ class TestInvokeSummarizeReturnsFullText:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=formatted_summary)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -347,7 +347,7 @@ class TestInvokeSummarizeFallback:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -369,7 +369,7 @@ class TestInvokeSummarizeFallback:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="   \n\n  ")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -391,7 +391,7 @@ class TestInvokeSummarizeFallback:
         client.send_message = AsyncMock(return_value="")
         raw = "some output"
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -414,7 +414,7 @@ class TestInvokeSummarizeFallback:
         # Create output longer than 2000 chars
         long_output = "A" * 1000 + "B" * 2000
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -440,7 +440,7 @@ class TestInvokeSummarizeFallback:
         client.send_message = AsyncMock(return_value="")
         raw = "X" * 2000
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -464,7 +464,7 @@ class TestInvokeSummarizeFallback:
         client.send_message = AsyncMock(return_value="")
         raw = "short output"
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -492,7 +492,7 @@ class TestInvokeSummarizeFallback:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=empty_response)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -513,7 +513,7 @@ class TestInvokeSummarizeFallback:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -652,7 +652,7 @@ class TestInvokeExtractorPromptRegistry:
         client.send_message = AsyncMock(return_value=valid_json)
         solution = _make_solution(content="x = 1\ny = 2")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "rendered extractor prompt"
@@ -678,7 +678,7 @@ class TestInvokeExtractorPromptRegistry:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -712,7 +712,7 @@ class TestInvokeExtractorPromptRegistry:
         client.send_message = AsyncMock(return_value=valid_json)
         expected_prompt = "rendered extractor prompt content"
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = expected_prompt
@@ -746,7 +746,7 @@ class TestInvokeExtractorAgentInvocation:
         valid_json = _make_extractor_json([{"code_block": "x = 1", "plan": "Improve"}])
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -782,7 +782,7 @@ class TestInvokeExtractorStructuredOutput:
         )
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -810,7 +810,7 @@ class TestInvokeExtractorStructuredOutput:
         )
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -840,7 +840,7 @@ class TestInvokeExtractorStructuredOutput:
         )
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -874,7 +874,7 @@ class TestInvokeExtractorOutputFormat:
         valid_json = _make_extractor_json([{"code_block": "x = 1", "plan": "Improve"}])
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -909,7 +909,7 @@ class TestInvokeExtractorRetry:
             side_effect=["not valid json {{{", "still not valid"]
         )
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -932,7 +932,7 @@ class TestInvokeExtractorRetry:
         client = AsyncMock()
         client.send_message = AsyncMock(side_effect=["garbage", "more garbage"])
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -955,7 +955,7 @@ class TestInvokeExtractorRetry:
         valid_json = _make_extractor_json([{"code_block": "x = 1", "plan": "Fix it"}])
         client.send_message = AsyncMock(side_effect=["not json at all!", valid_json])
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -979,7 +979,7 @@ class TestInvokeExtractorRetry:
         valid_json = _make_extractor_json([{"code_block": "x = 1", "plan": "Improve"}])
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1001,7 +1001,7 @@ class TestInvokeExtractorRetry:
         client = AsyncMock()
         client.send_message = AsyncMock(side_effect=["bad1", "bad2"])
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1026,7 +1026,7 @@ class TestInvokeExtractorRetry:
         valid_json = _make_extractor_json([{"code_block": "x = 1", "plan": "Fix"}])
         client.send_message = AsyncMock(side_effect=[empty_plans_json, valid_json])
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1050,7 +1050,7 @@ class TestInvokeExtractorRetry:
         valid_json = _make_extractor_json([{"code_block": "x = 1", "plan": "Fix"}])
         client.send_message = AsyncMock(side_effect=["invalid json", valid_json])
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "the same prompt"
@@ -1087,7 +1087,7 @@ class TestInvokeExtractorPreviousBlocks:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -1117,7 +1117,7 @@ class TestInvokeExtractorPreviousBlocks:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -1149,7 +1149,7 @@ class TestInvokeExtractorPreviousBlocks:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -1480,7 +1480,7 @@ class TestInvokeSummarizeFallbackPropertyBased:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1507,7 +1507,7 @@ class TestInvokeSummarizeFallbackPropertyBased:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1532,7 +1532,7 @@ class TestInvokeSummarizeFallbackPropertyBased:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=response)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1626,7 +1626,7 @@ class TestInvokeExtractorPropertyBased:
 
         blocks = [f"block_{i}" for i in range(n_blocks)]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1655,7 +1655,7 @@ class TestInvokeExtractorPropertyBased:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -1693,7 +1693,7 @@ class TestInvokeSummarizeEdgeCases:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=long_response)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1715,7 +1715,7 @@ class TestInvokeSummarizeEdgeCases:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="Summary result")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1736,7 +1736,7 @@ class TestInvokeSummarizeEdgeCases:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="Summary")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1757,7 +1757,7 @@ class TestInvokeSummarizeEdgeCases:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="\n")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1795,7 +1795,7 @@ class TestInvokeExtractorEdgeCases:
         )
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1825,7 +1825,7 @@ class TestInvokeExtractorEdgeCases:
         )
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1851,7 +1851,7 @@ class TestInvokeExtractorEdgeCases:
         )
         client.send_message = AsyncMock(return_value=valid_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1875,7 +1875,7 @@ class TestInvokeExtractorEdgeCases:
         valid_json = _make_extractor_json([{"code_block": "x", "plan": "fix"}])
         client.send_message = AsyncMock(side_effect=["", valid_json])
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1906,7 +1906,7 @@ class TestInvokeExtractorEdgeCases:
         )
         client.send_message = AsyncMock(return_value=json_with_extras)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1964,7 +1964,7 @@ class TestInvokeSummarizeParametrized:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=response)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"

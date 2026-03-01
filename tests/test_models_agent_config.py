@@ -39,6 +39,7 @@ EXECUTION_AGENT_TYPES: list[AgentType] = [
     AgentType.CODER,
     AgentType.ENSEMBLER,
     AgentType.DEBUGGER,
+    AgentType.VALIDATOR,
 ]
 
 READ_ONLY_AGENT_TYPES: list[AgentType] = [
@@ -75,6 +76,7 @@ AGENT_OUTPUT_SCHEMAS: dict[AgentType, type[BaseModel] | None] = {
     AgentType.LEAKAGE: LeakageDetectionOutput,
     AgentType.DATA: None,
     AgentType.TEST: None,
+    AgentType.VALIDATOR: None,
 }
 
 
@@ -516,10 +518,10 @@ class TestBuildDefaultAgentConfigsStructure:
         configs = build_default_agent_configs()
         assert isinstance(configs, dict)
 
-    def test_returns_exactly_16_configs(self) -> None:
-        """The dict contains exactly 16 entries (one per agent)."""
+    def test_returns_exactly_17_configs(self) -> None:
+        """The dict contains exactly 17 entries (one per agent)."""
         configs = build_default_agent_configs()
-        assert len(configs) == 16
+        assert len(configs) == 17
 
     def test_keys_are_all_agent_type_values(self) -> None:
         """Every key is an AgentType enum value."""

@@ -1,0 +1,170 @@
+templates:
+  - agent_type: validator
+    variant: sanity
+    figure_ref: "N/A — Validation (sanity)"
+    template: |
+      <role>
+      You are a model validation specialist performing sanity checks via label permutation testing. You have deep expertise in statistical hypothesis testing for ML models, including distinguishing genuine learned patterns from data leakage, evaluation artifacts, and trivial prediction strategies. Your goal is to create a shuffled-label variant of the solution that reveals whether the model's performance is attributable to real signal in the data.
+      </role>
+
+      <context>
+      # Solution code
+      ```python
+      {solution_code}
+      ```
+
+      # Task description
+      {task_description}
+
+      # Evaluation
+      - Metric: {evaluation_metric}
+      - Direction: {metric_direction}
+      </context>
+
+      <task>
+      Create a MODIFIED version of the solution that shuffles the target labels randomly BEFORE training, implementing a label permutation sanity check.
+
+      The modified script should:
+      1. Randomly permute y_train AFTER the train/val split but BEFORE training.
+      2. Keep everything else exactly the same (features, model, preprocessing).
+      3. Train the model on shuffled targets and evaluate on the ORIGINAL (unshuffled) validation set.
+
+      This is a null-hypothesis test: if the model has learned real patterns from features, destroying the feature-target relationship by shuffling labels should cause performance to collapse to random chance. If the shuffled model still performs well, the original model's performance is likely spurious.
+      </task>
+
+      <best_practices>
+      Apply the following domain knowledge when implementing the label permutation sanity check:
+
+      # What the shuffling test reveals
+      - The label permutation test breaks the association between input features and output targets. A model trained on shuffled labels has no real signal to learn from, so its performance establishes a baseline for "what does random chance look like with this model and data?"
+      - If the original model has learned genuine patterns, the shuffled version's performance should be dramatically worse — close to random chance.
+      - If the shuffled version still performs well, the original model's apparent performance is not driven by real feature-target relationships.
+
+      # Expected behavior after shuffling
+      - Binary classification (AUC): should drop to approximately 0.5 (random coin flip).
+      - Multi-class classification (accuracy): should drop to approximately 1/K where K is the number of classes.
+      - Multi-class classification (log-loss): should rise to approximately -ln(1/K).
+      - Regression (RMSE): should rise to approximately the standard deviation of the target variable.
+      - Regression (R-squared): should drop to approximately 0.0 (or negative).
+      - Ranking metrics (MAP, NDCG): should drop to levels expected from random ordering.
+
+      # Red flags — when shuffled performance stays high
+      If performance does NOT drop to random chance after shuffling, the model likely suffers from one or more of these problems:
+      - Data leakage: one or more features directly encode or are derived from the target (e.g., a feature that IS the target under a different column name, target-encoded features computed on the full dataset, or time-series features that look into the future).
+      - Trivial prediction patterns: the model ignores features entirely and exploits class imbalance (e.g., always predicting the majority class achieves high accuracy on imbalanced data). Check whether the metric is robust to class imbalance.
+      - Evaluation bugs: wrong metric computation, evaluating on training data instead of validation data, wrong data split, or metric/direction mismatch.
+      - Preprocessing leakage: scalers, encoders, or imputers fit on the full dataset (including validation) before the split, leaking validation statistics into training.
+
+      # Implementation details
+      - Use `y_train = np.random.permutation(y_train)` which returns a shuffled COPY without modifying the original array. Do NOT use `np.random.shuffle(y_train)` which shuffles IN-PLACE and would silently modify the original variable — this is safer and more explicit.
+      - Ensure ONLY y_train is shuffled. The validation labels (y_val) must remain unshuffled so that evaluation measures performance against the true targets.
+      - The shuffle must happen AFTER any train/val split and AFTER any preprocessing that depends on y_train (e.g., stratified sampling), but BEFORE the model is trained.
+      - Add `import numpy as np` if it is not already imported.
+      - Set a random seed before permutation for reproducibility: `np.random.seed(42)` (or use the existing seed if one is already set in the code).
+      - Do not change any model hyperparameters, feature engineering, or preprocessing steps — only the target labels fed to training.
+      </best_practices>
+
+      <constraints>
+      - Keep ALL existing code logic intact.
+      - Only add the target shuffling step.
+      - Preserve the same output format.
+      </constraints>
+
+      <output_format>
+      Respond with a single markdown code block containing the modified Python script.
+      Add `import numpy as np` if not already imported.
+      Insert `y_train = np.random.permutation(y_train)` at the correct location (after split, before training).
+      Keep the same 'Final Validation Performance: ...' output format.
+      </output_format>
+    variables:
+      - solution_code
+      - task_description
+      - evaluation_metric
+      - metric_direction
+
+  - agent_type: validator
+    variant: overfitting
+    figure_ref: "N/A — Validation (overfitting)"
+    template: |
+      <role>
+      You are a model validation specialist focused on overfitting detection and generalization assessment. You have deep expertise in diagnosing train/validation performance gaps across different model families, understanding what gap magnitudes indicate, and determining whether a model is memorizing training data or learning transferable patterns. Your goal is to instrument the solution to expose both training and validation scores so the gap can be measured and interpreted.
+      </role>
+
+      <context>
+      # Solution code
+      ```python
+      {solution_code}
+      ```
+
+      # Task description
+      {task_description}
+
+      # Evaluation
+      - Metric: {evaluation_metric}
+      - Direction: {metric_direction}
+      </context>
+
+      <task>
+      Create a MODIFIED version of the solution that reports BOTH training and validation performance so the overfitting gap can be measured.
+
+      The modified script should output TWO scores:
+      1. Training score — model performance evaluated on the same training data it was fit on.
+      2. Validation score — model performance on held-out validation data (the existing evaluation).
+
+      The gap between these two scores is a direct indicator of overfitting. A model that generalizes well will have similar training and validation performance. A model that has memorized the training data will show a large gap (high training score, lower validation score).
+      </task>
+
+      <best_practices>
+      Apply the following domain knowledge when measuring and interpreting the overfitting gap:
+
+      # Gap interpretation guide
+      The "gap" is the absolute difference between training and validation performance (for metrics where higher is better, gap = train_score - val_score; for metrics where lower is better like RMSE or log-loss, gap = val_score - train_score).
+
+      - Gap < 5%: Healthy generalization. The model is learning transferable patterns without significant memorization. This is the target range for a well-tuned model.
+      - Gap 5-15%: Mild overfitting. The model is starting to memorize training data. May benefit from regularization (L1/L2 penalties, dropout, weight decay), reduced model complexity, or additional training data.
+      - Gap 15-30%: Significant overfitting. The model is substantially memorizing training data and not generalizing well. Intervention is needed: stronger regularization, simpler model architecture, more training data, feature selection, or early stopping.
+      - Gap > 30%: Severe overfitting. The model has memorized the training data with little generalization ability. Fundamentally rethink the approach: much simpler model, aggressive regularization, data augmentation, or investigate whether the dataset is too small for the model complexity.
+
+      Note: these thresholds are guidelines for percentage-point gaps on bounded metrics (accuracy, AUC, F1). For unbounded metrics (RMSE, MAE), interpret the gap as a ratio: train_metric / val_metric. A ratio near 1.0 indicates healthy generalization; ratios of 0.5 or below (for error metrics) indicate severe overfitting.
+
+      # Expected gaps by model type
+      Different model families have characteristic overfitting behaviors:
+      - Linear models (logistic regression, linear SVM, ridge/lasso): typically 0-5% gap. These models have limited capacity and strong inductive bias, making large gaps unusual. A large gap in a linear model suggests too many features or severe multicollinearity.
+      - Gradient-boosted trees (XGBoost, LightGBM, CatBoost): 2-10% gap with good regularization (controlled max_depth, learning_rate, min_child_weight, subsampling). Without regularization or early stopping, gaps of 20-40% are common, especially with deep trees or many boosting rounds.
+      - Random forests: 5-15% gap is typical. Individual trees overfit heavily (often near-perfect training accuracy), but ensemble averaging reduces the gap. Out-of-bag error is a useful supplementary overfitting diagnostic.
+      - Deep neural networks: 5-20% gap depending on regularization. Gaps vary widely based on architecture size, dropout rate, weight decay, data augmentation, and training duration. Without regularization, gaps can exceed 30% easily.
+      - k-Nearest Neighbors: highly dependent on k. With k=1, training accuracy is always perfect (100%) creating large gaps. Larger k values reduce the gap.
+
+      # Common overfitting causes
+      - Too many features relative to samples (high-dimensional, low-sample setting).
+      - Trees that are too deep (max_depth too high or unlimited).
+      - Too many boosting rounds or training epochs without early stopping.
+      - No regularization (missing dropout, weight decay, L1/L2 penalties, or tree-based constraints).
+      - Small dataset size relative to model complexity.
+      - No data augmentation when dataset is small (especially for deep learning).
+      - Learning rate too high combined with too many iterations.
+      - Feature leakage that inflates training scores but not validation scores.
+
+      # What to report
+      - Both the raw training score and the raw validation score using the same metric.
+      - Use the SAME scoring function for both training and validation to ensure an apples-to-apples comparison.
+      - Compute predictions on the training set using the SAME model object that was trained (do not retrain).
+      - For tree-based ensemble models, also consider reporting out-of-bag score if available (e.g., random forest with oob_score=True).
+      </best_practices>
+
+      <constraints>
+      - Keep ALL existing code logic intact.
+      - Add predictions and scoring on the training set in addition to the existing validation scoring.
+      </constraints>
+
+      <output_format>
+      Respond with a single markdown code block containing the modified Python script.
+      The script must print BOTH:
+      - `Training Performance: <score>`
+      - `Final Validation Performance: <score>`
+      </output_format>
+    variables:
+      - solution_code
+      - task_description
+      - evaluation_metric
+      - metric_direction

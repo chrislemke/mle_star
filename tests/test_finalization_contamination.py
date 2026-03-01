@@ -324,7 +324,7 @@ class TestCheckContaminationSingleNovel:
 
         solution = _make_solution()
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -346,7 +346,7 @@ class TestCheckContaminationSingleNovel:
         novel_json = DataContaminationResult(verdict="Novel").model_dump_json()
         client.send_message = AsyncMock(return_value=novel_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -376,7 +376,7 @@ class TestCheckContaminationSingleSame:
 
         solution = _make_solution()
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -409,7 +409,7 @@ class TestCheckContaminationMultipleAllNovel:
 
         refs = ["ref1", "ref2", "ref3"]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -430,7 +430,7 @@ class TestCheckContaminationMultipleAllNovel:
 
         refs = ["ref1", "ref2", "ref3"]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -462,7 +462,7 @@ class TestCheckContaminationMultipleAnySame:
 
         refs = ["ref1", "ref2", "ref3"]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -484,7 +484,7 @@ class TestCheckContaminationMultipleAnySame:
 
         refs = ["ref1", "ref2"]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -506,7 +506,7 @@ class TestCheckContaminationMultipleAnySame:
 
         refs = ["ref1", "ref2", "ref3"]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -527,7 +527,7 @@ class TestCheckContaminationMultipleAnySame:
 
         refs = ["ref1", "ref2"]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -558,7 +558,7 @@ class TestCheckContaminationPromptRendering:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -585,7 +585,7 @@ class TestCheckContaminationPromptRendering:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -617,7 +617,7 @@ class TestCheckContaminationPromptRendering:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -654,7 +654,7 @@ class TestCheckContaminationAgentInvocation:
         novel_json = DataContaminationResult(verdict="Novel").model_dump_json()
         client.send_message = AsyncMock(return_value=novel_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -674,7 +674,7 @@ class TestCheckContaminationAgentInvocation:
         novel_json = DataContaminationResult(verdict="Novel").model_dump_json()
         client.send_message = AsyncMock(return_value=novel_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -693,7 +693,7 @@ class TestCheckContaminationAgentInvocation:
         novel_json = DataContaminationResult(verdict="Novel").model_dump_json()
         client.send_message = AsyncMock(return_value=novel_json)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -753,7 +753,7 @@ class TestCheckContaminationLogging:
         client.send_message = AsyncMock(return_value=novel_json)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             caplog.at_level(logging.INFO, logger=_MODULE),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -786,7 +786,7 @@ class TestCheckContaminationGracefulDegradation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="not valid json at all")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -803,7 +803,7 @@ class TestCheckContaminationGracefulDegradation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value='{"verdict": "Invalid"}')
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -820,7 +820,7 @@ class TestCheckContaminationGracefulDegradation:
         client = AsyncMock()
         client.send_message = AsyncMock(side_effect=RuntimeError("API down"))
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -837,7 +837,7 @@ class TestCheckContaminationGracefulDegradation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -854,7 +854,7 @@ class TestCheckContaminationGracefulDegradation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value='{"wrong_key": "Novel"}')
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -918,7 +918,7 @@ class TestCheckContaminationParametrized:
 
         refs = [f"ref{i}" for i in range(len(verdicts))]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -953,7 +953,7 @@ class TestCheckContaminationPropertyBased:
 
         refs = [f"ref{i}" for i in range(num_refs)]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -987,7 +987,7 @@ class TestCheckContaminationPropertyBased:
 
         refs = [f"ref{i}" for i in range(num_refs)]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1012,7 +1012,7 @@ class TestCheckContaminationPropertyBased:
 
         refs = [f"ref{i}" for i in range(num_refs)]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1043,7 +1043,7 @@ class TestCheckContaminationPropertyBased:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 

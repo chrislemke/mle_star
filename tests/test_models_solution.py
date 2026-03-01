@@ -308,11 +308,11 @@ class TestSolutionScriptReplaceBlock:
         result = script.replace_block("x = 1", "x = 2")
         assert result.source_model == "claude-sonnet"
 
-    def test_replace_block_replaces_only_first_occurrence(self) -> None:
-        """replace_block replaces only the first occurrence of old."""
+    def test_replace_block_replaces_last_occurrence(self) -> None:
+        """replace_block replaces the last occurrence of old."""
         script = _make_solution_script(content="AAA BBB AAA CCC AAA")
         result = script.replace_block("AAA", "ZZZ")
-        assert result.content == "ZZZ BBB AAA CCC AAA"
+        assert result.content == "AAA BBB AAA CCC ZZZ"
 
     def test_replace_block_old_not_found_raises_value_error(self) -> None:
         """replace_block raises ValueError when old is not in content."""

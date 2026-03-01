@@ -113,7 +113,7 @@ def _make_debug_fixed_solution(
 
 @pytest.mark.unit
 class TestLeakageCheckBeforeEvaluation:
-    """check_and_fix_leakage is called before every evaluation (REQ-P2I-030)."""
+    """check_and_fix_leakage is called post-loop on the best solution (REQ-P2I-030)."""
 
     async def test_leakage_check_called_on_candidate(self) -> None:
         """check_and_fix_leakage is called with (candidate, task, client) after replace_block."""
@@ -146,8 +146,9 @@ class TestLeakageCheckBeforeEvaluation:
                 new_callable=AsyncMock,
                 return_value=(leakage_fixed, _make_eval_result(0.85)),
             ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
-            patch(f"{_MODULE}.is_improvement", return_value=False),
+            # is_improvement_or_equal=True triggers post-loop leakage check.
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=True),
         ):
             await run_phase2_inner_loop(
                 client=client,
@@ -159,18 +160,18 @@ class TestLeakageCheckBeforeEvaluation:
                 config=config,
             )
 
-        # check_and_fix_leakage was called exactly once (K=1)
+        # check_and_fix_leakage called once post-loop on the best solution.
         mock_leakage.assert_called_once()
         call_args = mock_leakage.call_args
-        # First arg is the candidate solution (after replace_block)
+        # First arg is the best solution (after improvement)
         assert isinstance(call_args[0][0], SolutionScript)
         # Second arg is the task
         assert call_args[0][1] is task
         # Third arg is the client
         assert call_args[0][2] is client
 
-    async def test_leakage_checked_solution_passed_to_evaluate(self) -> None:
-        """The leakage-checked solution is what gets evaluated, not the raw candidate."""
+    async def test_leakage_fixed_solution_triggers_reevaluation(self) -> None:
+        """Post-loop leakage fix triggers re-evaluation with the fixed solution."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -178,6 +179,7 @@ class TestLeakageCheckBeforeEvaluation:
         code_block = _make_code_block()
         task = _make_task()
         config = _make_config(inner_loop_steps=1)
+        candidate = _make_solution("step candidate")
         leakage_fixed = _make_leakage_fixed_solution("leakage-safe code")
 
         with (
@@ -198,10 +200,14 @@ class TestLeakageCheckBeforeEvaluation:
             patch(
                 f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
-                return_value=(leakage_fixed, _make_eval_result(0.85)),
+                side_effect=[
+                    (candidate, _make_eval_result(0.85)),       # in-step eval
+                    (leakage_fixed, _make_eval_result(0.84)),   # post-loop re-eval
+                ],
             ) as mock_eval,
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
-            patch(f"{_MODULE}.is_improvement", return_value=False),
+            # Improvement triggers post-loop leakage check.
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=True),
         ):
             await run_phase2_inner_loop(
                 client=client,
@@ -213,30 +219,26 @@ class TestLeakageCheckBeforeEvaluation:
                 config=config,
             )
 
-        # evaluate_with_retry receives the leakage-fixed solution
-        eval_call_args = mock_eval.call_args
-        assert eval_call_args[0][0] is leakage_fixed
+        # evaluate_with_retry called twice: once in step, once after leakage fix.
+        assert mock_eval.call_count == 2
+        # The re-evaluation (second call) receives the leakage-fixed solution.
+        assert mock_eval.call_args_list[1][0][0] is leakage_fixed
 
-    async def test_leakage_check_called_every_iteration(self) -> None:
-        """check_and_fix_leakage is called once per successful iteration (K=3)."""
+    async def test_leakage_check_called_once_post_loop(self) -> None:
+        """check_and_fix_leakage is called once after the loop when improvement occurs."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
         solution = _make_solution()
         code_block = _make_code_block()
         task = _make_task()
-        config = _make_config(inner_loop_steps=3)
+        config = _make_config(inner_loop_steps=1)
 
         with (
             patch(
                 f"{_MODULE}.invoke_coder",
                 new_callable=AsyncMock,
                 return_value="improved code",
-            ),
-            patch(
-                f"{_MODULE}.invoke_planner",
-                new_callable=AsyncMock,
-                return_value="next plan",
             ),
             patch(
                 f"{_MODULE}.check_and_fix_leakage",
@@ -252,8 +254,9 @@ class TestLeakageCheckBeforeEvaluation:
                 new_callable=AsyncMock,
                 return_value=(_make_solution(), _make_eval_result(0.85)),
             ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
-            patch(f"{_MODULE}.is_improvement", return_value=False),
+            # Improvement triggers post-loop leakage check.
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=True),
         ):
             await run_phase2_inner_loop(
                 client=client,
@@ -265,7 +268,8 @@ class TestLeakageCheckBeforeEvaluation:
                 config=config,
             )
 
-        assert mock_leakage.call_count == 3
+        # Leakage check called once post-loop (not per-iteration).
+        assert mock_leakage.call_count == 1
 
     async def test_leakage_modified_solution_becomes_best(self) -> None:
         """When leakage check modifies the candidate, the modified version is used for tracking."""
@@ -453,8 +457,8 @@ class TestLeakageCheckBeforeEvaluation:
                 config=config,
             )
 
-        # Only called once for k=0 (k=1 planner failed, so no leakage check)
-        assert mock_leakage.call_count == 1
+        # Leakage check only post-loop when improved; is_improvement_or_equal=False → no call.
+        assert mock_leakage.call_count == 0
 
 
 # ===========================================================================
@@ -605,7 +609,11 @@ class TestEvaluateWithRetry:
         assert eval_call[0][3] is sentinel_callback
 
     async def test_evaluate_with_retry_receives_correct_args(self) -> None:
-        """evaluate_with_retry receives (leakage_checked_solution, task, config, callback)."""
+        """evaluate_with_retry receives (candidate_from_replace_block, task, config, callback).
+
+        Leakage checking now runs post-loop, so evaluate_with_retry receives
+        the candidate produced by replace_block, not the leakage-fixed version.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -613,8 +621,8 @@ class TestEvaluateWithRetry:
         code_block = _make_code_block()
         task = _make_task()
         config = _make_config(inner_loop_steps=1)
-        leakage_fixed = _make_leakage_fixed_solution()
         sentinel_callback = AsyncMock()
+        candidate_result = _make_eval_result(0.85)
 
         with (
             patch(
@@ -625,7 +633,7 @@ class TestEvaluateWithRetry:
             patch(
                 f"{_MODULE}.check_and_fix_leakage",
                 new_callable=AsyncMock,
-                return_value=leakage_fixed,
+                side_effect=lambda sol, _task, _client: sol,
             ),
             patch(
                 f"{_MODULE}.make_debug_callback",
@@ -634,7 +642,7 @@ class TestEvaluateWithRetry:
             patch(
                 f"{_MODULE}.evaluate_with_retry",
                 new_callable=AsyncMock,
-                return_value=(leakage_fixed, _make_eval_result(0.85)),
+                return_value=(solution, candidate_result),
             ) as mock_eval_retry,
             patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
             patch(f"{_MODULE}.is_improvement", return_value=False),
@@ -650,7 +658,9 @@ class TestEvaluateWithRetry:
             )
 
         eval_call = mock_eval_retry.call_args
-        assert eval_call[0][0] is leakage_fixed  # leakage-checked solution
+        # First arg is the candidate from replace_block (contains coder output)
+        candidate_arg = eval_call[0][0]
+        assert "improved code" in candidate_arg.content
         assert eval_call[0][1] is task  # task
         assert eval_call[0][2] is config  # config
         assert eval_call[0][3] is sentinel_callback  # debug callback
@@ -1051,7 +1061,8 @@ class TestCallOrdering:
                 config=config,
             )
 
-        assert call_order == ["leakage", "eval"]
+        # Leakage check moved to post-loop; only eval runs per-iteration.
+        assert call_order == ["eval"]
 
     async def test_call_ordering_across_multiple_iterations(self) -> None:
         """For K=3, leakage-eval pairs are interleaved correctly per iteration."""
@@ -1116,8 +1127,9 @@ class TestCallOrdering:
                 config=config,
             )
 
-        # Each iteration: leakage then eval, repeated 3 times
-        assert call_order == ["leakage", "eval", "leakage", "eval", "leakage", "eval"]
+        # Leakage check moved to post-loop; only evals run per-iteration.
+        # Early stopping (patience=2) stops after 2 no-improvement iterations.
+        assert call_order == ["eval", "eval"]
 
 
 # ===========================================================================
@@ -1288,7 +1300,9 @@ class TestPropertyBased:
 
         assert result.best_solution is solution
         assert result.improved is False
-        assert len(result.attempts) == k_steps
+        # Early stopping (patience=2) limits attempts when no improvement.
+        expected = k_steps if k_steps <= 2 else 2
+        assert len(result.attempts) == expected
 
     @given(
         k_steps=st.integers(min_value=1, max_value=6),
@@ -1345,7 +1359,9 @@ class TestPropertyBased:
                 config=config,
             )
 
-        assert mock_leakage.call_count == k_steps
+        # Leakage check moved to post-loop; only runs when improved.
+        # is_improvement_or_equal=False → no improvement → no leakage call.
+        assert mock_leakage.call_count == 0
 
     @given(
         k_steps=st.integers(min_value=1, max_value=6),
@@ -1402,7 +1418,9 @@ class TestPropertyBased:
                 config=config,
             )
 
-        assert mock_eval_retry.call_count == k_steps
+        # Early stopping (patience=2) limits iterations when no improvement.
+        expected = k_steps if k_steps <= 2 else 2
+        assert mock_eval_retry.call_count == expected
 
 
 # ===========================================================================
@@ -1466,9 +1484,10 @@ class TestMixedIterationScenarios:
                 config=config,
             )
 
-        # k=0: coder failed -> no leakage, no eval
-        # k=1: coder succeeded -> leakage + eval
-        assert mock_leakage.call_count == 1
+        # k=0: coder failed -> no eval
+        # k=1: coder succeeded -> eval
+        # Leakage: post-loop only, is_improvement_or_equal=False → no call.
+        assert mock_leakage.call_count == 0
         assert mock_eval.call_count == 1
         assert len(result.attempts) == 2
         assert result.attempts[0].code_block == ""  # coder failure
@@ -1522,9 +1541,10 @@ class TestMixedIterationScenarios:
                 config=config,
             )
 
-        # k=0 succeeds -> leakage + eval called
-        # k=1 planner fails -> neither called
-        assert mock_leakage.call_count == 1
+        # k=0 succeeds -> eval called
+        # k=1 planner fails -> no eval
+        # Leakage: post-loop only, is_improvement_or_equal=False → no call.
+        assert mock_leakage.call_count == 0
         assert mock_eval.call_count == 1
         assert len(result.attempts) == 2
         assert result.attempts[1].plan == "[planner failed]"

@@ -36,7 +36,7 @@ from mle_star.models import (
     SolutionScript,
     TaskDescription,
 )
-from mle_star.prompts import PromptRegistry
+from mle_star.prompts import get_registry
 from mle_star.safety import (
     check_and_fix_leakage,
     extract_code_block,
@@ -103,7 +103,7 @@ async def _remove_subsampling_impl(
     Returns:
         The (potentially updated) ``SolutionScript``.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     # ------------------------------------------------------------------
     # Step 1 — Extract the subsampling code block (REQ-FN-001).
     # ------------------------------------------------------------------
@@ -216,7 +216,7 @@ async def generate_test_submission(
         ``is_executable=True``.  Content is the extracted code from the
         agent response, or empty string on empty extraction (REQ-FN-040).
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.TEST)
 
     prompt = template.render(
@@ -320,7 +320,7 @@ async def _check_contamination_impl(
     Returns:
         Overall ``DataContaminationResult`` with aggregated verdict.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.TEST, variant="contamination_check")
     verdicts: list[str] = []
     for ref in reference_discussions:

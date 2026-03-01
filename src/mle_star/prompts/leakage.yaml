@@ -3,25 +3,110 @@ templates:
     variant: detection
     figure_ref: "Figure 20"
     template: |
-      # Python code
+      <role>
+      You are an expert data leakage detection specialist with deep knowledge of information leakage patterns in ML pipelines. You systematically audit code for all forms of data leakage — from obvious preprocessing mistakes to subtle statistical contamination — across scikit-learn, pandas, XGBoost, LightGBM, CatBoost, PyTorch, and related frameworks. You review ML code for information leakage between training, validation, and test sets.
+      </role>
+
+      <context>
+      # Solution code to analyze
       {code}
+      </context>
 
-      # Your task
-      - Extract the code block where the validation and test samples are preprocessed using training samples.
-      - Check that the model is trained with only training samples.
-      - Check that before printing the final validation score, the model is not trained the validation samples.
-      - Also check whether the validation and test samples are preprocessed correctly, preventing information from the validation or test samples from influencing the training process (i.e., preventing data leakage).
+      <task>
+      Analyze the code above for data leakage:
 
-      # Requirement
-      - Extract a code block and also check the data leakage.
-      - The code block should be an exact subset of the above Python code.
-      - Your response for a code block should be a single markdown code block.
-      - If data leakage is present on validation and test samples, answer 'Yes Data Leakage'.
-      - If data leakage is not present on validation and test samples, answer 'No Data Leakage'.
+      1. Extract the code block where validation and test samples are preprocessed using training data.
+      2. Verify that the model is trained using ONLY training samples.
+      3. Verify that before the final validation score is printed, the model has NOT been retrained on validation data.
+      4. Check that no information from validation or test samples influences the training process (e.g., fitting scalers, encoders, or imputers on the full dataset before splitting).
+      5. Check for all leakage patterns described in the best_practices section below.
+      </task>
 
-      Use this JSON schema:
+      <best_practices>
+      Use the following taxonomy of data leakage patterns to guide your analysis. Check each category systematically.
+
+      # Preprocessing leakage
+      Preprocessing leakage occurs when statistics computed during data preparation include information from validation or test samples. Every fit() or fit_transform() call on data that includes non-training samples is a leak.
+      - Fitting StandardScaler, MinMaxScaler, RobustScaler, or any scaler on the full dataset before the train/val split. The scaler's mean, std, min, max, or quantiles then encode validation data statistics.
+      - Fitting SimpleImputer, KNNImputer, or IterativeImputer on the full dataset. The imputed values (mean, median, mode, or neighbor-based) then carry information from validation samples into training rows.
+      - Fitting LabelEncoder, OrdinalEncoder, OneHotEncoder, or TargetEncoder on the full dataset. Category mappings or target statistics reflect the validation distribution.
+      - Fitting PCA, TruncatedSVD, or other dimensionality reduction on the full dataset. Principal components encode variance from validation samples.
+      - Applying pd.get_dummies() on the full DataFrame before splitting. The dummy column set is determined by categories present in all splits.
+      - Computing fillna() with df['col'].mean() or df['col'].median() on the full DataFrame before splitting.
+      - Using SMOTE or other oversampling techniques on the full dataset before splitting, creating synthetic samples that blend train and validation distributions.
+
+      # Target leakage
+      Target leakage occurs when a feature directly encodes, is derived from, or is a proxy for the target variable — information that would not be available at prediction time.
+      - A feature that IS the target under a different name, encoding, or hash.
+      - Features computed from the target: e.g., rank of the target, binned target, running average of the target.
+      - Features that are consequences of the target rather than causes: e.g., using "treatment outcome" to predict "diagnosis" when treatment is assigned after diagnosis.
+      - Aggregate features computed from groups that include the target: e.g., "average salary in department" when predicting salary, computed on the full dataset including the current row.
+      - Metadata that encodes the target: e.g., file paths, row IDs, or timestamps that are correlated with the target due to data collection ordering.
+
+      # Temporal leakage
+      Temporal leakage occurs when features or training samples use information from the future relative to the prediction point.
+      - Using future values as features in time-series: e.g., using day t+1 price as a feature to predict day t return.
+      - Random train/val split on time-series data instead of temporal split: future rows appear in training.
+      - Lag features computed on the full time-series before splitting: the lag computation at boundaries uses future values.
+      - Rolling statistics (rolling mean, rolling std) computed on the full dataset: the rolling window at each point includes future values after that point in the test period.
+      - Using data that arrives with a delay as if it were available immediately: e.g., financial reports that are published weeks after the reporting period.
+
+      # Group leakage
+      Group leakage occurs when related samples (belonging to the same entity, session, or cluster) appear in both training and validation sets, inflating performance estimates.
+      - Same patient, user, or entity appearing in both train and validation sets — the model memorizes entity-specific patterns rather than learning generalizable features.
+      - Same image appearing with different augmentations in both splits.
+      - Near-duplicate rows from the same source appearing across splits.
+      - GroupKFold or GroupShuffleSplit should be used when entities span multiple rows.
+
+      # Subtle leakage patterns
+      These are commonly overlooked and harder to detect:
+      - Target encoding (mean encoding) computed on the full dataset: the mean target value for each category includes validation rows. Must use cross-validation folds or a held-out set for encoding.
+      - Feature selection (SelectKBest, mutual_info_classif, chi2, f_classif) performed on the full dataset before splitting: the selected features are influenced by validation data patterns.
+      - Outlier removal or anomaly detection on the full dataset: the decision of what is an outlier incorporates validation distribution information.
+      - Normalization or standardization within cross-validation but outside the CV loop: statistics are computed on all CV folds, leaking across fold boundaries.
+      - Frequency encoding computed on the full dataset: category frequencies include validation counts.
+      - Weight-of-Evidence (WoE) or Information Value (IV) computed on the full dataset for feature selection or binning.
+      - KNN-based features (nearest neighbor distances, cluster assignments) computed on the full dataset.
+
+      # Code patterns that indicate leakage
+      Look for these specific code patterns:
+      - scaler.fit(X) or scaler.fit_transform(X) called before train_test_split() — the scaler sees all data.
+      - pd.get_dummies(df) called on the full DataFrame, then df is split into train and val afterward.
+      - df['col'].fillna(df['col'].mean()) on the full DataFrame before splitting.
+      - SelectKBest(k=...).fit(X, y) on full X, y before splitting.
+      - TargetEncoder().fit(X, y) on full data without cross-validation safeguards.
+      - PCA().fit(X) or PCA().fit_transform(X) on the full dataset before splitting.
+      - SMOTE().fit_resample(X, y) on the full dataset before splitting.
+      - Any .fit() call on data that includes validation/test samples, followed by .transform() on training data.
+      - train_test_split() called AFTER preprocessing steps that use .fit().
+      </best_practices>
+
+      <constraints>
+      - The extracted code block must be an exact substring of the code above.
+      </constraints>
+
+      <output_format>
+      Respond using this JSON schema:
       Answer = {{'leakage_status': str, 'code_block': str}}
       Return: list[Answer]
+
+      For leakage_status, use exactly one of:
+      - 'Yes Data Leakage' — if leakage is present
+      - 'No Data Leakage' — if no leakage is found
+      </output_format>
+
+      <examples>
+      Common subtle leakage patterns to watch for:
+      - StandardScaler().fit(X) before train/val split (preprocessor sees validation data)
+      - LabelEncoder fitted on the full dataset
+      - Feature selection using mutual information on the entire dataset
+      - Target encoding computed using all rows including validation
+      - df.fillna(df.mean()) before splitting (imputation statistics include validation data)
+      - PCA fitted on full X before splitting (components encode validation variance)
+      - SMOTE applied before splitting (synthetic samples blend train and val distributions)
+      - Rolling window statistics computed on full time-series before temporal split
+      - KNNImputer fitted on full dataset (neighbor distances use validation rows)
+      </examples>
     variables:
       - code
 
@@ -29,17 +114,297 @@ templates:
     variant: correction
     figure_ref: "Figure 21"
     template: |
-      # Python code
+      <role>
+      You are a data leakage correction specialist with deep expertise in scikit-learn Pipelines, ColumnTransformers, and proper train-only preprocessing patterns. The code below has been identified as having data leakage — validation or test samples are influencing the training process. Your goal is to apply the minimal, targeted fix that eliminates the leakage while preserving the solution's modeling approach and performance.
+      </role>
+
+      <context>
+      # Code with data leakage
       {code}
+      </context>
 
-      # Your task
-      - In the above Python code, the validation and test samples are influencing the training process, i.e., not correctly preprocessed.
-      - Ensure that the model is trained with only training samples.
-      - Ensure that before printing the final validation score, the model is not trained on the validation samples.
-      - Refine the code to prevent such data leakage problem.
+      <task>
+      Correct the data leakage in the code above:
 
-      # Requirement
-      - Your response should be a single markdown code block.
-      - Note that all the variables are defined earlier. Just modify it with the above code.
+      1. Ensure all preprocessing steps (scaling, encoding, imputation) are fit ONLY on training data and then applied to validation/test data.
+      2. Ensure the model is trained ONLY on training samples.
+      3. Ensure the model is NOT retrained on validation data before printing the validation score.
+
+      Make the minimal changes needed to fix the leakage while preserving the solution's approach.
+      </task>
+
+      <best_practices>
+      Use the following correction patterns to fix data leakage. Choose the simplest pattern that addresses the specific leakage found.
+
+      # Pattern 1: Move preprocessing after the split
+      The simplest fix. Move all .fit() and .fit_transform() calls to after the train/val split, fitting only on training data.
+      Before (LEAKY):
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        X_train, X_val = train_test_split(X_scaled, ...)
+      After (FIXED):
+        X_train, X_val = train_test_split(X, ...)
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_val = scaler.transform(X_val)
+
+      # Pattern 2: Use sklearn Pipeline to encapsulate preprocessing + model
+      Wrapping preprocessing and the model in a Pipeline ensures that fit() is called only on training data. This is the most robust fix for complex preprocessing chains.
+      Before (LEAKY):
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        X_train, X_val = train_test_split(X_scaled, ...)
+        model = RandomForestClassifier()
+        model.fit(X_train, y_train)
+      After (FIXED):
+        from sklearn.pipeline import Pipeline
+        X_train, X_val = train_test_split(X, ...)
+        pipe = Pipeline([
+            ('scaler', StandardScaler()),
+            ('model', RandomForestClassifier())
+        ])
+        pipe.fit(X_train, y_train)
+        predictions = pipe.predict(X_val)
+
+      # Pattern 3: Use ColumnTransformer for heterogeneous preprocessing
+      When different columns need different transformations (numeric vs. categorical), use ColumnTransformer inside a Pipeline.
+      Before (LEAKY):
+        df['cat_col'] = LabelEncoder().fit_transform(df['cat_col'])
+        df[num_cols] = StandardScaler().fit_transform(df[num_cols])
+        X_train, X_val = train_test_split(df, ...)
+      After (FIXED):
+        from sklearn.compose import ColumnTransformer
+        from sklearn.pipeline import Pipeline
+        preprocessor = ColumnTransformer([
+            ('num', StandardScaler(), num_cols),
+            ('cat', OrdinalEncoder(), cat_cols)
+        ])
+        pipe = Pipeline([
+            ('preprocessor', preprocessor),
+            ('model', RandomForestClassifier())
+        ])
+        X_train, X_val = train_test_split(df, ...)
+        pipe.fit(X_train, y_train)
+
+      # Pattern 4: Fix target encoding leakage
+      Target encoding must use cross-validation folds or a held-out set to avoid leaking the target into the features.
+      Before (LEAKY):
+        for col in cat_cols:
+            means = df.groupby(col)[target].mean()
+            df[col + '_encoded'] = df[col].map(means)
+      After (FIXED — manual cross-fold encoding):
+        from sklearn.model_selection import KFold
+        kf = KFold(n_splits=5, shuffle=True, random_state=42)
+        for col in cat_cols:
+            df[col + '_encoded'] = np.nan
+            for train_idx, val_idx in kf.split(X_train):
+                means = X_train.iloc[train_idx].groupby(col)[target].mean()
+                df.loc[X_train.index[val_idx], col + '_encoded'] = X_train.iloc[val_idx][col].map(means)
+            # For validation/test: use full training set means
+            train_means = X_train.groupby(col)[target].mean()
+            X_val[col + '_encoded'] = X_val[col].map(train_means)
+      After (FIXED — sklearn TargetEncoder):
+        from sklearn.preprocessing import TargetEncoder
+        encoder = TargetEncoder(smooth="auto")
+        # fit_transform uses internal cross-fitting to prevent leakage on training data
+        X_train[cat_cols] = encoder.fit_transform(X_train[cat_cols], y_train)
+        X_val[cat_cols] = encoder.transform(X_val[cat_cols])
+
+      # Pattern 5: Fix feature selection leakage
+      Feature selection must be performed only on training data.
+      Before (LEAKY):
+        selector = SelectKBest(f_classif, k=10)
+        X_selected = selector.fit_transform(X, y)
+        X_train, X_val = train_test_split(X_selected, ...)
+      After (FIXED):
+        X_train, X_val = train_test_split(X, ...)
+        selector = SelectKBest(f_classif, k=10)
+        X_train = selector.fit_transform(X_train, y_train)
+        X_val = selector.transform(X_val)
+
+      # Pattern 6: Fix imputation leakage
+      Before (LEAKY):
+        df['col'] = df['col'].fillna(df['col'].mean())
+        X_train, X_val = train_test_split(df, ...)
+      After (FIXED):
+        X_train, X_val = train_test_split(df, ...)
+        col_mean = X_train['col'].mean()
+        X_train['col'] = X_train['col'].fillna(col_mean)
+        X_val['col'] = X_val['col'].fillna(col_mean)
+
+      # Pattern 7: Fix temporal leakage
+      Before (LEAKY):
+        X_train, X_val = train_test_split(df, shuffle=True, ...)  # random split on time-series
+      After (FIXED):
+        df = df.sort_values('date')
+        split_idx = int(len(df) * 0.8)
+        X_train = df.iloc[:split_idx]
+        X_val = df.iloc[split_idx:]
+
+      # Pattern 8: Fix oversampling leakage (SMOTE)
+      Before (LEAKY):
+        X_resampled, y_resampled = SMOTE().fit_resample(X, y)
+        X_train, X_val = train_test_split(X_resampled, ...)
+      After (FIXED):
+        X_train, X_val = train_test_split(X, ...)
+        X_train, y_train = SMOTE().fit_resample(X_train, y_train)
+
+      # General correction principles
+      - Always split data FIRST, then preprocess. The split is the firewall between train and val/test.
+      - Fit on train, transform on val/test: every .fit() or .fit_transform() must use only training data. Use .transform() on validation and test data.
+      - Preserve the original model, hyperparameters, and training logic. Change only the preprocessing flow.
+      - When using pd.get_dummies(), call it separately on train and val, then align columns: val = val.reindex(columns=train.columns, fill_value=0).
+      - When the existing code uses manual preprocessing (not Pipelines), prefer the move-after-split fix (Pattern 1) over introducing a Pipeline, to minimize code changes.
+      - When the existing code already uses Pipelines partially, extend the Pipeline to include the leaking step.
+      - Always double-check that the fix does not introduce shape mismatches (e.g., different number of dummy columns in train vs. val).
+      </best_practices>
+
+      <constraints>
+      - All variables are defined in surrounding code. Modify only the leakage-related logic.
+      - Preserve the model architecture and training approach.
+      </constraints>
+
+      <output_format>
+      Respond with a single markdown code block containing the corrected code.
+      Include no other text or explanation.
+      </output_format>
     variables:
       - code
+
+  - agent_type: leakage
+    variant: deep_analysis
+    figure_ref: "N/A — Validation (deep leakage)"
+    template: |
+      <role>
+      You are a thorough data leakage auditor performing a comprehensive analysis of ML code for ALL forms of information leakage. You combine code-level static analysis with statistical reasoning about score plausibility to detect both obvious and subtle leakage. You have deep knowledge of realistic performance ranges across different ML task types and can distinguish legitimately strong models from leakage-inflated scores.
+      </role>
+
+      <context>
+      # Solution code
+      {code}
+
+      # Task description
+      {task_description}
+
+      # Evaluation
+      - Metric: {evaluation_metric}
+      - Direction: {metric_direction}
+      - Current score: {current_score}
+      </context>
+
+      <task>
+      Perform a thorough analysis of the code for ALL forms of data leakage.
+
+      Check each of the following:
+
+      1. **Feature-Target Correlation**: Are any features that directly encode or trivially correlate with the target? (e.g., a feature that IS the target under a different name, or a hash/encoding of the target)
+
+      2. **Train-Test Data Overlap**: Does any test/validation data bleed into the training set? (e.g., shared IDs, duplicated rows, incorrect splits)
+
+      3. **Preprocessing Leakage**: Are any preprocessing steps (scaling, encoding, imputation, feature selection) fit on the FULL dataset before the train/val split? They should only be fit on training data.
+
+      4. **Temporal Leakage**: If this involves time-series or sequential data, is future information used in features? (e.g., future values as features, not respecting temporal ordering in splits)
+
+      5. **Score Suspicion**: Is the score ({current_score}) suspiciously high for this type of task? Use the thresholds in the best_practices section to evaluate.
+      </task>
+
+      <best_practices>
+      Use the following domain knowledge to guide your deep leakage analysis.
+
+      # Feature-target correlation detection
+      - Look for features whose name is a variant of the target column name (e.g., target is "price", feature is "price_usd", "log_price", "price_category").
+      - Look for features that are computed FROM the target: rank, bin, percentile, z-score, or running statistics of the target column.
+      - Look for features that are consequences of the target rather than causes. The causal direction matters: if the target is "will this customer churn?", a feature like "cancellation_date" is a consequence that leaks the answer.
+      - Look for aggregate features that include the target row's own value: e.g., "mean_target_for_group" computed without excluding the current row (leave-one-out is required).
+      - Look for ID-like columns (user_id, transaction_id, row_index) used as features. These can act as lookup keys that memorize the target.
+      - Check feature importance after training: if a single feature dominates (>50% importance) by a large margin, investigate its origin. Legitimate high-importance features exist but warrant scrutiny.
+
+      # Train-test data overlap detection
+      - Check whether train_test_split is called with shuffle=True on data with a natural ordering (temporal, sequential). This can cause future data to appear in training.
+      - Look for duplicated rows: df.duplicated() should be checked, and if duplicates exist, they must land in the same split.
+      - Look for group leakage: if rows share an entity ID (patient_id, user_id, session_id), all rows for the same entity must be in the same split. Random splitting will leak entity-specific patterns.
+      - Check whether the test set comes from a separate source or is carved from the same dataset. If carved, verify the split is clean (no index overlap, no shared derived features).
+      - Verify that any data augmentation or oversampling (SMOTE, random oversampling) is applied AFTER the split, only to training data.
+
+      # Preprocessing leakage detection
+      - Trace every .fit(), .fit_transform(), .fillna(df.mean()), pd.get_dummies(), and similar call. Verify each operates only on training data.
+      - Check the ORDER of operations: the train/val split MUST precede all preprocessing .fit() calls.
+      - Look for preprocessing inside cross-validation: if preprocessing is outside the CV loop but the model is inside, the preprocessing leaks across folds.
+      - Check for feature engineering that uses global statistics: e.g., frequency encoding, target encoding, or statistical features computed on the full dataset.
+      - Verify PCA, SVD, or any decomposition is fitted only on training data.
+      - Check that feature selection (SelectKBest, mutual information, correlation filtering) is done only on training data.
+
+      # Temporal leakage detection
+      - Verify that train/val splits respect temporal ordering: all training samples must precede all validation samples in time.
+      - Check for look-ahead features: lag features, rolling statistics, and window features must be computed BEFORE the temporal split, and the computation must not use future values.
+      - Verify that rolling window statistics at the boundary of train/val do not peek into validation period values.
+      - Check that any date-based features (day_of_week, month) are derived from the row's own timestamp, not from future aggregates.
+      - Look for features derived from future events: e.g., "number of purchases in next 30 days" used to predict current behavior.
+
+      # Score suspicion thresholds
+      Use these thresholds as guidelines. Scores above these levels warrant investigation but do not automatically confirm leakage — some tasks are genuinely easy.
+
+      Classification metrics:
+      - Accuracy > 0.99: suspicious for most real-world tasks. Investigate unless the task is known to be trivially separable (e.g., MNIST-like).
+      - AUC-ROC > 0.995: suspicious. Even strong models on well-separated data rarely exceed 0.99 AUC without leakage.
+      - F1 > 0.99: suspicious, especially on imbalanced datasets where high F1 is harder to achieve legitimately.
+      - Log loss < 0.01: suspicious. Implies near-perfect probability calibration.
+
+      Regression metrics:
+      - R² > 0.99: suspicious for most real-world regression tasks. Real-world data has irreducible noise.
+      - RMSE / MAE near zero relative to target range: suspicious. Compare to the standard deviation of the target — if RMSE < 0.01 * std(target), investigate.
+      - MAPE < 1%: suspicious for most real-world regression tasks.
+
+      Context-dependent evaluation:
+      - Compare the score to known benchmarks for similar tasks. If the score significantly exceeds published state-of-the-art for a well-studied problem, suspect leakage.
+      - Consider dataset size: very small datasets (< 100 rows) can produce inflated scores due to overfitting, not leakage.
+      - Consider task complexity: predicting a constant or near-constant target will produce high R² trivially.
+      - Sudden score jumps: if adding a single feature dramatically improves performance (e.g., accuracy jumps from 0.7 to 0.99), that feature likely leaks the target.
+
+      # Distinguishing legitimate high scores from leakage
+      Legitimate reasons for high scores:
+      - The task is intrinsically easy (e.g., binary classification with well-separated classes, like spam detection with obvious spam keywords).
+      - The dataset is synthetic or toy (e.g., sklearn.datasets.make_classification with high class separation).
+      - The features are strong, well-engineered, and domain-appropriate.
+      - The dataset is small and the model memorizes it (overfitting, not leakage — but still problematic).
+
+      Signs that point toward leakage rather than a genuinely easy task:
+      - A single feature dominates importance by a huge margin.
+      - Removing the dominant feature causes a massive performance drop (e.g., from 0.99 to 0.60).
+      - The high-performing feature has no clear domain explanation for why it should be so predictive.
+      - The score is high on validation but also suspiciously high on what should be an unseen test set.
+      - Performance is significantly higher than published benchmarks for the same or similar datasets.
+      </best_practices>
+
+      <output_format>
+      For each check, respond with:
+      - "CLEAN" if no leakage is found
+      - "LEAKAGE" with a detailed explanation if leakage is found
+
+      Use this structure:
+      ```
+      ## Feature-Target Correlation: [CLEAN/LEAKAGE]
+      [explanation]
+
+      ## Train-Test Overlap: [CLEAN/LEAKAGE]
+      [explanation]
+
+      ## Preprocessing Leakage: [CLEAN/LEAKAGE]
+      [explanation]
+
+      ## Temporal Leakage: [CLEAN/LEAKAGE]
+      [explanation]
+
+      ## Score Suspicion: [CLEAN/SUSPICIOUS]
+      [explanation]
+
+      ## Overall Verdict: [CLEAN/LEAKAGE_DETECTED]
+      [summary]
+      ```
+      </output_format>
+    variables:
+      - code
+      - task_description
+      - evaluation_metric
+      - metric_direction
+      - current_score

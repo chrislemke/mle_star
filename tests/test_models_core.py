@@ -431,9 +431,9 @@ class TestPipelineConfigOrchestratorFields:
         assert cfg.permission_mode == "dangerously-skip-permissions"
 
     def test_model_default(self) -> None:
-        """Model defaults to 'sonnet' (REQ-OR-044)."""
+        """Model defaults to 'opus' (REQ-OR-044)."""
         cfg = PipelineConfig()
-        assert cfg.model == "sonnet"
+        assert cfg.model == "opus"
 
     def test_log_level_default(self) -> None:
         """log_level defaults to 'INFO' (REQ-OR-047)."""

@@ -899,7 +899,7 @@ class TestBreakOnFirstNonImprovement:
     """Merge loop breaks on first non-improvement (REQ-P1-027)."""
 
     async def test_stops_after_non_improvement(self) -> None:
-        """When is_improvement_or_equal returns False, merge loop stops."""
+        """When is_improvement_or_equal returns False, merge loop tries all remaining candidates."""
         from mle_star.phase1 import run_phase1
 
         client = AsyncMock()
@@ -916,6 +916,8 @@ class TestBreakOnFirstNonImprovement:
 
         merged_01 = _make_merged_solution("merged_01")
         merged_res_01 = _make_eval_result(score=0.88)  # Worse than 0.90
+        merged_02 = _make_merged_solution("merged_02")
+        merged_res_02 = _make_eval_result(score=0.87)  # Also worse
 
         ranked = [(sol_0, res_0), (sol_1, res_1), (sol_2, res_2)]
 
@@ -927,18 +929,19 @@ class TestBreakOnFirstNonImprovement:
                 (sol_1, res_1),
                 (sol_2, res_2),
                 (merged_01, merged_res_01),
+                (merged_02, merged_res_02),
             ],
             ranked_pairs=ranked,
         )
-        mocks["merge_solutions"] = AsyncMock(side_effect=[merged_01])
-        # First merge is not an improvement
+        mocks["merge_solutions"] = AsyncMock(side_effect=[merged_01, merged_02])
+        # Neither merge is an improvement
         mocks["is_improvement_or_equal"] = MagicMock(return_value=False)
 
         with _apply_patches(mocks):
             result = await run_phase1(task, config, client)
 
-        # Only 1 merge call (second candidate never reached)
-        assert mocks["merge_solutions"].await_count == 1
+        # All remaining candidates tried (2 merges for 3 ranked)
+        assert mocks["merge_solutions"].await_count == 2
         # Original best retained
         assert result.initial_solution.content == sol_0.content
         assert result.initial_score == 0.90
@@ -999,8 +1002,8 @@ class TestBreakOnFirstNonImprovement:
 class TestMergeExecutionFailure:
     """Merge execution failure (is_error or score=None) breaks loop (REQ-P1-028)."""
 
-    async def test_merge_eval_error_breaks_loop(self) -> None:
-        """When merged solution evaluation returns is_error=True, loop breaks."""
+    async def test_merge_eval_error_continues_loop(self) -> None:
+        """When merged solution evaluation returns is_error=True, loop continues to next candidate."""
         from mle_star.phase1 import run_phase1
 
         client = AsyncMock()
@@ -1017,6 +1020,8 @@ class TestMergeExecutionFailure:
 
         merged_01 = _make_merged_solution("merged_01")
         merged_res_01 = _make_eval_result(score=None, is_error=True)
+        merged_02 = _make_merged_solution("merged_02")
+        merged_res_02 = _make_eval_result(score=None, is_error=True)
 
         ranked = [(sol_0, res_0), (sol_1, res_1), (sol_2, res_2)]
 
@@ -1028,16 +1033,17 @@ class TestMergeExecutionFailure:
                 (sol_1, res_1),
                 (sol_2, res_2),
                 (merged_01, merged_res_01),
+                (merged_02, merged_res_02),
             ],
             ranked_pairs=ranked,
         )
-        mocks["merge_solutions"] = AsyncMock(return_value=merged_01)
+        mocks["merge_solutions"] = AsyncMock(side_effect=[merged_01, merged_02])
 
         with _apply_patches(mocks):
             result = await run_phase1(task, config, client)
 
-        # Only 1 merge attempted; loop broke on error
-        assert mocks["merge_solutions"].await_count == 1
+        # All remaining candidates tried (2 merges for 3 ranked)
+        assert mocks["merge_solutions"].await_count == 2
         # Original best retained
         assert result.initial_solution.content == sol_0.content
 
@@ -1364,8 +1370,8 @@ class TestGenerateCandidateReturnsNone:
 class TestMergeSolutionsReturnsNone:
     """merge_solutions returning None breaks out of merge loop."""
 
-    async def test_none_merge_breaks_loop(self) -> None:
-        """When merge_solutions returns None, merge loop stops immediately."""
+    async def test_none_merge_continues_loop(self) -> None:
+        """When merge_solutions returns None, merge loop continues to next candidate."""
         from mle_star.phase1 import run_phase1
 
         client = AsyncMock()
@@ -1392,14 +1398,14 @@ class TestMergeSolutionsReturnsNone:
             ],
             ranked_pairs=ranked,
         )
-        # merge returns None (failed merge)
+        # merge returns None (failed merge) for all attempts
         mocks["merge_solutions"] = AsyncMock(return_value=None)
 
         with _apply_patches(mocks):
             result = await run_phase1(task, config, client)
 
-        # Only 1 merge attempt; loop breaks after None return
-        assert mocks["merge_solutions"].await_count == 1
+        # All remaining candidates tried (2 merges for 3 ranked)
+        assert mocks["merge_solutions"].await_count == 2
         # Original best retained
         assert result.initial_solution.content == sol_0.content
         assert result.initial_score == 0.90

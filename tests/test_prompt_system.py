@@ -40,6 +40,7 @@ AGENT_TYPE_VALUES: list[str] = [
     "leakage",
     "data",
     "test",
+    "validator",
 ]
 
 # Single-template agents (one YAML file -> one PromptTemplate)
@@ -61,7 +62,7 @@ SINGLE_TEMPLATE_AGENTS: list[AgentType] = [
 ]
 
 # Leakage variants
-LEAKAGE_VARIANTS: list[str] = ["detection", "correction"]
+LEAKAGE_VARIANTS: list[str] = ["detection", "correction", "deep_analysis"]
 
 # Test variants (including the default with variant=None)
 TEST_VARIANTS: list[str] = [
@@ -70,11 +71,14 @@ TEST_VARIANTS: list[str] = [
     "contamination_check",
 ]
 
-# Total unique agent types = 16 (14 original + baseline + researcher)
-TOTAL_AGENT_TYPES: int = 16
+# Validator variants
+VALIDATOR_VARIANTS: list[str] = ["sanity", "overfitting"]
 
-# Total template variants = 13 single + 1 data + 2 leakage + 4 test = 20
-TOTAL_TEMPLATE_VARIANTS: int = 20
+# Total unique agent types = 17 (14 original + baseline + researcher + validator)
+TOTAL_AGENT_TYPES: int = 17
+
+# Total template variants = 14 single + 3 leakage + 4 test + 2 validator = 23
+TOTAL_TEMPLATE_VARIANTS: int = 23
 
 
 # ---------------------------------------------------------------------------
@@ -644,7 +648,12 @@ class TestPromptRegistryLeakageVariants:
         """Rendering any leakage variant template produces expected substitutions."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.LEAKAGE, variant=variant)
-        rendered = pt.render(code="import pandas as pd")
+        # deep_analysis requires extra variables beyond just 'code'
+        kwargs: dict[str, str] = {"code": "import pandas as pd"}
+        for var in pt.variables:
+            if var not in kwargs:
+                kwargs[var] = f"<{var}>"
+        rendered = pt.render(**kwargs)
         assert "import pandas as pd" in rendered
 
     def test_leakage_detection_and_correction_are_different(self) -> None:
@@ -814,14 +823,14 @@ class TestPromptRegistryCoverage:
         assert len(retrieved_types) == TOTAL_AGENT_TYPES
 
     def test_total_template_variants_count(self) -> None:
-        """Total template variants across all agents is 18."""
+        """Total template variants across all agents is 23."""
         registry = PromptRegistry()
         count = 0
-        # Single-template agents (no variant): 12 (11 standard + data)
+        # Single-template agents (no variant): 14
         for agent_type in SINGLE_TEMPLATE_AGENTS:
             registry.get(agent_type)
             count += 1
-        # Leakage variants: 2
+        # Leakage variants: 3 (detection, correction, deep_analysis)
         for variant in LEAKAGE_VARIANTS:
             registry.get(AgentType.LEAKAGE, variant=variant)
             count += 1
@@ -830,6 +839,10 @@ class TestPromptRegistryCoverage:
         count += 1
         for variant in TEST_VARIANTS:
             registry.get(AgentType.TEST, variant=variant)
+            count += 1
+        # Validator variants: 2 (sanity, overfitting)
+        for variant in VALIDATOR_VARIANTS:
+            registry.get(AgentType.VALIDATOR, variant=variant)
             count += 1
         assert count == TOTAL_TEMPLATE_VARIANTS
 
@@ -937,10 +950,13 @@ class TestPromptRegistryVariables:
         assert sorted(pt.variables) == sorted(["base_code", "reference_code"])
 
     def test_coder_variables(self) -> None:
-        """Coder template declares variables code_block and plan."""
+        """Coder template declares variables including code_block, plan, and task context."""
         registry = PromptRegistry()
         pt = registry.get(AgentType.CODER)
-        assert sorted(pt.variables) == sorted(["code_block", "plan"])
+        assert sorted(pt.variables) == sorted([
+            "code_block", "current_score", "data_modality",
+            "evaluation_metric", "metric_direction", "plan", "task_description",
+        ])
 
     def test_debugger_variables(self) -> None:
         """Debugger template declares variables code and bug."""

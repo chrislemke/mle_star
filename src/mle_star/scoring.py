@@ -83,6 +83,30 @@ def is_improvement(
     return new_score < old_score
 
 
+def beats_baseline(
+    score: float,
+    baseline_value: float | None,
+    direction: MetricDirection,
+) -> bool:
+    """Check if *score* beats the external baseline threshold.
+
+    Returns ``True`` when *baseline_value* is ``None`` (no baseline
+    configured = always passes). Otherwise delegates to
+    ``is_improvement`` for a strict comparison.
+
+    Args:
+        score: The candidate score to evaluate.
+        baseline_value: The external baseline threshold, or ``None``.
+        direction: Whether to maximize or minimize the metric.
+
+    Returns:
+        True if the score beats the baseline (or no baseline is set).
+    """
+    if baseline_value is None:
+        return True
+    return is_improvement(score, baseline_value, direction)
+
+
 def is_improvement_or_equal(
     new_score: float,
     old_score: float,

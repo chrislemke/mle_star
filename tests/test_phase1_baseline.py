@@ -80,7 +80,7 @@ class TestGenerateBaseline:
             return_value=f"```python\n{_BASELINE_CODE}\n```"
         )
 
-        with patch(f"{_PHASE1}.PromptRegistry") as mock_reg_cls:
+        with patch(f"{_PHASE1}.get_registry") as mock_reg_cls:
             mock_reg = mock_reg_cls.return_value
             mock_tmpl = AsyncMock()
             mock_tmpl.render = lambda **kwargs: "baseline prompt"
@@ -101,7 +101,7 @@ class TestGenerateBaseline:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="")
 
-        with patch(f"{_PHASE1}.PromptRegistry") as mock_reg_cls:
+        with patch(f"{_PHASE1}.get_registry") as mock_reg_cls:
             mock_reg = mock_reg_cls.return_value
             mock_tmpl = AsyncMock()
             mock_tmpl.render = lambda **kwargs: "baseline prompt"
@@ -120,7 +120,7 @@ class TestGenerateBaseline:
             return_value=f"```python\n{_BASELINE_CODE}\n```"
         )
 
-        with patch(f"{_PHASE1}.PromptRegistry") as mock_reg_cls:
+        with patch(f"{_PHASE1}.get_registry") as mock_reg_cls:
             mock_reg = mock_reg_cls.return_value
             mock_tmpl = AsyncMock()
             mock_tmpl.render = lambda **kwargs: "prompt"

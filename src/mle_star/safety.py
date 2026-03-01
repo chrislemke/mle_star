@@ -32,7 +32,7 @@ from mle_star.models import (
     LeakageDetectionOutput,
     SolutionScript,
 )
-from mle_star.prompts import PromptRegistry
+from mle_star.prompts import get_registry
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -141,7 +141,7 @@ async def _invoke_debugger_agent(
         A new ``SolutionScript`` with the debugger's fix applied, the same
         ``phase`` as the input, and ``is_executable=True``.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.DEBUGGER)
     prompt = template.render(code=solution.content, bug=traceback)
 
@@ -449,7 +449,7 @@ async def _check_and_fix_leakage_impl(
     Returns:
         The (potentially corrected) ``SolutionScript``.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
 
     # Step 1 — Detection.
     logger.info("Leakage detection start")
@@ -607,7 +607,7 @@ async def _check_data_usage_impl(
     Returns:
         The (potentially corrected) ``SolutionScript``.
     """
-    registry = PromptRegistry()
+    registry = get_registry()
     template = registry.get(AgentType.DATA)
     prompt = template.render(
         initial_solution=solution.content,

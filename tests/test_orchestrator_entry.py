@@ -692,7 +692,7 @@ class TestClientSetup:
 
         agent_configs = captured_kwargs[0]["agent_configs"]
         assert agent_configs is not None
-        assert len(agent_configs) == 16
+        assert len(agent_configs) == 17
 
 
 # ===========================================================================
@@ -795,8 +795,8 @@ class TestRunPipelineIsAsync:
         ):
             await run_pipeline(task, None)
 
-        # Default model is "sonnet"
-        assert captured_kwargs[0]["model"] == "sonnet"
+        # Default model is "opus"
+        assert captured_kwargs[0]["model"] == "opus"
 
     async def test_accepts_task_and_config_parameters(self, tmp_path: Path) -> None:
         """run_pipeline accepts task as first param and optional config."""

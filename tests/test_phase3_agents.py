@@ -141,7 +141,7 @@ class TestInvokeEnsPlannerInputValidation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="ensemble plan text")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "rendered prompt"
@@ -173,7 +173,7 @@ class TestInvokeEnsPlannerPromptRendering:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="ensemble plan")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "rendered ens_planner prompt"
@@ -199,7 +199,7 @@ class TestInvokeEnsPlannerPromptRendering:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -232,7 +232,7 @@ class TestInvokeEnsPlannerPromptRendering:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -262,7 +262,7 @@ class TestInvokeEnsPlannerPromptRendering:
 
         expected_prompt = "rendered ens_planner prompt xyz"
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = expected_prompt
@@ -285,7 +285,7 @@ class TestInvokeEnsPlannerPromptRendering:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="plan text")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -308,7 +308,7 @@ class TestInvokeEnsPlannerPromptRendering:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="plan text")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -340,7 +340,7 @@ class TestInvokeEnsPlannerFirstInvocation:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="first plan")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -364,7 +364,7 @@ class TestInvokeEnsPlannerFirstInvocation:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -405,7 +405,7 @@ class TestInvokeEnsPlannerSubsequentInvocation:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -436,7 +436,7 @@ class TestInvokeEnsPlannerSubsequentInvocation:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -471,7 +471,7 @@ class TestInvokeEnsPlannerSubsequentInvocation:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -501,7 +501,7 @@ class TestInvokeEnsPlannerSubsequentInvocation:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -532,7 +532,7 @@ class TestInvokeEnsPlannerSubsequentInvocation:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -574,7 +574,7 @@ class TestInvokeEnsPlannerReturns:
             return_value="  Use weighted averaging of predictions.  "
         )
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -597,7 +597,7 @@ class TestInvokeEnsPlannerReturns:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=response)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -619,7 +619,7 @@ class TestInvokeEnsPlannerReturns:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -641,7 +641,7 @@ class TestInvokeEnsPlannerReturns:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="   \n\n  ")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -663,7 +663,7 @@ class TestInvokeEnsPlannerReturns:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -686,7 +686,7 @@ class TestInvokeEnsPlannerReturns:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value="ensemble plan here")
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -809,7 +809,7 @@ class TestInvokeEnsemblerInputValidation:
         client.send_message = AsyncMock(return_value="```python\nensemble_code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="ensemble_code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -844,7 +844,7 @@ class TestInvokeEnsemblerPromptRendering:
         client.send_message = AsyncMock(return_value="```python\nensemble\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="ensemble"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -870,7 +870,7 @@ class TestInvokeEnsemblerPromptRendering:
         render_kwargs_captured: list[dict[str, Any]] = []
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -905,7 +905,7 @@ class TestInvokeEnsemblerPromptRendering:
         expected_prompt = "rendered ensembler prompt abc"
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -930,7 +930,7 @@ class TestInvokeEnsemblerPromptRendering:
         client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -955,7 +955,7 @@ class TestInvokeEnsemblerPromptRendering:
         client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -991,7 +991,7 @@ class TestInvokeEnsemblerOutputContract:
         )
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="ensemble_code_here",
@@ -1018,7 +1018,7 @@ class TestInvokeEnsemblerOutputContract:
         client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1043,7 +1043,7 @@ class TestInvokeEnsemblerOutputContract:
         client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1068,7 +1068,7 @@ class TestInvokeEnsemblerOutputContract:
         client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1093,7 +1093,7 @@ class TestInvokeEnsemblerOutputContract:
         client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1121,7 +1121,7 @@ class TestInvokeEnsemblerOutputContract:
         )
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value=extracted_code,
@@ -1150,7 +1150,7 @@ class TestInvokeEnsemblerOutputContract:
         client.send_message = AsyncMock(return_value=agent_response)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="ensemble_code",
@@ -1187,7 +1187,7 @@ class TestInvokeEnsemblerReturns:
         client.send_message = AsyncMock(return_value="no code here")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1211,7 +1211,7 @@ class TestInvokeEnsemblerReturns:
         client.send_message = AsyncMock(return_value="")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1235,7 +1235,7 @@ class TestInvokeEnsemblerReturns:
         client.send_message = AsyncMock(return_value="```python\n   \n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1259,7 +1259,7 @@ class TestInvokeEnsemblerReturns:
         client.send_message = AsyncMock(return_value="")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value=""),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1595,7 +1595,7 @@ class TestInvokeEnsPlannerPropertyBased:
 
         solutions = [_make_solution(f"code_{i}") for i in range(n_solutions)]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1624,7 +1624,7 @@ class TestInvokeEnsPlannerPropertyBased:
         plans = [f"plan_{i}" for i in range(n_plans)]
         scores: list[float | None] = [float(i) * 0.1 for i in range(n_plans)]
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1663,7 +1663,7 @@ class TestInvokeEnsemblerPropertyBased:
         solutions = [_make_solution(f"code_{i}") for i in range(n_solutions)]
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="ensemble_code",
@@ -1694,7 +1694,7 @@ class TestInvokeEnsemblerPropertyBased:
         client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1722,7 +1722,7 @@ class TestInvokeEnsemblerPropertyBased:
         client.send_message = AsyncMock(return_value="```python\ncode\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -1764,7 +1764,7 @@ class TestInvokeEnsPlannerParametrized:
         client = AsyncMock()
         client.send_message = AsyncMock(return_value=empty_response)
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
             mock_template.render.return_value = "prompt"
@@ -1800,7 +1800,7 @@ class TestInvokeEnsPlannerParametrized:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -1884,7 +1884,7 @@ class TestInvokeEnsPlannerEdgeCases:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -1914,7 +1914,7 @@ class TestInvokeEnsPlannerEdgeCases:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -1949,7 +1949,7 @@ class TestInvokeEnsPlannerEdgeCases:
 
         render_kwargs_captured: list[dict[str, Any]] = []
 
-        with patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls:
+        with patch(f"{_MODULE}.get_registry") as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = MagicMock()
 
@@ -1987,7 +1987,7 @@ class TestInvokeEnsemblerEdgeCases:
         client.send_message = AsyncMock(return_value="```python\nensemble_code\n```")
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="ensemble_code",
@@ -2018,7 +2018,7 @@ class TestInvokeEnsemblerEdgeCases:
         render_kwargs_captured: list[dict[str, Any]] = []
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(f"{_MODULE}.extract_code_block", return_value="code"),
         ):
             mock_registry = mock_registry_cls.return_value
@@ -2054,7 +2054,7 @@ class TestInvokeEnsemblerEdgeCases:
         client.send_message = AsyncMock(return_value=response)
 
         with (
-            patch(f"{_MODULE}.PromptRegistry") as mock_registry_cls,
+            patch(f"{_MODULE}.get_registry") as mock_registry_cls,
             patch(
                 f"{_MODULE}.extract_code_block",
                 return_value="import numpy\nx = 1",

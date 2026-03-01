@@ -40,6 +40,7 @@ ALL_AGENT_TYPES: list[str] = [
     "leakage",
     "data",
     "test",
+    "validator",
 ]
 
 # Agents that use the single-template YAML format (no variants)
@@ -64,6 +65,7 @@ SINGLE_TEMPLATE_AGENTS: list[str] = [
 MULTI_TEMPLATE_AGENTS: list[str] = [
     "leakage",
     "test",
+    "validator",
 ]
 
 # Expected variables for each agent type / variant
@@ -81,13 +83,16 @@ EXPECTED_VARIABLES: dict[tuple[str, str | None], list[str]] = {
         "previous_code_blocks",
         "notes_context",
     ],
-    ("coder", None): ["code_block", "plan"],
-    ("planner", None): ["code_block", "plan_history", "notes_context"],
+    ("coder", None): ["code_block", "plan", "task_description", "evaluation_metric", "metric_direction", "data_modality", "current_score"],
+    ("planner", None): ["code_block", "plan_history", "notes_context", "task_description", "evaluation_metric", "metric_direction", "data_modality", "current_score"],
     ("ens_planner", None): ["L", "solutions_text", "plan_history", "notes_context"],
     ("ensembler", None): ["L", "solutions_text", "plan"],
     ("debugger", None): ["code", "bug"],
     ("leakage", "detection"): ["code"],
     ("leakage", "correction"): ["code"],
+    ("leakage", "deep_analysis"): ["code", "task_description", "evaluation_metric", "metric_direction", "current_score"],
+    ("validator", "sanity"): ["solution_code", "task_description", "evaluation_metric", "metric_direction"],
+    ("validator", "overfitting"): ["solution_code", "task_description", "evaluation_metric", "metric_direction"],
     ("data", None): ["initial_solution", "task_description", "target_column"],
     ("test", None): ["task_description", "target_column", "final_solution"],
     ("test", "subsampling_extract"): ["final_solution"],
@@ -112,6 +117,9 @@ EXPECTED_FIGURES: dict[tuple[str, str | None], str] = {
     ("debugger", None): "Figure 19",
     ("leakage", "detection"): "Figure 20",
     ("leakage", "correction"): "Figure 21",
+    ("leakage", "deep_analysis"): "N/A — Validation (deep leakage)",
+    ("validator", "sanity"): "N/A — Validation (sanity)",
+    ("validator", "overfitting"): "N/A — Validation (overfitting)",
     ("data", None): "Figure 22",
     ("test", None): "Figure 25",
     ("test", "subsampling_extract"): "Figure 26",
@@ -119,14 +127,15 @@ EXPECTED_FIGURES: dict[tuple[str, str | None], str] = {
     ("test", "contamination_check"): "Figure 28",
 }
 
-TOTAL_TEMPLATE_COUNT = 20
+TOTAL_TEMPLATE_COUNT = 23
 
-LEAKAGE_VARIANTS: list[str] = ["detection", "correction"]
+LEAKAGE_VARIANTS: list[str] = ["detection", "correction", "deep_analysis"]
 TEST_VARIANTS: list[str] = [
     "subsampling_extract",
     "subsampling_remove",
     "contamination_check",
 ]
+VALIDATOR_VARIANTS: list[str] = ["sanity", "overfitting"]
 
 # Required keys for every template entry (single or within multi-template list)
 REQUIRED_TEMPLATE_KEYS: set[str] = {"agent_type", "figure_ref", "template", "variables"}
@@ -484,13 +493,13 @@ class TestMultiTemplateStructure:
 class TestLeakageVariants:
     """Tests specific to the leakage agent's detection and correction variants."""
 
-    def test_leakage_has_exactly_two_variants(
+    def test_leakage_has_exactly_three_variants(
         self, loaded_templates: dict[str, Any]
     ) -> None:
-        """Verify leakage.yaml contains exactly 2 template variants."""
+        """Verify leakage.yaml contains exactly 3 template variants."""
         templates_list = loaded_templates["leakage"]["templates"]
-        assert len(templates_list) == 2, (
-            f"Expected 2 leakage variants, found {len(templates_list)}"
+        assert len(templates_list) == 3, (
+            f"Expected 3 leakage variants, found {len(templates_list)}"
         )
 
     @pytest.mark.parametrize("variant", LEAKAGE_VARIANTS)

@@ -260,9 +260,11 @@ class TestK0UsesInitialPlan:
                 config=config,
             )
 
-        # Verify coder was called with: code_block.content, initial_plan, client
+        # Verify coder was called with: code_block.content, initial_plan, client,
+        # plus task= and current_score= keyword args
         mock_coder.assert_called_once_with(
-            code_block.content, "my initial plan", client
+            code_block.content, "my initial plan", client,
+            task=task, current_score=solution.score,
         )
 
     async def test_attempts_0_plan_is_initial_plan(self) -> None:
@@ -320,7 +322,12 @@ class TestKGe1CallsPlanner:
     """For k=1..K-1: invoke_planner then invoke_coder are called (REQ-P2I-019)."""
 
     async def test_planner_called_k_minus_1_times(self) -> None:
-        """invoke_planner is called exactly K-1 times (once per k>=1 iteration)."""
+        """invoke_planner is called exactly K-1 times (once per k>=1 iteration).
+
+        Uses is_improvement_or_equal=True to prevent early stopping so all
+        K iterations run.  evaluate_with_retry passes through the candidate
+        so that compounding replace_block calls find the updated code.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -328,6 +335,11 @@ class TestKGe1CallsPlanner:
         code_block = _make_code_block()
         task = _make_task()
         config = _make_config(inner_loop_steps=4)
+
+        async def passthrough_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
+            return (sol, _make_eval_result(0.85))
 
         with (
             patch(
@@ -346,12 +358,8 @@ class TestKGe1CallsPlanner:
                 side_effect=lambda sol, t, c: sol,
             ),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
-            ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=passthrough_eval),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             await run_phase2_inner_loop(
@@ -368,7 +376,12 @@ class TestKGe1CallsPlanner:
         assert mock_planner.call_count == 3
 
     async def test_coder_called_k_times(self) -> None:
-        """invoke_coder is called exactly K times (once per iteration)."""
+        """invoke_coder is called exactly K times (once per iteration).
+
+        Uses is_improvement_or_equal=True to prevent early stopping so all
+        K iterations run.  evaluate_with_retry passes through the candidate
+        so that compounding replace_block calls find the updated code.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -376,6 +389,11 @@ class TestKGe1CallsPlanner:
         code_block = _make_code_block()
         task = _make_task()
         config = _make_config(inner_loop_steps=4)
+
+        async def passthrough_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
+            return (sol, _make_eval_result(0.85))
 
         with (
             patch(
@@ -394,12 +412,8 @@ class TestKGe1CallsPlanner:
                 side_effect=lambda sol, t, c: sol,
             ),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
-            ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=passthrough_eval),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             await run_phase2_inner_loop(
@@ -425,7 +439,11 @@ class TestPlannerReceivesFullHistory:
     """A_planner receives accumulated plans and scores from ALL prior iterations (REQ-P2I-020)."""
 
     async def test_planner_at_k2_gets_two_plans_and_scores(self) -> None:
-        """At k=2, planner receives plans=[p0, p1] and scores=[s0, s1]."""
+        """At k=2, planner receives plans=[p0, p1] and scores=[s0, s1].
+
+        Uses is_improvement_or_equal=True to prevent early stopping so all
+        3 iterations run.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -444,12 +462,12 @@ class TestPlannerReceivesFullHistory:
         eval_index = 0
 
         async def mock_eval(
-            *args: Any, **kwargs: Any
+            sol: Any, *args: Any, **kwargs: Any
         ) -> tuple[SolutionScript, EvaluationResult]:
             nonlocal eval_index
             score = eval_scores[eval_index]
             eval_index += 1
-            return (_make_solution(), _make_eval_result(score))
+            return (sol, _make_eval_result(score))
 
         with (
             patch(
@@ -465,7 +483,7 @@ class TestPlannerReceivesFullHistory:
             ),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
             patch(f"{_MODULE}.evaluate_with_retry", side_effect=mock_eval),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             await run_phase2_inner_loop(
@@ -560,16 +578,24 @@ class TestPlannerReceivesFullHistory:
 
 
 # ===========================================================================
-# REQ-P2I-021: Coder always receives ORIGINAL code_block.content
+# REQ-P2I-021: Coder receives CURRENT BEST code_block (compounding)
 # ===========================================================================
 
 
 @pytest.mark.unit
-class TestCoderAlwaysGetsOriginalCodeBlock:
-    """A_coder always receives the original code_block.content at every k (REQ-P2I-021)."""
+class TestCoderGetsCurrentBestCodeBlock:
+    """A_coder receives the current best code_block.content at every k.
 
-    async def test_coder_receives_original_code_block_at_every_step(self) -> None:
-        """All invoke_coder calls pass the original code_block.content as first arg."""
+    When no iteration improves, the original code is passed each time.
+    When iterations improve, the coder compounds on the improved code.
+    """
+
+    async def test_coder_receives_original_when_no_improvement(self) -> None:
+        """When no improvement, all invoke_coder calls receive the original code.
+
+        With early stopping (patience=2) and no improvement, only
+        min(k_steps, 2) iterations run for k_steps >= 3.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -577,7 +603,8 @@ class TestCoderAlwaysGetsOriginalCodeBlock:
         solution = _make_solution()
         code_block = _make_code_block(content=original_content)
         task = _make_task()
-        config = _make_config(inner_loop_steps=3)
+        # Use K=2 so both iterations run without early stopping
+        config = _make_config(inner_loop_steps=2)
 
         coder_calls: list[tuple[Any, ...]] = []
 
@@ -616,12 +643,74 @@ class TestCoderAlwaysGetsOriginalCodeBlock:
                 config=config,
             )
 
-        assert len(coder_calls) == 3
+        assert len(coder_calls) == 2
         for i, coder_call in enumerate(coder_calls):
             assert coder_call[0] == original_content, (
                 f"At k={i}, coder received {coder_call[0]!r} "
                 f"instead of original {original_content!r}"
             )
+
+    async def test_coder_receives_improved_code_on_compounding(self) -> None:
+        """When iterations improve, coder compounds on the improved code.
+
+        evaluate_with_retry must pass through the candidate solution so
+        that replace_block can find the compounded code in subsequent
+        iterations.
+        """
+        from mle_star.phase2_inner import run_phase2_inner_loop
+
+        client = AsyncMock()
+        original_content = "TARGET_BLOCK"
+        solution = _make_solution()
+        code_block = _make_code_block(content=original_content)
+        task = _make_task()
+        config = _make_config(inner_loop_steps=3)
+
+        coder_calls: list[tuple[Any, ...]] = []
+
+        async def capture_coder(*args: Any, **kwargs: Any) -> str:
+            coder_calls.append(args)
+            return f"improved_v{len(coder_calls)}"
+
+        async def passthrough_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
+            return (sol, _make_eval_result(0.85))
+
+        with (
+            patch(f"{_MODULE}.invoke_coder", side_effect=capture_coder),
+            patch(
+                f"{_MODULE}.invoke_planner",
+                new_callable=AsyncMock,
+                return_value="new plan",
+            ),
+            patch(
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ),
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=passthrough_eval),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=False),
+        ):
+            await run_phase2_inner_loop(
+                client=client,
+                solution=solution,
+                code_block=code_block,
+                initial_plan="plan",
+                best_score=0.80,
+                task=task,
+                config=config,
+            )
+
+        assert len(coder_calls) == 3
+        # k=0: receives original code
+        assert coder_calls[0][0] == original_content
+        # k=1: receives the improved code from k=0 (compounding)
+        assert coder_calls[1][0] == "improved_v1"
+        # k=2: receives the improved code from k=1 (compounding)
+        assert coder_calls[2][0] == "improved_v2"
 
 
 # ===========================================================================
@@ -1202,7 +1291,12 @@ class TestAttemptsListStructure:
     """attempts list has exactly K entries, ordered k=0 first (REQ-P2I-029)."""
 
     async def test_exactly_k_attempts(self) -> None:
-        """With K=4, exactly 4 RefinementAttempts are returned."""
+        """With K=4, exactly 4 RefinementAttempts are returned.
+
+        Uses is_improvement_or_equal=True to prevent early stopping so all
+        K iterations run.  evaluate_with_retry passes through the candidate
+        so that compounding replace_block calls find the updated code.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -1210,6 +1304,11 @@ class TestAttemptsListStructure:
         code_block = _make_code_block()
         task = _make_task()
         config = _make_config(inner_loop_steps=4)
+
+        async def passthrough_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
+            return (sol, _make_eval_result(0.85))
 
         with (
             patch(
@@ -1228,12 +1327,8 @@ class TestAttemptsListStructure:
                 side_effect=lambda sol, t, c: sol,
             ),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
-            ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=passthrough_eval),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             result = await run_phase2_inner_loop(
@@ -1250,7 +1345,12 @@ class TestAttemptsListStructure:
         assert all(isinstance(a, RefinementAttempt) for a in result.attempts)
 
     async def test_attempts_ordered_k0_first(self) -> None:
-        """attempts[0] corresponds to k=0 (initial_plan)."""
+        """attempts[0] corresponds to k=0 (initial_plan).
+
+        Uses is_improvement_or_equal=True to prevent early stopping so all
+        3 iterations run.  evaluate_with_retry passes through the candidate
+        so that compounding replace_block calls find the updated code.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -1266,6 +1366,11 @@ class TestAttemptsListStructure:
             plan_counter += 1
             return f"planner_plan_{plan_counter}"
 
+        async def passthrough_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
+            return (sol, _make_eval_result(0.85))
+
         with (
             patch(
                 f"{_MODULE}.invoke_coder",
@@ -1279,12 +1384,8 @@ class TestAttemptsListStructure:
                 side_effect=lambda sol, t, c: sol,
             ),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
-            ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=passthrough_eval),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             result = await run_phase2_inner_loop(
@@ -1572,7 +1673,11 @@ class TestAllCoderFailures:
     """When all coder calls return None, returns original solution (all failures)."""
 
     async def test_all_failures_returns_original(self) -> None:
-        """All coder failures: original solution and score preserved."""
+        """All coder failures: original solution and score preserved.
+
+        With early stopping (patience=2), only 2 iterations run for K>=3
+        when all iterations fail (no improvement).
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -1618,7 +1723,8 @@ class TestAllCoderFailures:
         assert result.best_score == 0.80
         assert result.best_solution.content == solution.content
         assert result.improved is False
-        assert len(result.attempts) == 3
+        # Early stopping: 2 iterations run (patience=2, k=1 triggers early stop)
+        assert len(result.attempts) == 2
         # evaluate_with_retry never called when coder fails
         mock_eval.assert_not_called()
         for attempt in result.attempts:
@@ -1627,7 +1733,11 @@ class TestAllCoderFailures:
             assert attempt.was_improvement is False
 
     async def test_all_failures_planner_still_called(self) -> None:
-        """Even when coder fails, planner is called for k>=1 iterations."""
+        """Even when coder fails, planner is called for k>=1 iterations.
+
+        With early stopping (patience=2), only 2 iterations run for K=3
+        when no improvement, so planner is called once at k=1.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -1667,8 +1777,9 @@ class TestAllCoderFailures:
                 config=config,
             )
 
-        # K=3: planner called at k=1 and k=2
-        assert mock_planner.call_count == 2
+        # K=3: with early stopping (patience=2), only k=0 and k=1 run;
+        # planner called once at k=1
+        assert mock_planner.call_count == 1
 
 
 # ===========================================================================
@@ -1681,12 +1792,17 @@ class TestMixedSuccessFailure:
     """Some iterations succeed, some fail -- best tracking correct."""
 
     async def test_mixed_iterations(self) -> None:
-        """k=0 succeeds (0.85), k=1 coder fails, k=2 succeeds (0.90)."""
+        """k=0 succeeds (0.85), k=1 coder fails, k=2 succeeds (0.90).
+
+        With compounding, after k=0 improves the current_code changes.
+        evaluate_with_retry must return a solution containing the new code
+        so that subsequent replace_block calls succeed.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
-        solution = _make_solution()
-        code_block = _make_code_block()
+        solution = _make_solution(content="original code with TARGET_BLOCK here")
+        code_block = _make_code_block(content="TARGET_BLOCK")
         task = _make_task()
         config = _make_config(inner_loop_steps=3)
 
@@ -1699,16 +1815,14 @@ class TestMixedSuccessFailure:
             coder_index += 1
             return result
 
-        eval_results = [_make_eval_result(0.85), _make_eval_result(0.90)]
-        eval_index = 0
-
         async def mock_eval(
-            *args: Any, **kwargs: Any
+            sol: Any, *args: Any, **kwargs: Any
         ) -> tuple[SolutionScript, EvaluationResult]:
-            nonlocal eval_index
-            r = eval_results[eval_index]
-            eval_index += 1
-            return (_make_solution(), r)
+            # Return the solution as-is (with replacement already done)
+            # and alternating scores for k=0 and k=2
+            if "improved_v1" in sol.content:
+                return (sol, _make_eval_result(0.85))
+            return (sol, _make_eval_result(0.90))
 
         improvement_or_equal_results = [True, True]  # For k=0 and k=2
         ioer_index = 0
@@ -1770,7 +1884,7 @@ class TestMixedSuccessFailure:
         assert result.attempts[1].code_block == ""
         assert result.attempts[1].was_improvement is False
 
-        # k=2: success
+        # k=2: success (compounding on improved_v1)
         assert result.attempts[2].score == 0.90
         assert result.attempts[2].code_block == "improved_v3"
         assert result.attempts[2].was_improvement is True
@@ -1922,7 +2036,12 @@ class TestParametrizedKValues:
     async def test_attempt_count_matches_k(
         self, k: int, expected_planner_calls: int
     ) -> None:
-        """Number of attempts equals K and planner calls equal K-1."""
+        """Number of attempts equals K and planner calls equal K-1.
+
+        Uses is_improvement_or_equal=True to prevent early stopping so all
+        K iterations run.  evaluate_with_retry passes through the candidate
+        so that compounding replace_block calls find the updated code.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -1930,6 +2049,11 @@ class TestParametrizedKValues:
         code_block = _make_code_block()
         task = _make_task()
         config = _make_config(inner_loop_steps=k)
+
+        async def passthrough_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
+            return (sol, _make_eval_result(0.85))
 
         with (
             patch(
@@ -1948,12 +2072,8 @@ class TestParametrizedKValues:
                 side_effect=lambda sol, t, c: sol,
             ),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
-            ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=passthrough_eval),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             result = await run_phase2_inner_loop(
@@ -2119,7 +2239,12 @@ class TestLeakageAndEvalReceiveReplacedSolution:
     """check_and_fix_leakage receives the replaced solution; evaluate_with_retry receives its output."""
 
     async def test_leakage_check_receives_replaced_solution(self) -> None:
-        """check_and_fix_leakage receives the solution after replace_block."""
+        """check_and_fix_leakage receives the best solution after the loop.
+
+        Leakage check is now called once post-loop, only when some iteration
+        improved (local_best_solution is not solution). The solution passed
+        to leakage check should contain the replaced code.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2151,7 +2276,7 @@ class TestLeakageAndEvalReceiveReplacedSolution:
             patch(f"{_MODULE}.check_and_fix_leakage", side_effect=capture_leakage),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
             patch(f"{_MODULE}.evaluate_with_retry", side_effect=capture_eval),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             await run_phase2_inner_loop(
@@ -2164,12 +2289,12 @@ class TestLeakageAndEvalReceiveReplacedSolution:
                 config=config,
             )
 
-        # check_and_fix_leakage receives the replaced solution
+        # check_and_fix_leakage called once post-loop on the best solution
         assert len(leakage_solutions) == 1
         assert "NEW_CODE" in leakage_solutions[0].content
         assert "TARGET_BLOCK" not in leakage_solutions[0].content
 
-        # evaluate_with_retry receives whatever check_and_fix_leakage returned
+        # evaluate_with_retry receives the replaced solution (before leakage)
         assert len(eval_solutions) == 1
         assert "NEW_CODE" in eval_solutions[0].content
         assert "TARGET_BLOCK" not in eval_solutions[0].content
@@ -2242,7 +2367,12 @@ class TestInnerLoopPropertyBased:
     )
     @settings(max_examples=15)
     async def test_attempt_count_always_equals_k(self, k: int) -> None:
-        """For any K >= 1, exactly K attempts are returned."""
+        """For any K >= 1, exactly K attempts are returned.
+
+        Uses is_improvement_or_equal=True to prevent early stopping so all
+        K iterations run.  evaluate_with_retry passes through the candidate
+        so that compounding replace_block calls find the updated code.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2250,6 +2380,11 @@ class TestInnerLoopPropertyBased:
         code_block = _make_code_block()
         task = _make_task()
         config = _make_config(inner_loop_steps=k)
+
+        async def passthrough_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
+            return (sol, _make_eval_result(0.85))
 
         with (
             patch(
@@ -2268,12 +2403,8 @@ class TestInnerLoopPropertyBased:
                 side_effect=lambda sol, t, c: sol,
             ),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
-            ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=passthrough_eval),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             result = await run_phase2_inner_loop(
@@ -2442,16 +2573,64 @@ class TestInnerLoopPropertyBased:
 
 
 # ===========================================================================
-# Calls check_and_fix_leakage on each successful iteration
+# Calls check_and_fix_leakage once post-loop when improvement occurred
 # ===========================================================================
 
 
 @pytest.mark.unit
 class TestCallsLeakageCheck:
-    """Inner loop calls check_and_fix_leakage before every evaluation."""
+    """Inner loop calls check_and_fix_leakage once post-loop on best result."""
 
-    async def test_leakage_check_called_per_successful_iteration(self) -> None:
-        """check_and_fix_leakage is called once per successful coder+replace iteration."""
+    async def test_leakage_check_called_once_post_loop_on_improvement(self) -> None:
+        """check_and_fix_leakage is called once after the loop when improvement occurred."""
+        from mle_star.phase2_inner import run_phase2_inner_loop
+
+        client = AsyncMock()
+        solution = _make_solution()
+        code_block = _make_code_block()
+        task = _make_task()
+        config = _make_config(inner_loop_steps=2)
+
+        with (
+            patch(
+                f"{_MODULE}.invoke_coder",
+                new_callable=AsyncMock,
+                return_value="improved",
+            ),
+            patch(
+                f"{_MODULE}.invoke_planner",
+                new_callable=AsyncMock,
+                return_value="plan",
+            ),
+            patch(
+                f"{_MODULE}.check_and_fix_leakage",
+                new_callable=AsyncMock,
+                side_effect=lambda sol, t, c: sol,
+            ) as mock_leakage,
+            patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
+            patch(
+                f"{_MODULE}.evaluate_with_retry",
+                new_callable=AsyncMock,
+                return_value=(_make_solution(), _make_eval_result(0.85)),
+            ),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
+            patch(f"{_MODULE}.is_improvement", return_value=False),
+        ):
+            await run_phase2_inner_loop(
+                client=client,
+                solution=solution,
+                code_block=code_block,
+                initial_plan="plan",
+                best_score=0.80,
+                task=task,
+                config=config,
+            )
+
+        # check_and_fix_leakage called once post-loop on the best solution
+        assert mock_leakage.call_count == 1
+
+    async def test_leakage_check_not_called_when_no_improvement(self) -> None:
+        """check_and_fix_leakage is NOT called when no iteration improved."""
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2495,8 +2674,8 @@ class TestCallsLeakageCheck:
                 config=config,
             )
 
-        # check_and_fix_leakage called once per successful iteration (K=2)
-        assert mock_leakage.call_count == 2
+        # check_and_fix_leakage not called when no improvement
+        assert mock_leakage.call_count == 0
 
 
 # ===========================================================================
@@ -2509,7 +2688,12 @@ class TestAccumulatedHistoryIncludesFailedPlans:
     """Failed attempts are included in the accumulated history (REQ-P2I-035)."""
 
     async def test_planner_failure_appears_in_later_history(self) -> None:
-        """When planner fails at k=1, the '[planner failed]' plan is in k=2 history."""
+        """When planner fails at k=1, the '[planner failed]' plan is in k=2 history.
+
+        Uses is_improvement_or_equal=True so k=0 resets the no-improvement
+        streak, preventing early stopping before k=2 runs.  evaluate_with_retry
+        passes through the candidate so compounding replace_block calls work.
+        """
         from mle_star.phase2_inner import run_phase2_inner_loop
 
         client = AsyncMock()
@@ -2529,6 +2713,11 @@ class TestAccumulatedHistoryIncludesFailedPlans:
                 return None  # k=1 planner fails
             return "plan_from_planner"  # k=2 planner succeeds
 
+        async def passthrough_eval(
+            sol: Any, *args: Any, **kwargs: Any
+        ) -> tuple[SolutionScript, EvaluationResult]:
+            return (sol, _make_eval_result(0.85))
+
         with (
             patch(
                 f"{_MODULE}.invoke_coder",
@@ -2542,12 +2731,8 @@ class TestAccumulatedHistoryIncludesFailedPlans:
                 side_effect=lambda sol, t, c: sol,
             ),
             patch(f"{_MODULE}.make_debug_callback", return_value=AsyncMock()),
-            patch(
-                f"{_MODULE}.evaluate_with_retry",
-                new_callable=AsyncMock,
-                return_value=(_make_solution(), _make_eval_result(0.85)),
-            ),
-            patch(f"{_MODULE}.is_improvement_or_equal", return_value=False),
+            patch(f"{_MODULE}.evaluate_with_retry", side_effect=passthrough_eval),
+            patch(f"{_MODULE}.is_improvement_or_equal", return_value=True),
             patch(f"{_MODULE}.is_improvement", return_value=False),
         ):
             await run_phase2_inner_loop(

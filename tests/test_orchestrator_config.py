@@ -83,17 +83,17 @@ class TestApplyEnvOverrides:
         from mle_star.orchestrator import apply_env_overrides
 
         # Arrange
-        monkeypatch.setenv("MLE_STAR_MODEL", "opus")
+        monkeypatch.setenv("MLE_STAR_MODEL", "haiku")
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
-        config = _make_config()  # model defaults to "sonnet"
+        config = _make_config()  # model defaults to "opus"
 
         # Act
         result = apply_env_overrides(config)
 
         # Assert
-        assert result.model == "opus"
+        assert result.model == "haiku"
 
     def test_mle_star_log_level_overrides_default(
         self, monkeypatch: pytest.MonkeyPatch
@@ -148,13 +148,13 @@ class TestApplyEnvOverrides:
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
-        config = _make_config(model="opus")  # Explicitly set to "opus"
+        config = _make_config(model="sonnet")  # Explicitly set to "sonnet"
 
         # Act
         result = apply_env_overrides(config)
 
         # Assert -- explicit value wins over env var
-        assert result.model == "opus"
+        assert result.model == "sonnet"
 
     def test_multiple_env_vars_applied(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Multiple env vars are applied simultaneously."""
@@ -197,7 +197,7 @@ class TestApplyEnvOverrides:
         from mle_star.orchestrator import apply_env_overrides
 
         # Arrange
-        monkeypatch.setenv("MLE_STAR_MODEL", "opus")
+        monkeypatch.setenv("MLE_STAR_MODEL", "haiku")
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
@@ -217,7 +217,7 @@ class TestApplyEnvOverrides:
         from mle_star.orchestrator import apply_env_overrides
 
         # Arrange
-        monkeypatch.setenv("MLE_STAR_MODEL", "opus")
+        monkeypatch.setenv("MLE_STAR_MODEL", "haiku")
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
@@ -670,7 +670,7 @@ class TestConfigOverrideProperties:
         assert result.time_limit_seconds == time_limit
 
     @given(
-        explicit_model=st.sampled_from(["opus", "haiku"]),
+        explicit_model=st.sampled_from(["sonnet", "haiku"]),
         env_model=st.sampled_from(["sonnet", "opus", "haiku"]),
     )
     @settings(
@@ -695,7 +695,7 @@ class TestConfigOverrideProperties:
         monkeypatch.delenv("MLE_STAR_LOG_LEVEL", raising=False)
         monkeypatch.delenv("MLE_STAR_TIME_LIMIT", raising=False)
 
-        # "opus" and "haiku" both differ from default "sonnet"
+        # "sonnet" and "haiku" both differ from default "opus"
         config = _make_config(model=explicit_model)
         result = apply_env_overrides(config)
 
@@ -816,7 +816,7 @@ class TestApplyEnvOverridesIntegration:
         from mle_star.orchestrator import apply_env_overrides
 
         # Arrange
-        monkeypatch.setenv("MLE_STAR_MODEL", "opus")
+        monkeypatch.setenv("MLE_STAR_MODEL", "haiku")
         monkeypatch.setenv("MLE_STAR_LOG_LEVEL", "DEBUG")
         monkeypatch.setenv("MLE_STAR_TIME_LIMIT", "3600")
 
@@ -831,7 +831,7 @@ class TestApplyEnvOverridesIntegration:
             log_level=result.log_level,
             time_limit_seconds=result.time_limit_seconds,
         )
-        assert validated.model == "opus"
+        assert validated.model == "haiku"
         assert validated.log_level == "DEBUG"
         assert validated.time_limit_seconds == 3600
 

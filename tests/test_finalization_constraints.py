@@ -1473,10 +1473,10 @@ class TestNoErrorMaskingInTestScript:
             target_column="Not specified",
             final_solution="print('hello')",
         )
-        assert "try:" in rendered and "except:" in rendered
+        assert "try/except" in rendered
 
-    def test_prompt_forbids_ignoring_unintended_behavior(self) -> None:
-        """A_test prompt forbids ignoring unintended behavior."""
+    def test_prompt_forbids_error_masking(self) -> None:
+        """A_test prompt forbids masking errors."""
         from mle_star.prompts import PromptRegistry
 
         registry = PromptRegistry()
@@ -1486,7 +1486,7 @@ class TestNoErrorMaskingInTestScript:
             target_column="Not specified",
             final_solution="print('hello')",
         )
-        assert "unintended" in rendered.lower() or "ignore" in rendered.lower()
+        assert "mask errors" in rendered.lower()
 
 
 # ===========================================================================
@@ -1702,21 +1702,21 @@ class TestFinalizationPromptRegistryUsage:
         from mle_star import finalization
 
         source = inspect.getsource(finalization._remove_subsampling_impl)
-        assert "PromptRegistry" in source
+        assert "get_registry" in source
 
     def test_generate_test_submission_uses_prompt_registry(self) -> None:
         """generate_test_submission source references PromptRegistry."""
         from mle_star import finalization
 
         source = inspect.getsource(finalization.generate_test_submission)
-        assert "PromptRegistry" in source
+        assert "get_registry" in source
 
     def test_check_contamination_uses_prompt_registry(self) -> None:
         """_check_contamination_impl source references PromptRegistry."""
         from mle_star import finalization
 
         source = inspect.getsource(finalization._check_contamination_impl)
-        assert "PromptRegistry" in source
+        assert "get_registry" in source
 
     def test_subsampling_extract_variant_exists(self) -> None:
         """A_test subsampling_extract variant is loadable from PromptRegistry."""

@@ -182,21 +182,19 @@ def _apply_patches(mocks: dict[str, Any]) -> contextlib.ExitStack:
 class TestCandidateGenerationSequential:
     """Candidate generation/evaluation is sequential (REQ-P1-034/035)."""
 
-    def test_no_asyncio_gather_in_candidate_loop(self) -> None:
-        """_generate_and_evaluate_candidates does not use asyncio.gather."""
+    def test_asyncio_gather_in_candidate_loop(self) -> None:
+        """_generate_and_evaluate_candidates uses asyncio.gather for parallel execution."""
         from mle_star import phase1
 
         source = inspect.getsource(phase1._generate_and_evaluate_candidates)
-        assert "asyncio.gather" not in source
-        assert "asyncio.create_task" not in source
+        assert "asyncio.gather" in source
 
-    def test_no_parallel_dispatch_in_candidate_loop(self) -> None:
-        """_generate_and_evaluate_candidates uses sequential for-loop, not parallel."""
+    def test_parallel_dispatch_in_candidate_loop(self) -> None:
+        """_generate_and_evaluate_candidates uses parallel dispatch via gather."""
         from mle_star import phase1
 
         source = inspect.getsource(phase1._generate_and_evaluate_candidates)
-        assert "gather" not in source
-        assert "TaskGroup" not in source
+        assert "gather" in source
 
     async def test_candidates_evaluated_in_order(self) -> None:
         """Candidates are generated and evaluated in sequential model order."""
@@ -1610,10 +1608,10 @@ class TestLeakageThreeIntegrationPoints:
         assert len(leakage_calls) >= 2
 
     def test_leakage_present_in_candidate_loop_source(self) -> None:
-        """check_and_fix_leakage appears in _generate_and_evaluate_candidates source."""
+        """check_and_fix_leakage appears in _generate_and_evaluate_single_candidate source."""
         from mle_star import phase1
 
-        source = inspect.getsource(phase1._generate_and_evaluate_candidates)
+        source = inspect.getsource(phase1._generate_and_evaluate_single_candidate)
         assert "check_and_fix_leakage" in source
 
     def test_leakage_present_in_merge_loop_source(self) -> None:
@@ -1718,8 +1716,8 @@ class TestRetrieverPromptFidelity:
 class TestInitPromptFidelity:
     """Init prompt contains key phrases from Algorithm 1 (REQ-P1-044)."""
 
-    def test_init_prompt_mentions_kaggle_grandmaster(self) -> None:
-        """Init YAML template mentions Kaggle grandmaster persona."""
+    def test_init_prompt_mentions_expert_ml_engineer(self) -> None:
+        """Init YAML template mentions expert ML engineer persona."""
         from mle_star.prompts import PromptRegistry
 
         registry = PromptRegistry()
@@ -1732,10 +1730,10 @@ class TestInitPromptFidelity:
             research_context="",
             notes_context="",
         )
-        assert "Kaggle grandmaster" in rendered
+        assert "expert ML engineer" in rendered
 
-    def test_init_prompt_mentions_simple_solution(self) -> None:
-        """Init prompt instructs simple solution without ensembling."""
+    def test_init_prompt_mentions_straightforward_solution(self) -> None:
+        """Init prompt instructs straightforward solution without ensembling."""
         from mle_star.prompts import PromptRegistry
 
         registry = PromptRegistry()
@@ -1748,7 +1746,7 @@ class TestInitPromptFidelity:
             research_context="",
             notes_context="",
         )
-        assert "simple" in rendered.lower()
+        assert "straightforward" in rendered.lower()
         assert "ensembl" in rendered.lower()
 
     def test_init_prompt_mentions_input_directory(self) -> None:
@@ -1829,7 +1827,7 @@ class TestInitPromptFidelity:
             research_context="",
             notes_context="",
         )
-        assert "single code block" in rendered.lower()
+        assert "single markdown code block" in rendered.lower()
 
     def test_init_prompt_forbids_exit_function(self) -> None:
         """Init prompt instructs not to use exit() function."""
@@ -1861,7 +1859,7 @@ class TestInitPromptFidelity:
             research_context="",
             notes_context="",
         )
-        assert "try:" in rendered and "except:" in rendered
+        assert "try/except" in rendered
 
     def test_init_prompt_renders_model_name(self) -> None:
         """Init prompt includes the model_name variable."""
@@ -1905,8 +1903,8 @@ class TestInitPromptFidelity:
 class TestMergerPromptFidelity:
     """Merger prompt contains key phrases from Algorithm 1 (REQ-P1-045)."""
 
-    def test_merger_prompt_mentions_kaggle_grandmaster(self) -> None:
-        """Merger YAML template mentions Kaggle grandmaster persona."""
+    def test_merger_prompt_mentions_expert_ml_engineer(self) -> None:
+        """Merger YAML template mentions expert ML engineer persona."""
         from mle_star.prompts import PromptRegistry
 
         registry = PromptRegistry()
@@ -1915,7 +1913,7 @@ class TestMergerPromptFidelity:
             base_code="print('base')",
             reference_code="print('ref')",
         )
-        assert "Kaggle grandmaster" in rendered
+        assert "expert ML engineer" in rendered
 
     def test_merger_prompt_mentions_integrate(self) -> None:
         """Merger prompt instructs to integrate reference into base."""
@@ -1987,7 +1985,7 @@ class TestMergerPromptFidelity:
             base_code="print('base')",
             reference_code="print('ref')",
         )
-        assert "single code block" in rendered.lower()
+        assert "single markdown code block" in rendered.lower()
 
     def test_merger_prompt_renders_base_code(self) -> None:
         """Merger prompt includes the base_code variable."""
@@ -2190,22 +2188,22 @@ class TestPhase1PromptRegistryUsage:
         assert template is not None
 
     def test_retrieve_models_source_uses_prompt_registry(self) -> None:
-        """retrieve_models source code references PromptRegistry."""
+        """retrieve_models source code references get_registry."""
         from mle_star import phase1
 
         source = inspect.getsource(phase1.retrieve_models)
-        assert "PromptRegistry" in source
+        assert "get_registry" in source
 
     def test_generate_candidate_source_uses_prompt_registry(self) -> None:
-        """generate_candidate source code references PromptRegistry."""
+        """generate_candidate source code references get_registry."""
         from mle_star import phase1
 
         source = inspect.getsource(phase1.generate_candidate)
-        assert "PromptRegistry" in source
+        assert "get_registry" in source
 
     def test_merge_solutions_source_uses_prompt_registry(self) -> None:
-        """merge_solutions source code references PromptRegistry."""
+        """merge_solutions source code references get_registry."""
         from mle_star import phase1
 
         source = inspect.getsource(phase1.merge_solutions)
-        assert "PromptRegistry" in source
+        assert "get_registry" in source

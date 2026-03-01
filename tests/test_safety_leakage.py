@@ -174,7 +174,7 @@ class TestCheckAndFixLeakageReturnType:
         client.send_message = AsyncMock(return_value=detection.model_dump_json())
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -197,7 +197,7 @@ class TestCheckAndFixLeakageReturnType:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -227,7 +227,7 @@ class TestDetectionStructuredOutput:
         client.send_message = AsyncMock(return_value=detection.model_dump_json())
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -262,7 +262,7 @@ class TestDetectionStructuredOutput:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -293,7 +293,7 @@ class TestDetectionPromptVariant:
         client.send_message = AsyncMock(return_value=detection.model_dump_json())
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -315,7 +315,7 @@ class TestDetectionPromptVariant:
         rendered_prompts: list[str] = []
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -356,7 +356,7 @@ class TestCorrectionPromptVariant:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -381,7 +381,7 @@ class TestCorrectionPromptVariant:
         render_calls: list[dict[str, Any]] = []
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
 
@@ -427,7 +427,7 @@ class TestNoLeakageReturnsOriginal:
         solution = _make_solution(content="perfectly_clean_code")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -447,7 +447,7 @@ class TestNoLeakageReturnsOriginal:
         client.send_message = AsyncMock(return_value=detection.model_dump_json())
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -475,7 +475,7 @@ class TestNoLeakageReturnsOriginal:
         solution = _make_solution(content="all_clean_code")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -511,7 +511,7 @@ class TestLeakageFoundReturnsCorrected:
         original = _make_solution()
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -534,7 +534,7 @@ class TestLeakageFoundReturnsCorrected:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -563,7 +563,7 @@ class TestLeakageFoundReturnsCorrected:
             )
 
             with patch(
-                f"{_SAFETY}.PromptRegistry",
+                f"{_SAFETY}.get_registry",
             ) as mock_registry_cls:
                 mock_registry = mock_registry_cls.return_value
                 mock_template = AsyncMock()
@@ -618,7 +618,7 @@ class TestLeakageFoundReturnsCorrected:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -659,7 +659,7 @@ class TestCorrectionUsesReplaceBlock:
 
         with (
             patch(
-                f"{_SAFETY}.PromptRegistry",
+                f"{_SAFETY}.get_registry",
             ) as mock_registry_cls,
             patch.object(
                 SolutionScript,
@@ -702,7 +702,7 @@ class TestCorrectionUsesExtractCodeBlock:
 
         with (
             patch(
-                f"{_SAFETY}.PromptRegistry",
+                f"{_SAFETY}.get_registry",
             ) as mock_registry_cls,
             patch(
                 f"{_SAFETY}.extract_code_block",
@@ -737,7 +737,7 @@ class TestAgentTypeUsed:
         client.send_message = AsyncMock(return_value=detection.model_dump_json())
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -761,7 +761,7 @@ class TestAgentTypeUsed:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -801,7 +801,7 @@ class TestReplaceBlockValueErrorHandling:
 
         with (
             patch(
-                f"{_SAFETY}.PromptRegistry",
+                f"{_SAFETY}.get_registry",
             ) as mock_registry_cls,
             caplog.at_level(logging.WARNING, logger=_SAFETY),
         ):
@@ -830,7 +830,7 @@ class TestReplaceBlockValueErrorHandling:
         original = _make_solution()
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -855,7 +855,7 @@ class TestReplaceBlockValueErrorHandling:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -898,7 +898,7 @@ class TestReplaceBlockValueErrorHandling:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -932,7 +932,7 @@ class TestGracefulDegradationOnFailure:
         solution = _make_solution(content="original_code_here")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -959,7 +959,7 @@ class TestGracefulDegradationOnFailure:
         solution = _make_solution()
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -980,7 +980,7 @@ class TestGracefulDegradationOnFailure:
         solution = _make_solution(content="my_code_content")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1004,7 +1004,7 @@ class TestGracefulDegradationOnFailure:
         solution = _make_solution(content="safe_code")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1025,7 +1025,7 @@ class TestGracefulDegradationOnFailure:
         solution = _make_solution(content="timeout_safe_code")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1044,7 +1044,7 @@ class TestGracefulDegradationOnFailure:
         client.send_message = AsyncMock(side_effect=KeyboardInterrupt)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1066,7 +1066,7 @@ class TestGracefulDegradationOnFailure:
         solution = _make_solution()
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1099,7 +1099,7 @@ class TestDetectionPromptRendering:
         expected_prompt = "rendered detection prompt with code"
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1135,7 +1135,7 @@ class TestTwoStepPipelineFlow:
         call_order: list[str] = []
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
 
@@ -1165,7 +1165,7 @@ class TestTwoStepPipelineFlow:
         client.send_message = AsyncMock(return_value=detection.model_dump_json())
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1207,7 +1207,7 @@ class TestTwoStepPipelineFlow:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1243,7 +1243,7 @@ class TestEdgeCases:
         solution = _make_solution(content="")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1265,7 +1265,7 @@ class TestEdgeCases:
         solution = _make_solution(score=0.92)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1289,7 +1289,7 @@ class TestEdgeCases:
         )
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1332,7 +1332,7 @@ class TestLeakageDetectionPropertyBased:
         solution = _make_solution(content=content)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1364,7 +1364,7 @@ class TestLeakageDetectionPropertyBased:
         solution = _make_solution(content=content)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1393,7 +1393,7 @@ class TestLeakageDetectionPropertyBased:
         solution = _make_solution(phase=phase)
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1424,7 +1424,7 @@ class TestLeakageDetectionPropertyBased:
         client.send_message = AsyncMock(return_value=detection.model_dump_json())
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1735,7 +1735,7 @@ class TestFreeTextDetectionCorrectionFlow:
         solution = _make_solution(content="scaler.fit(all_data)\nprint('done')")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
@@ -1769,7 +1769,7 @@ class TestFreeTextDetectionCorrectionFlow:
         solution = _make_solution(content="original code here")
 
         with patch(
-            f"{_SAFETY}.PromptRegistry",
+            f"{_SAFETY}.get_registry",
         ) as mock_registry_cls:
             mock_registry = mock_registry_cls.return_value
             mock_template = AsyncMock()
